@@ -1,0 +1,211 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Shift AI — Design Tokens
+   Source of truth: ../../../brand/brand-guide.md
+   ───────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Dark mode palette — primary for screen, web, deck */
+  --color-bitumen: #0a0a0b;
+  --color-asphalt: #141416;
+  --color-graphite: #26262a;
+  --color-graphite-2: #34343a;
+  --color-track-gold: #c9a961;
+  --color-track-gold-dim: #8c7541;
+  --color-bone: #f2eee6;
+  --color-bone-dim: #a8a59f;
+  --color-bone-mute: #6c6a66;
+  --color-diagnostic-steel: #6e8c9c;
+  --color-flag-red: #b8332e;
+
+  /* Ink — text that sits on the gold fill (primary button, selection).
+     Stays dark in BOTH themes so gold never loses contrast. Do not theme-flip. */
+  --color-ink: #0a0a0b;
+
+  /* Type scale — display tier (Big Shoulders Display 900, never below 28pt) */
+  --font-display: "Big Shoulders", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --text-display-xl: clamp(96px, 12vw, 144px);
+  --text-display-lg: clamp(56px, 7vw, 72px);
+  --text-display-md: clamp(28px, 3vw, 40px);
+
+  /* Body sizes — never below 16px on screen */
+  --text-body-lg: 20px;
+  --text-body-md: 16px;
+  --text-body-sm: 13px;
+
+  /* Mono — data and labels */
+  --text-mono-lg: 18px;
+  --text-mono-md: 12px;
+  --text-mono-sm: 10px;
+
+  --tracking-mono-label: 0.15em;
+  --tracking-display-tight: -0.04em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Fonts (Google Fonts — loaded in app/layout.tsx via next/font)
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Base
+   ───────────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  /* ───────────────────────────────────────────────────────────────────────
+     Light mode — overrides the palette variables only. Every utility
+     (bg-bitumen, text-bone, border-graphite…) resolves through these, so the
+     whole app re-themes without touching component classes. Semantic names are
+     kept (bitumen = page, bone = primary text) even though the values invert.
+     html[data-theme="light"] beats :root specificity, guaranteeing override.
+     ─────────────────────────────────────────────────────────────────────── */
+  html[data-theme="light"] {
+    color-scheme: light;
+
+    --color-bitumen: #e8e4da; /* page */
+    --color-asphalt: #f6f3ec; /* card surface (lighter than page = lifts) */
+    --color-graphite: #d3ccbd; /* hairline */
+    --color-graphite-2: #bcb4a3;
+    --color-track-gold: #9a7a2e; /* darkened so gold reads as text on light */
+    --color-track-gold-dim: #b89a52;
+    --color-bone: #1a1916; /* primary text */
+    --color-bone-dim: #54514a; /* secondary text */
+    --color-bone-mute: #86827a; /* tertiary text */
+    --color-diagnostic-steel: #3f6678;
+    --color-flag-red: #a82a26;
+    /* --color-ink stays #0a0a0b — text on gold must remain dark */
+  }
+
+  html,
+  body {
+    background: var(--color-bitumen);
+    color: var(--color-bone);
+    font-family: var(--font-body);
+    font-size: var(--text-body-md);
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: var(--color-track-gold);
+    color: var(--color-ink);
+  }
+
+  /* Sharp corners everywhere — brand discipline */
+  * {
+    border-radius: 0 !important;
+  }
+
+  /* Hairline default for borders */
+  hr {
+    border: 0;
+    border-top: 1px solid var(--color-graphite);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Utility classes specific to Shift AI brand
+   ───────────────────────────────────────────────────────────────────────── */
+
+@layer utilities {
+  /* Mono section labels — "— SECTOR 03 / CASE STUDY" pattern */
+  .label {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: var(--text-mono-md);
+    letter-spacing: var(--tracking-mono-label);
+    text-transform: uppercase;
+    color: var(--color-bone-dim);
+  }
+
+  .label-gold {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: var(--text-mono-md);
+    letter-spacing: var(--tracking-mono-label);
+    text-transform: uppercase;
+    color: var(--color-track-gold);
+  }
+
+  /* Display headlines — Big Shoulders 900 with mechanical skew */
+  .display-xl {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: var(--text-display-xl);
+    letter-spacing: var(--tracking-display-tight);
+    line-height: 0.9;
+    text-transform: uppercase;
+    transform: skewX(-12deg);
+    transform-origin: left center;
+  }
+
+  .display-lg {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: var(--text-display-lg);
+    letter-spacing: var(--tracking-display-tight);
+    line-height: 0.95;
+    text-transform: uppercase;
+    transform: skewX(-12deg);
+    transform-origin: left center;
+  }
+
+  .display-md {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: var(--text-display-md);
+    letter-spacing: var(--tracking-display-tight);
+    line-height: 1;
+    text-transform: uppercase;
+    transform: skewX(-12deg);
+    transform-origin: left center;
+  }
+
+  /* Mono numerical for data display */
+  .mono {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Hairline border helpers */
+  .hairline {
+    border-color: var(--color-graphite);
+  }
+
+  /* Focus ring — gold accent, subtle */
+  .focus-gold:focus-visible {
+    outline: 1px solid var(--color-track-gold);
+    outline-offset: 2px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Scrollbar — discreet, dark, matches the brand
+   ───────────────────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bitumen);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-graphite);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-graphite-2);
+}
