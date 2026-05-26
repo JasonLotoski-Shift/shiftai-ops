@@ -1,0 +1,430 @@
+// Shift AI Ops — Prisma schema
+// Mirrors lib/types.ts. Keep them in sync when adding/renaming fields.
+// IDs default to cuid() for new records; the initial seed passes explicit IDs
+// (p-1, c-1, ...) so cross-references in seed.ts remain stable.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Connection URL lives in prisma.config.ts → process.env["DATABASE_URL"]
+  // (Prisma 7 moved it out of the schema file.)
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Enums (mirror the union types in lib/types.ts; @map preserves the
+// hyphenated DB values the existing UI / seed already use)
+// ──────────────────────────────────────────────────────────────────────
+
+enum Industry {
+  automotive
+  motorsport
+  engineering
+  construction
+  other
+}
+
+enum InteractionType {
+  call
+  meeting
+  email_sent     @map("email-sent")
+  email_received @map("email-received")
+  other
+}
+
+enum DealStage {
+  lead
+  qualified
+  discovery
+  proposal
+  negotiation
+  signed
+}
+
+enum EngagementStatus {
+  on_track @map("on-track")
+  at_risk  @map("at-risk")
+  blocked
+  closing
+  closed
+}
+
+enum ProjectPhase {
+  discovery
+  build
+  run
+}
+
+enum MilestoneStatus {
+  pending
+  in_progress @map("in-progress")
+  complete
+  at_risk     @map("at-risk")
+}
+
+enum InvoiceStatus {
+  draft
+  sent
+  paid
+  overdue
+}
+
+enum ActivityType {
+  touch
+  status
+  hours
+  doc
+  ai
+}
+
+enum TaskPriority {
+  high
+  medium
+  low
+}
+
+enum UpdateCadence {
+  daily
+  weekly
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Partner — firm members. Doubles as the actor reference for owner /
+// lead fields. NextAuth tables will be added when SSO is wired —
+// Partner links via email match at first login.
+// ──────────────────────────────────────────────────────────────────────
+
+model Partner {
+  id       String @id @default(cuid())
+  name     String
+  initials String
+  role     String
+  email    String @unique
+
+  contactsLed     Contact[] @relation("PartnerContactLead")
+  dealsLed        Deal[]    @relation("PartnerDealLead")
+  clientsLed      Client[]  @relation("PartnerClientLead")
+  projectsLed     Project[] @relation("PartnerProjectLead")
+  projectsConsult Project[] @relation("ProjectConsultants")
+  tasksOwned      Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Contact + relationship-intelligence enrichment
+// ──────────────────────────────────────────────────────────────────────
+
+model Contact {
+  id          String   @id @default(cuid())
+  name        String
+  title       String
+  company     String
+  email       String
+  phone       String?
+  industry    Industry
+  source      String
+  notes       String?
+  lastTouchAt DateTime
+
+  partnerLead   Partner @relation("PartnerContactLead", fields: [partnerLeadId], references: [id])
+  partnerLeadId String
+
+  // Enrichment — append-only, never silently overwritten
+  persona             String?
+  communicationStyle  String?
+  keyFacts            String[]
+  background          String?
+  hobbies             String[]
+  networkAffiliations String[]
+  enrichedAt          DateTime?
+
+  interactions      Interaction[]
+  deals             Deal[]
+  primaryForClients Client[]      @relation("ClientPrimaryContact")
+  billingForClients Client[]      @relation("ClientBillingContact")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Interaction — append-only comms log
+// ──────────────────────────────────────────────────────────────────────
+
+model Interaction {
+  id       String          @id @default(cuid())
+  type     InteractionType
+  date     DateTime
+  summary  String
+  // Free-text actor — partner name OR agent label like "AGENT · CLAUDE".
+  // Not a Partner FK because agents aren't Partners (yet).
+  loggedBy String
+  channel  String?
+
+  contact   Contact @relation(fields: [contactId], references: [id])
+  contactId String
+
+  createdAt DateTime @default(now())
+
+  @@index([contactId, date])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Deal — pipeline. valueEstimate is whole CAD (matches existing seed).
+// ──────────────────────────────────────────────────────────────────────
+
+model Deal {
+  id              String    @id @default(cuid())
+  company         String
+  stage           DealStage
+  valueEstimate   Int
+  industry        Industry
+  closeTargetDate DateTime
+  lastTouchAt     DateTime
+  notes           String?
+
+  contact   Contact @relation(fields: [contactId], references: [id])
+  contactId String
+
+  partnerLead   Partner @relation("PartnerDealLead", fields: [partnerLeadId], references: [id])
+  partnerLeadId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Client — signed engagements. Company-profile + billing sub-fields.
+// ──────────────────────────────────────────────────────────────────────
+
+model Client {
+  id               String           @id @default(cuid())
+  company          String
+  industry         Industry
+  revenue          String
+  driveFolderUrl   String
+  workspacePath    String
+  contractValue    Int
+  contractSignedAt DateTime
+  status           EngagementStatus
+  notes            String?
+
+  partnerLead   Partner @relation("PartnerClientLead", fields: [partnerLeadId], references: [id])
+  partnerLeadId String
+
+  primaryContact   Contact @relation("ClientPrimaryContact", fields: [primaryContactId], references: [id])
+  primaryContactId String
+
+  // Company profile — auto-built from comms + web search, append-only
+  companySize     String?
+  headquarters    String?
+  founded         String?
+  website         String?
+  ownership       String?
+  description     String?
+  brandColors     String[]
+  logoMonogram    String?
+  companyKeyFacts String[]
+  enrichedAt      DateTime?
+
+  // Engagement / billing
+  paymentTerms     String?
+  contractEndAt    DateTime?
+  billingContact   Contact?  @relation("ClientBillingContact", fields: [billingContactId], references: [id])
+  billingContactId String?
+
+  projects Project[]
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Project — per-client engagement
+// ──────────────────────────────────────────────────────────────────────
+
+model Project {
+  id            String           @id @default(cuid())
+  name          String
+  phase         ProjectPhase
+  status        EngagementStatus
+  startDate     DateTime
+  targetEndDate DateTime
+  budgetHours   Int
+  hoursLogged   Float
+  budgetFee     Int
+  description   String
+
+  client   Client @relation(fields: [clientId], references: [id])
+  clientId String
+
+  partnerLead   Partner @relation("PartnerProjectLead", fields: [partnerLeadId], references: [id])
+  partnerLeadId String
+
+  consultants Partner[] @relation("ProjectConsultants")
+
+  milestones   Milestone[]
+  hoursEntries HoursEntry[]
+  invoices     Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Milestone
+// ──────────────────────────────────────────────────────────────────────
+
+model Milestone {
+  id      String          @id @default(cuid())
+  title   String
+  dueDate DateTime
+  status  MilestoneStatus
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// HoursEntry — time log. loggedBy = partner.id OR "agent:<name>" string;
+// not a Partner FK because agents aren't Partners.
+// ──────────────────────────────────────────────────────────────────────
+
+model HoursEntry {
+  id            String   @id @default(cuid())
+  loggedBy      String
+  loggedByLabel String
+  hours         Float
+  description   String
+  date          DateTime
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId, date])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Invoice
+// ──────────────────────────────────────────────────────────────────────
+
+model Invoice {
+  id       String        @id @default(cuid())
+  number   String        @unique
+  amount   Int
+  issuedAt DateTime
+  dueAt    DateTime
+  paidAt   DateTime?
+  status   InvoiceStatus
+
+  client   Client @relation(fields: [clientId], references: [id])
+  clientId String
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Activity feed — display-only firm activity stream
+// ──────────────────────────────────────────────────────────────────────
+
+model Activity {
+  id     String       @id @default(cuid())
+  ts     DateTime
+  actor  String
+  type   ActivityType
+  target String
+  detail String
+
+  createdAt DateTime @default(now())
+
+  @@index([ts])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Task — dashboard "do" list
+// ──────────────────────────────────────────────────────────────────────
+
+model Task {
+  id        String       @id @default(cuid())
+  title     String
+  due       DateTime
+  priority  TaskPriority
+  relatedTo String?
+  done      Boolean      @default(false)
+
+  owner   Partner @relation(fields: [ownerId], references: [id])
+  ownerId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// TeamUpdate — dashboard "know" feed
+// ──────────────────────────────────────────────────────────────────────
+
+model TeamUpdate {
+  id      String        @id @default(cuid())
+  ts      DateTime
+  author  String
+  cadence UpdateCadence
+  body    String
+
+  createdAt DateTime @default(now())
+
+  @@index([ts])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// NewsItem — industry news for the "know" feed
+// ──────────────────────────────────────────────────────────────────────
+
+model NewsItem {
+  id       String   @id @default(cuid())
+  ts       DateTime
+  source   String
+  industry Industry
+  headline String
+  why      String
+
+  createdAt DateTime @default(now())
+
+  @@index([ts])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// AuditLog — every write logged with actor + timestamp.
+// Foundation for the AI activity audit acquirers will want (Phase 2C, §11).
+// Append-only by convention (no updatedAt; no UI delete path).
+// ──────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  ts         DateTime @default(now())
+  actor      String   // partner.id or "agent:<name>"
+  actorLabel String
+  action     String   // e.g. "create.contact", "update.deal.stage"
+  targetType String   // e.g. "Contact", "Deal"
+  targetId   String?
+  changes    Json?    // before/after diff
+  ip         String?
+  userAgent  String?
+
+  @@index([ts])
+  @@index([targetType, targetId])
+}
