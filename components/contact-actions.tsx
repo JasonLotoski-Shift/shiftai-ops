@@ -16,7 +16,7 @@ import { Button, Label, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { ContactModel as Contact } from "@/lib/generated/prisma/models";
 import { interactionLabels } from "@/lib/data/seed";
-import { logInteraction } from "@/app/(app)/contacts/[id]/actions";
+import { logInteraction, saveEmailDraft, sendEmail } from "@/app/(app)/contacts/[id]/actions";
 
 type ActionKey = "email" | "log" | "search" | "enrich";
 
@@ -114,12 +114,15 @@ function DraftEmailModal({
   partnerName?: string;
   onClose: () => void;
 }) {
-  const [step, setStep] = useState<"inputs" | "draft">("inputs");
+  const [step, setStep] = useState<"inputs" | "draft" | "saved">("inputs");
   const [purpose, setPurpose] = useState("");
   const [senderRole, setSenderRole] = useState("");
   const [pricePoint, setPricePoint] = useState("");
   const [timeline, setTimeline] = useState("");
   const [ask, setAsk] = useState("");
+  const [persistErr, setPersistErr] = useState<string | null>(null);
+  const [savedKind, setSavedKind] = useState<"draft" | "sent" | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const firstName = contact.name.split(" ")[0];
   const missing = [
@@ -197,7 +200,7 @@ ${NEEDS(senderRole, "sender role")}, Shift AI`;
             </Button>
           </div>
         </div>
-      ) : (
+      ) : step === "draft" ? (
         <div className="px-5 py-5 flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <Sparkles size={13} strokeWidth={1.5} className="text-track-gold" />
@@ -210,18 +213,72 @@ ${NEEDS(senderRole, "sender role")}, Shift AI`;
             <div className="flex items-center gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red" />
               <span className="text-[12px] text-bone-dim">
-                Claude flagged {(body.match(/\[NEEDS INPUT/g) || []).length} item(s) it would not guess. Fill these in before this can send.
+                Claude flagged {(body.match(/\[NEEDS INPUT/g) || []).length} item(s) it would not guess. Fill these in before this can save or send.
               </span>
             </div>
           )}
+          {persistErr && (
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+              <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+              <span className="text-[12px] text-bone-dim">{persistErr}</span>
+            </div>
+          )}
           <div className="flex justify-between items-center pt-1">
-            <Button variant="ghost" size="sm" onClick={() => setStep("inputs")}>← Edit inputs</Button>
+            <Button variant="ghost" size="sm" onClick={() => setStep("inputs")} disabled={isPending}>← Edit inputs</Button>
             <div className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={onClose}>Save draft</Button>
-              <Button variant="primary" size="sm" disabled={body.includes("[NEEDS INPUT")}>
-                Send
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={body.includes("[NEEDS INPUT") || isPending}
+                onClick={() => {
+                  setPersistErr(null);
+                  startTransition(async () => {
+                    try {
+                      await saveEmailDraft(contact.id, { body });
+                      setSavedKind("draft");
+                      setStep("saved");
+                    } catch (err) {
+                      setPersistErr(err instanceof Error ? err.message : "Failed to save draft");
+                    }
+                  });
+                }}
+              >
+                {isPending && savedKind === null ? "Saving…" : "Save draft"}
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={body.includes("[NEEDS INPUT") || isPending}
+                onClick={() => {
+                  setPersistErr(null);
+                  startTransition(async () => {
+                    try {
+                      await sendEmail(contact.id, { body });
+                      setSavedKind("sent");
+                      setStep("saved");
+                    } catch (err) {
+                      setPersistErr(err instanceof Error ? err.message : "Failed to send");
+                    }
+                  });
+                }}
+              >
+                {isPending && savedKind === null ? "Sending…" : "Send"}
               </Button>
             </div>
+          </div>
+        </div>
+      ) : (
+        <div className="px-5 py-12 text-center">
+          <div className="display-md text-track-gold mb-2 inline-block">
+            {savedKind === "sent" ? "SENT" : "SAVED"}
+          </div>
+          <p className="text-[13px] text-bone-dim">
+            {savedKind === "sent"
+              ? `Email logged as sent to ${contact.name} · interaction recorded.`
+              : `Draft saved to Drive · review on the Deliverables tab.`}
+          </p>
+          <div className="pt-5">
+            <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
           </div>
         </div>
       )}
