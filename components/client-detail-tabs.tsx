@@ -11,6 +11,7 @@ import type {
   ContactModel as Contact,
   ProjectModel as Project,
   InvoiceModel as Invoice,
+  ArtifactModel as Artifact,
 } from "@/lib/generated/prisma/models";
 import {
   FolderOpen,
@@ -20,6 +21,10 @@ import {
   Sparkles,
   Plus,
   Check,
+  FileText,
+  Presentation,
+  Mail,
+  Bot,
 } from "lucide-react";
 
 interface ClientDetailTabsProps {
@@ -29,6 +34,7 @@ interface ClientDetailTabsProps {
   billingContact: Contact | null;
   clientProjects: Project[];
   clientInvoices: Invoice[];
+  clientArtifacts: Artifact[];
 }
 
 export function ClientDetailTabs({
@@ -38,6 +44,7 @@ export function ClientDetailTabs({
   billingContact,
   clientProjects,
   clientInvoices,
+  clientArtifacts,
 }: ClientDetailTabsProps) {
   const [tab, setTab] = useState("profile");
 
@@ -53,6 +60,7 @@ export function ClientDetailTabs({
         tabs={[
           { key: "profile", label: "Company profile" },
           { key: "engagement", label: "Engagement & billing" },
+          { key: "deliverables", label: `Deliverables (${clientArtifacts.length})` },
         ]}
         active={tab}
         onChange={setTab}
@@ -60,9 +68,8 @@ export function ClientDetailTabs({
 
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 flex flex-col gap-6">
-          {tab === "profile" ? (
-            <CompanyProfile client={client} />
-          ) : (
+          {tab === "profile" && <CompanyProfile client={client} />}
+          {tab === "engagement" && (
             <Engagement
               client={client}
               clientProjects={clientProjects}
@@ -72,6 +79,7 @@ export function ClientDetailTabs({
               outstanding={outstanding}
             />
           )}
+          {tab === "deliverables" && <Deliverables artifacts={clientArtifacts} />}
         </div>
 
         <div className="flex flex-col gap-6">
@@ -411,6 +419,133 @@ function Engagement({
             </div>
           </Link>
         ))}
+      </Card>
+    </>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Sub-tab C — Deliverables (Artifact rows scoped to the client)
+   ────────────────────────────────────────────────────────────────────── */
+
+const artifactIcon: Record<Artifact["type"], typeof FileText> = {
+  proposal: FileText,
+  deck: Presentation,
+  email: Mail,
+  sow: FileText,
+  invoice: FileText,
+  report: FileText,
+  other: FileText,
+};
+
+const reviewTone: Record<
+  Artifact["reviewStatus"],
+  "neutral" | "steel" | "gold" | "bone"
+> = {
+  draft: "neutral",
+  approved: "steel",
+  sent: "gold",
+  archived: "bone",
+};
+
+function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
+  const aiCount = artifacts.filter((a) => a.createdBy.startsWith("AGENT")).length;
+  const draftCount = artifacts.filter((a) => a.reviewStatus === "draft").length;
+
+  if (artifacts.length === 0) {
+    return (
+      <Card>
+        <CardBody className="flex flex-col gap-3 items-start">
+          <Label>— Deliverables</Label>
+          <p className="text-[13px] text-bone-dim">
+            No deliverables logged yet. AI-generated artifacts (proposals, decks,
+            emails) and partner uploads will appear here as the engagement runs.
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card>
+        <div className="p-6 grid grid-cols-3 gap-6">
+          <div className="flex flex-col gap-2">
+            <Label>— Total</Label>
+            <span className="mono text-[24px] text-bone tabular-nums">{artifacts.length}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>— AI-generated</Label>
+            <span className="mono text-[18px] text-track-gold tabular-nums flex items-center gap-2">
+              {aiCount}
+              {aiCount > 0 && <Bot size={14} strokeWidth={1.5} />}
+            </span>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>— Drafts pending review</Label>
+            <span className={`mono text-[18px] tabular-nums ${draftCount > 0 ? "text-flag-red" : "text-bone"}`}>
+              {draftCount}
+            </span>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
+          <Label>— All deliverables (newest first)</Label>
+        </div>
+        {artifacts.map((ar, i) => {
+          const Icon = artifactIcon[ar.type] ?? FileText;
+          const isAgent = ar.createdBy.startsWith("AGENT");
+          return (
+            <a
+              href={ar.driveUrl}
+              target="_blank"
+              rel="noreferrer"
+              key={ar.id}
+              className={`grid grid-cols-[28px_1fr_180px_100px_20px] gap-4 px-5 py-4 ${i < artifacts.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors group`}
+            >
+              <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
+                <Icon size={16} strokeWidth={1.5} />
+              </div>
+
+              <div className="min-w-0 flex flex-col gap-1 self-center">
+                <div className="text-[14px] text-bone truncate">{ar.title}</div>
+                <div className="flex items-center gap-2 text-[11px] text-bone-mute">
+                  <span className="mono uppercase tracking-[0.08em]">{ar.type}</span>
+                  {ar.fileName && (
+                    <>
+                      <span>·</span>
+                      <span className="truncate">{ar.fileName}</span>
+                    </>
+                  )}
+                  {ar.generatedFromSkill && (
+                    <>
+                      <span>·</span>
+                      <span className="mono text-track-gold">/{ar.generatedFromSkill}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="self-center flex flex-col gap-0.5 min-w-0">
+                <div className={`text-[12px] truncate flex items-center gap-1.5 ${isAgent ? "text-track-gold" : "text-bone"}`}>
+                  {isAgent && <Bot size={11} strokeWidth={1.5} />}
+                  <span className="truncate">{ar.createdBy}</span>
+                </div>
+                <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(ar.createdAt)}</span>
+              </div>
+
+              <div className="self-center flex justify-end">
+                <Badge tone={reviewTone[ar.reviewStatus]}>{ar.reviewStatus}</Badge>
+              </div>
+
+              <div className="self-center text-bone-mute opacity-50 group-hover:opacity-100 transition-opacity">
+                <ExternalLink size={12} strokeWidth={1.5} />
+              </div>
+            </a>
+          );
+        })}
       </Card>
     </>
   );

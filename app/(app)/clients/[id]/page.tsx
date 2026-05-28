@@ -19,6 +19,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       billingContact: true,
       projects: { orderBy: { startDate: "desc" } },
       invoices: { orderBy: { issuedAt: "desc" } },
+      artifacts: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!client) notFound();
@@ -54,6 +55,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           billingContact={client.billingContact ?? client.primaryContact}
           clientProjects={client.projects}
           clientInvoices={client.invoices}
+          clientArtifacts={client.artifacts}
         />
       </div>
     </>
