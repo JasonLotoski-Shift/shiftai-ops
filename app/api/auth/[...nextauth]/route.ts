@@ -5,11 +5,11 @@
 // that fires before our signIn callback runs. Strip the wrappers once
 // the root cause is fixed.
 
+import type { NextRequest } from "next/server";
 import { handlers } from "@/auth";
 
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  console.error("[route GET]", url.pathname + url.search);
+export async function GET(request: NextRequest) {
+  console.error("[route GET]", request.nextUrl.pathname + request.nextUrl.search);
   try {
     return await handlers.GET(request);
   } catch (err) {
@@ -18,9 +18,8 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
-  const url = new URL(request.url);
-  console.error("[route POST]", url.pathname + url.search);
+export async function POST(request: NextRequest) {
+  console.error("[route POST]", request.nextUrl.pathname + request.nextUrl.search);
   try {
     return await handlers.POST(request);
   } catch (err) {
