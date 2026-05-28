@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Card, Label, Badge, Tabs } from "@/components/ui";
 import { formatDate } from "@/lib/format";
+import { toggleTaskDone } from "@/app/(app)/dashboard/actions";
 import type {
   ActivityModel as Activity,
   ClientModel as Client,
@@ -54,15 +55,25 @@ export function DashboardViews({
 }: DashboardViewsProps) {
   const [tab, setTab] = useState("today");
   const [launched, setLaunched] = useState<string | null>(null);
-  // Local-only toggle for now. Persistence via server action lands in the
-  // mutations pass (Phase 2C — "Wire the currently-simulated mutations to
-  // real API routes + DB writes").
   const [tasks, setTasks] = useState(initialTasks);
+  const [, startTransition] = useTransition();
 
   const openTasks = tasks.filter((t) => !t.done);
 
+  // Optimistic flip — server action persists via toggleTaskDone, which
+  // updates Task.done + writes one AuditLog row in a transaction. On
+  // failure, revert local state and log; toast UX comes later.
   function toggleTask(id: string) {
+    const previous = tasks;
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+    startTransition(async () => {
+      try {
+        await toggleTaskDone(id);
+      } catch (err) {
+        console.error("toggleTaskDone failed:", err);
+        setTasks(previous);
+      }
+    });
   }
 
   return (
