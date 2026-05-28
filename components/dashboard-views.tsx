@@ -2,17 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardBody, Label, Badge, Tabs, Hairline } from "@/components/ui";
-import {
-  projects,
-  clientById,
-  partnerById,
-  activities,
-  tasks as seedTasks,
-  teamUpdates,
-  news,
-  formatDate,
-} from "@/lib/data/seed";
+import { Card, Label, Badge, Tabs } from "@/components/ui";
+import { formatDate } from "@/lib/format";
+import type {
+  ActivityModel as Activity,
+  ClientModel as Client,
+  NewsItemModel as NewsItem,
+  PartnerModel as Partner,
+  ProjectModel as Project,
+  TaskModel as Task,
+  TeamUpdateModel as TeamUpdate,
+} from "@/lib/generated/prisma/models";
 import {
   Mail,
   Sparkles,
@@ -34,10 +34,30 @@ const quickActions = [
   { icon: RefreshCw, label: "Re-engage stale", hint: "3 leads cold 30d+ — draft outreach" },
 ] as const;
 
-export function DashboardViews() {
+type ProjectWithClient = Project & { client: Client };
+type TaskWithOwner = Task & { owner: Partner };
+
+interface DashboardViewsProps {
+  activeProjects: ProjectWithClient[];
+  activities: Activity[];
+  tasks: TaskWithOwner[];
+  teamUpdates: TeamUpdate[];
+  news: NewsItem[];
+}
+
+export function DashboardViews({
+  activeProjects,
+  activities,
+  tasks: initialTasks,
+  teamUpdates,
+  news,
+}: DashboardViewsProps) {
   const [tab, setTab] = useState("today");
   const [launched, setLaunched] = useState<string | null>(null);
-  const [tasks, setTasks] = useState(seedTasks);
+  // Local-only toggle for now. Persistence via server action lands in the
+  // mutations pass (Phase 2C — "Wire the currently-simulated mutations to
+  // real API routes + DB writes").
+  const [tasks, setTasks] = useState(initialTasks);
 
   const openTasks = tasks.filter((t) => !t.done);
 
@@ -94,40 +114,37 @@ export function DashboardViews() {
               <span className="label">{openTasks.length} open</span>
             </div>
             <Card>
-              {tasks.map((t, i) => {
-                const owner = partnerById(t.ownerId);
-                return (
-                  <div
-                    key={t.id}
-                    className={`grid grid-cols-[24px_1fr_120px_110px] gap-4 items-center px-5 py-3 ${i < tasks.length - 1 ? "border-b border-graphite" : ""}`}
+              {tasks.map((t, i) => (
+                <div
+                  key={t.id}
+                  className={`grid grid-cols-[24px_1fr_120px_110px] gap-4 items-center px-5 py-3 ${i < tasks.length - 1 ? "border-b border-graphite" : ""}`}
+                >
+                  <button
+                    onClick={() => toggleTask(t.id)}
+                    aria-label={t.done ? "Mark task open" : "Mark task done"}
+                    className={`w-5 h-5 border flex items-center justify-center transition-colors ${t.done ? "bg-diagnostic-steel/20 border-diagnostic-steel/50 text-diagnostic-steel" : "border-graphite-2 text-transparent hover:border-bone-mute"}`}
                   >
-                    <button
-                      onClick={() => toggleTask(t.id)}
-                      aria-label={t.done ? "Mark task open" : "Mark task done"}
-                      className={`w-5 h-5 border flex items-center justify-center transition-colors ${t.done ? "bg-diagnostic-steel/20 border-diagnostic-steel/50 text-diagnostic-steel" : "border-graphite-2 text-transparent hover:border-bone-mute"}`}
-                    >
-                      <Check size={12} strokeWidth={2.5} />
-                    </button>
-                    <div className="min-w-0">
-                      <div className={`text-[14px] truncate ${t.done ? "text-bone-mute line-through" : "text-bone"}`}>
-                        {t.title}
-                      </div>
-                      {t.relatedTo && <div className="text-[11px] text-bone-mute truncate">{t.relatedTo}</div>}
+                    <Check size={12} strokeWidth={2.5} />
+                  </button>
+                  <div className="min-w-0">
+                    <div className={`text-[14px] truncate ${t.done ? "text-bone-mute line-through" : "text-bone"}`}>
+                      {t.title}
                     </div>
-                    <div>
-                      <Badge tone={t.priority === "high" ? "red" : t.priority === "medium" ? "gold" : "neutral"}>
-                        {t.priority}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
-                      <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">
-                        {owner?.initials}
-                      </div>
+                    {t.relatedTo && <div className="text-[11px] text-bone-mute truncate">{t.relatedTo}</div>}
+                  </div>
+                  <div>
+                    <Badge tone={t.priority === "high" ? "red" : t.priority === "medium" ? "gold" : "neutral"}>
+                      {t.priority}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
+                    <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">
+                      {t.owner.initials}
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </Card>
           </section>
         </div>
@@ -157,7 +174,7 @@ export function DashboardViews() {
               </Card>
             </section>
 
-            {/* Engagements board */}
+            {/* Engagements board (already filtered server-side to active) */}
             <section className="flex flex-col gap-4">
               <div className="flex items-end justify-between">
                 <Label>— Engagements</Label>
@@ -170,8 +187,7 @@ export function DashboardViews() {
                   <span className="label">Hours · budget</span>
                   <span className="label text-right">Status</span>
                 </div>
-                {projects.filter((p) => p.status !== "closed").map((p) => {
-                  const client = clientById(p.clientId);
+                {activeProjects.map((p) => {
                   const burn = (p.hoursLogged / p.budgetHours) * 100;
                   const overBudget = burn > 90;
                   return (
@@ -181,7 +197,7 @@ export function DashboardViews() {
                       className="grid grid-cols-[1fr_120px_140px_120px] gap-4 px-5 py-4 border-b border-graphite last:border-0 hover:bg-graphite/40 transition-colors"
                     >
                       <div className="flex flex-col gap-1 min-w-0">
-                        <span className="text-[14px] text-bone truncate">{client?.company}</span>
+                        <span className="text-[14px] text-bone truncate">{p.client.company}</span>
                         <span className="text-[12px] text-bone-mute truncate">{p.name.split("·")[1]?.trim() ?? p.name}</span>
                       </div>
                       <div>
@@ -199,8 +215,8 @@ export function DashboardViews() {
                         </div>
                       </div>
                       <div className="flex justify-end">
-                        <Badge tone={p.status === "on-track" ? "steel" : p.status === "at-risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>
-                          {p.status}
+                        <Badge tone={p.status === "on_track" ? "steel" : p.status === "at_risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>
+                          {p.status.replace("_", "-")}
                         </Badge>
                       </div>
                     </Link>

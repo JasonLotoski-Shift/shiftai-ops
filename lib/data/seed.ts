@@ -25,10 +25,10 @@ import type {
    ────────────────────────────────────────────────────────────────────── */
 
 export const partners: Partner[] = [
-  { id: "p-1", name: "Jason Lotoski", initials: "JL", role: "Managing Partner · Build", email: "jason@lotoski.co" },
-  { id: "p-2", name: "Marcus Halloran", initials: "MH", role: "Managing Partner · Industry", email: "marcus@shiftcg.ai" },
-  { id: "p-3", name: "Devon Reyes", initials: "DR", role: "Managing Partner · Delivery", email: "devon@shiftcg.ai" },
-  { id: "p-4", name: "Sasha Whitfield", initials: "SW", role: "Managing Partner · Growth", email: "sasha@shiftcg.ai" },
+  { id: "p-1", name: "Jason Lotoski", initials: "JL", role: "Managing Partner · Build", email: "jason@shiftai.partners" },
+  { id: "p-2", name: "Marcus Halloran", initials: "MH", role: "Managing Partner · Industry", email: "marcus@shiftai.partners" },
+  { id: "p-3", name: "Devon Reyes", initials: "DR", role: "Managing Partner · Delivery", email: "devon@shiftai.partners" },
+  { id: "p-4", name: "Sasha Whitfield", initials: "SW", role: "Managing Partner · Growth", email: "sasha@shiftai.partners" },
 ];
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -418,19 +418,6 @@ export const industryLabels: Record<string, string> = {
   other: "Other",
 };
 
-export function formatCAD(n: number) {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
-export function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" });
-}
-
-export function daysSince(d: string) {
-  const ms = Date.now() - new Date(d).getTime();
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
-}
+// Pure formatters now live in @/lib/format. Re-exported here for back-compat
+// with pages still importing from seed.ts; migrate new code to @/lib/format directly.
+export { formatCAD, formatDate, daysSince } from "@/lib/format";
