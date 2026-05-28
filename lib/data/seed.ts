@@ -391,11 +391,13 @@ export function interactionsByContact(id: string) {
     .sort((a, b) => +new Date(b.date) - +new Date(a.date));
 }
 
+// Keys mirror Prisma's enum identifiers (underscored). The DB stores
+// the hyphenated form via @map, but the client returns identifiers.
 export const interactionLabels: Record<string, string> = {
   call: "Call",
   meeting: "Meeting",
-  "email-sent": "Email sent",
-  "email-received": "Email received",
+  email_sent: "Email sent",
+  email_received: "Email received",
   other: "Other",
 };
 

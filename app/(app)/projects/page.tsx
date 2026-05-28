@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Label, Badge, Card } from "@/components/ui";
-import {
-  projects,
-  clientById,
-  partnerById,
-  formatDate,
-  formatCAD,
-} from "@/lib/data/seed";
+import { prisma } from "@/lib/prisma";
+import { formatDate } from "@/lib/format";
 
-export default function ProjectsPage() {
+export default async function ProjectsPage() {
+  const projects = await prisma.project.findMany({
+    include: { client: true, partnerLead: true },
+    orderBy: { startDate: "desc" },
+  });
+
   const active = projects.filter((p) => p.status !== "closed");
+  const closed = projects.filter((p) => p.status === "closed");
   const totalHours = active.reduce((s, p) => s + p.hoursLogged, 0);
   const totalBudget = active.reduce((s, p) => s + p.budgetHours, 0);
 
@@ -31,16 +32,12 @@ export default function ProjectsPage() {
         </div>
         <div className="flex flex-col gap-1">
           <Label>— Closed (archive)</Label>
-          <span className="mono text-[24px] text-bone-dim tabular-nums">
-            {projects.filter((p) => p.status === "closed").length}
-          </span>
+          <span className="mono text-[24px] text-bone-dim tabular-nums">{closed.length}</span>
         </div>
       </div>
 
       <div className="px-8 py-8 flex flex-col gap-3">
         {projects.map((p) => {
-          const client = clientById(p.clientId);
-          const partner = partnerById(p.partnerLeadId);
           const burn = (p.hoursLogged / p.budgetHours) * 100;
           const overBudget = burn > 90;
           return (
@@ -49,7 +46,7 @@ export default function ProjectsPage() {
                 <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_120px] gap-6 px-6 py-5">
                   <div className="flex flex-col gap-1 min-w-0">
                     <div className="text-[15px] text-bone truncate">{p.name}</div>
-                    <div className="text-[11px] text-bone-mute">{client?.company}</div>
+                    <div className="text-[11px] text-bone-mute">{p.client.company}</div>
                   </div>
                   <div className="flex flex-col gap-1 self-center">
                     <Label>Phase</Label>
@@ -76,8 +73,8 @@ export default function ProjectsPage() {
                     </div>
                   </div>
                   <div className="flex items-center justify-end self-center">
-                    <Badge tone={p.status === "on-track" ? "steel" : p.status === "at-risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>
-                      {p.status}
+                    <Badge tone={p.status === "on_track" ? "steel" : p.status === "at_risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>
+                      {p.status.replace("_", "-")}
                     </Badge>
                   </div>
                 </div>

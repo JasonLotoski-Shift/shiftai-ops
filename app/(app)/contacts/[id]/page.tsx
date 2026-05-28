@@ -3,18 +3,9 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge } from "@/components/ui";
 import { ContactActions } from "@/components/contact-actions";
-import {
-  contactById,
-  partnerById,
-  deals,
-  interactionsByContact,
-  interactionLabels,
-  industryLabels,
-  formatCAD,
-  formatDate,
-  daysSince,
-  stageLabels,
-} from "@/lib/data/seed";
+import { prisma } from "@/lib/prisma";
+import { formatCAD, formatDate, daysSince } from "@/lib/format";
+import { interactionLabels, industryLabels, stageLabels } from "@/lib/data/seed";
 import {
   ArrowLeft,
   Mail,
@@ -28,24 +19,33 @@ import {
   Inbox,
 } from "lucide-react";
 
+// Keys use Prisma enum identifiers (underscored), matching @map'd DB values.
 const interactionIcon: Record<string, typeof Mail> = {
   call: PhoneIcon,
   meeting: Users,
-  "email-sent": Send,
-  "email-received": Inbox,
+  email_sent: Send,
+  email_received: Inbox,
   other: Calendar,
 };
 
 export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const contact = contactById(id);
+
+  const contact = await prisma.contact.findUnique({
+    where: { id },
+    include: {
+      partnerLead: true,
+      deals: { orderBy: { closeTargetDate: "asc" } },
+      interactions: { orderBy: { date: "desc" } },
+    },
+  });
   if (!contact) notFound();
 
-  const partner = partnerById(contact.partnerLeadId);
-  const contactDeals = deals.filter((d) => d.contactId === contact.id);
-  const log = interactionsByContact(contact.id);
+  const partner = contact.partnerLead;
+  const contactDeals = contact.deals;
+  const log = contact.interactions;
   const stale = daysSince(contact.lastTouchAt) > 30;
-  const enriched = Boolean(contact.persona || contact.keyFacts?.length || contact.background);
+  const enriched = Boolean(contact.persona || contact.keyFacts.length || contact.background);
 
   return (
     <>
@@ -66,9 +66,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="px-8 pb-12 grid grid-cols-3 gap-6">
-        {/* ── Left column ── */}
         <div className="col-span-2 flex flex-col gap-6">
-          {/* Identity */}
           <Card>
             <div className="p-6 grid grid-cols-3 gap-6">
               <div className="flex flex-col gap-2">
@@ -105,7 +103,6 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             </Card>
           )}
 
-          {/* Persona + comms style */}
           {(contact.persona || contact.communicationStyle) && (
             <div className="grid grid-cols-2 gap-6">
               {contact.persona && (
@@ -123,13 +120,12 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             </div>
           )}
 
-          {/* Key facts */}
-          {contact.keyFacts && contact.keyFacts.length > 0 && (
+          {contact.keyFacts.length > 0 && (
             <Card>
               <div className="px-5 py-4 border-b border-graphite"><Label>— Key facts</Label></div>
               <div className="flex flex-col">
                 {contact.keyFacts.map((f, i) => (
-                  <div key={i} className={`flex items-start gap-3 px-5 py-3 ${i < contact.keyFacts!.length - 1 ? "border-b border-graphite" : ""}`}>
+                  <div key={i} className={`flex items-start gap-3 px-5 py-3 ${i < contact.keyFacts.length - 1 ? "border-b border-graphite" : ""}`}>
                     <span className="mono text-[11px] text-track-gold mt-0.5 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
                     <p className="text-[13px] text-bone leading-snug">{f}</p>
                   </div>
@@ -138,7 +134,6 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             </Card>
           )}
 
-          {/* Background */}
           {contact.background && (
             <Card>
               <div className="px-5 py-4 border-b border-graphite"><Label>— Background</Label></div>
@@ -146,7 +141,6 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             </Card>
           )}
 
-          {/* Communications log / interaction history */}
           <Card>
             <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
               <Label>— Communications log</Label>
@@ -180,7 +174,6 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             )}
           </Card>
 
-          {/* Related deals */}
           <Card>
             <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
               <Label>— Deals ({contactDeals.length})</Label>
@@ -207,7 +200,6 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
           </Card>
         </div>
 
-        {/* ── Right column ── */}
         <div className="flex flex-col gap-6">
           <Card>
             <div className="px-5 py-4 border-b border-graphite"><Label>— Reach</Label></div>
@@ -229,16 +221,16 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             <div className="px-5 py-4 border-b border-graphite"><Label>— Partner lead</Label></div>
             <CardBody className="flex items-center gap-3">
               <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold">
-                {partner?.initials}
+                {partner.initials}
               </div>
               <div>
-                <div className="text-[14px] text-bone">{partner?.name}</div>
-                <div className="text-[11px] text-bone-mute">{partner?.role}</div>
+                <div className="text-[14px] text-bone">{partner.name}</div>
+                <div className="text-[11px] text-bone-mute">{partner.role}</div>
               </div>
             </CardBody>
           </Card>
 
-          {contact.hobbies && contact.hobbies.length > 0 && (
+          {contact.hobbies.length > 0 && (
             <Card>
               <div className="px-5 py-4 border-b border-graphite"><Label>— Hobbies &amp; interests</Label></div>
               <CardBody className="flex flex-wrap gap-2">
@@ -249,7 +241,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             </Card>
           )}
 
-          {contact.networkAffiliations && contact.networkAffiliations.length > 0 && (
+          {contact.networkAffiliations.length > 0 && (
             <Card>
               <div className="px-5 py-4 border-b border-graphite"><Label>— Network affiliations</Label></div>
               <CardBody className="flex flex-col gap-2">

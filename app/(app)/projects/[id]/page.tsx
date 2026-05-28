@@ -2,29 +2,32 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Button, Hairline } from "@/components/ui";
-import {
-  projectById,
-  clientById,
-  partnerById,
-  milestones,
-  hoursEntries,
-  invoices,
-  formatDate,
-  formatCAD,
-} from "@/lib/data/seed";
+import { prisma } from "@/lib/prisma";
+import { formatCAD, formatDate } from "@/lib/format";
 import { ArrowLeft, Clock, Bot, Check, Circle, AlertTriangle, FolderOpen, Terminal } from "lucide-react";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const project = projectById(id);
+
+  const project = await prisma.project.findUnique({
+    where: { id },
+    include: {
+      client: true,
+      partnerLead: true,
+      consultants: true,
+      milestones: { orderBy: { dueDate: "asc" } },
+      hoursEntries: { orderBy: { date: "desc" } },
+      invoices: true,
+    },
+  });
   if (!project) notFound();
 
-  const client = clientById(project.clientId);
-  const partner = partnerById(project.partnerLeadId);
-  const consultants = project.consultantIds.map(partnerById).filter(Boolean);
-  const projectMilestones = milestones.filter((m) => m.projectId === project.id);
-  const projectHours = hoursEntries.filter((h) => h.projectId === project.id);
-  const projectInvoices = invoices.filter((i) => i.projectId === project.id);
+  const client = project.client;
+  const partner = project.partnerLead;
+  const consultants = project.consultants;
+  const projectMilestones = project.milestones;
+  const projectHours = project.hoursEntries;
+  const projectInvoices = project.invoices;
 
   const burn = (project.hoursLogged / project.budgetHours) * 100;
   const feeBurn = projectInvoices.reduce((s, i) => s + i.amount, 0) / project.budgetFee * 100;
@@ -33,7 +36,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   return (
     <>
       <Header
-        eyebrow={`${client?.company} · ${project.phase}`}
+        eyebrow={`${client.company} · ${project.phase}`}
         title={project.name.split("·")[1]?.trim() ?? project.name}
         actions={
           <>
@@ -62,7 +65,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       <div className="px-8 pb-12 grid grid-cols-3 gap-6">
         <div className="col-span-2 flex flex-col gap-6">
-          {/* Description */}
           <Card>
             <CardBody>
               <Label>— Scope</Label>
@@ -70,7 +72,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             </CardBody>
           </Card>
 
-          {/* Hours + budget */}
           <Card>
             <div className="p-6 grid grid-cols-4 gap-6">
               <div className="flex flex-col gap-2">
@@ -101,14 +102,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               </div>
               <div className="flex flex-col gap-2">
                 <Label>— Status</Label>
-                <Badge tone={project.status === "on-track" ? "steel" : project.status === "at-risk" ? "gold" : project.status === "blocked" ? "red" : "neutral"}>
-                  {project.status}
+                <Badge tone={project.status === "on_track" ? "steel" : project.status === "at_risk" ? "gold" : project.status === "blocked" ? "red" : "neutral"}>
+                  {project.status.replace("_", "-")}
                 </Badge>
               </div>
             </div>
           </Card>
 
-          {/* Milestones */}
           <Card>
             <div className="px-5 py-4 border-b border-graphite">
               <Label>— Milestones</Label>
@@ -124,11 +124,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                       <div className="w-6 h-6 bg-diagnostic-steel/20 border border-diagnostic-steel/50 flex items-center justify-center">
                         <Check size={12} strokeWidth={2} className="text-diagnostic-steel" />
                       </div>
-                    ) : m.status === "at-risk" ? (
+                    ) : m.status === "at_risk" ? (
                       <div className="w-6 h-6 bg-flag-red/20 border border-flag-red/50 flex items-center justify-center">
                         <AlertTriangle size={12} strokeWidth={2} className="text-flag-red" />
                       </div>
-                    ) : m.status === "in-progress" ? (
+                    ) : m.status === "in_progress" ? (
                       <div className="w-6 h-6 bg-track-gold-dim/30 border border-track-gold flex items-center justify-center mono text-[10px] text-track-gold">
                         <Circle size={8} strokeWidth={3} className="text-track-gold animate-pulse" fill="currentColor" />
                       </div>
@@ -145,18 +145,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                   <Badge
                     tone={
                       m.status === "complete" ? "steel" :
-                      m.status === "at-risk" ? "red" :
-                      m.status === "in-progress" ? "gold" : "neutral"
+                      m.status === "at_risk" ? "red" :
+                      m.status === "in_progress" ? "gold" : "neutral"
                     }
                   >
-                    {m.status}
+                    {m.status.replace("_", "-")}
                   </Badge>
                 </div>
               ))}
             </div>
           </Card>
 
-          {/* Recent hours */}
           <Card>
             <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
               <Label>— Recent hours logged</Label>
@@ -195,18 +194,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </Card>
         </div>
 
-        {/* Right column */}
         <div className="flex flex-col gap-6">
           <Card>
             <div className="px-5 py-4 border-b border-graphite">
               <Label>— Client</Label>
             </div>
             <CardBody className="flex flex-col gap-3">
-              <Link href={`/clients/${client?.id}`} className="text-[14px] text-bone hover:text-track-gold">
-                {client?.company}
+              <Link href={`/clients/${client.id}`} className="text-[14px] text-bone hover:text-track-gold">
+                {client.company}
               </Link>
               <div className="text-[11px] text-bone-mute">
-                Contract {formatCAD(client?.contractValue ?? 0).replace("CA$", "$")} · Signed {formatDate(client?.contractSignedAt ?? "")}
+                Contract {formatCAD(client.contractValue).replace("CA$", "$")} · Signed {formatDate(client.contractSignedAt)}
               </div>
             </CardBody>
           </Card>
@@ -218,21 +216,21 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <CardBody className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold">
-                  {partner?.initials}
+                  {partner.initials}
                 </div>
                 <div>
-                  <div className="text-[14px] text-bone">{partner?.name}</div>
+                  <div className="text-[14px] text-bone">{partner.name}</div>
                   <div className="label text-[9px]">Partner lead</div>
                 </div>
               </div>
               <Hairline />
               {consultants.map((c) => (
-                <div key={c!.id} className="flex items-center gap-3">
+                <div key={c.id} className="flex items-center gap-3">
                   <div className="w-9 h-9 bg-graphite-2 flex items-center justify-center mono text-[13px] text-bone-dim">
-                    {c!.initials}
+                    {c.initials}
                   </div>
                   <div>
-                    <div className="text-[14px] text-bone">{c!.name}</div>
+                    <div className="text-[14px] text-bone">{c.name}</div>
                     <div className="label text-[9px]">Consultant</div>
                   </div>
                 </div>
@@ -240,7 +238,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             </CardBody>
           </Card>
 
-          {/* Agent panel */}
           <Card className="border-track-gold/40 bg-track-gold-dim/5">
             <div className="px-5 py-4 border-b border-track-gold/20 flex items-center gap-2">
               <Bot size={14} strokeWidth={1.5} className="text-track-gold" />

@@ -1,18 +1,21 @@
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Label, Badge, Card } from "@/components/ui";
-import {
-  clients,
-  partnerById,
-  contactById,
-  projects,
-  industryLabels,
-  formatCAD,
-  formatDate,
-} from "@/lib/data/seed";
+import { prisma } from "@/lib/prisma";
+import { formatCAD } from "@/lib/format";
+import { industryLabels } from "@/lib/data/seed";
 
-export default function ClientsPage() {
+export default async function ClientsPage() {
+  const clients = await prisma.client.findMany({
+    include: {
+      partnerLead: true,
+      projects: { where: { status: { not: "closed" } }, select: { id: true } },
+    },
+    orderBy: { contractSignedAt: "desc" },
+  });
+
   const totalContractValue = clients.reduce((s, c) => s + c.contractValue, 0);
+  const atRiskCount = clients.filter((c) => c.status === "at_risk" || c.status === "blocked").length;
 
   return (
     <>
@@ -31,9 +34,7 @@ export default function ClientsPage() {
         </div>
         <div className="flex flex-col gap-1">
           <Label>— At-risk</Label>
-          <span className="mono text-[24px] text-flag-red tabular-nums">
-            {clients.filter((c) => c.status === "at-risk" || c.status === "blocked").length}
-          </span>
+          <span className="mono text-[24px] text-flag-red tabular-nums">{atRiskCount}</span>
         </div>
       </div>
 
@@ -49,8 +50,7 @@ export default function ClientsPage() {
           </div>
 
           {clients.map((c) => {
-            const partner = partnerById(c.partnerLeadId);
-            const clientProjects = projects.filter((p) => p.clientId === c.id && p.status !== "closed");
+            const activeCount = c.projects.length;
             return (
               <Link
                 key={c.id}
@@ -60,7 +60,7 @@ export default function ClientsPage() {
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-[14px] text-bone truncate">{c.company}</span>
                   <span className="text-[11px] text-bone-mute truncate">
-                    {clientProjects.length} active project{clientProjects.length !== 1 ? "s" : ""}
+                    {activeCount} active project{activeCount !== 1 ? "s" : ""}
                   </span>
                 </div>
                 <div className="self-center"><Badge tone="bone">{industryLabels[c.industry]}</Badge></div>
@@ -70,13 +70,13 @@ export default function ClientsPage() {
                 </span>
                 <div className="flex items-center gap-2 self-center">
                   <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">
-                    {partner?.initials}
+                    {c.partnerLead.initials}
                   </div>
-                  <span className="text-[12px] text-bone-dim truncate">{partner?.name.split(" ")[0]}</span>
+                  <span className="text-[12px] text-bone-dim truncate">{c.partnerLead.name.split(" ")[0]}</span>
                 </div>
                 <div className="flex justify-end self-center">
-                  <Badge tone={c.status === "on-track" ? "steel" : c.status === "at-risk" ? "gold" : c.status === "blocked" ? "red" : "neutral"}>
-                    {c.status}
+                  <Badge tone={c.status === "on_track" ? "steel" : c.status === "at_risk" ? "gold" : c.status === "blocked" ? "red" : "neutral"}>
+                    {c.status.replace("_", "-")}
                   </Badge>
                 </div>
               </Link>

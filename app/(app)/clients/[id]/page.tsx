@@ -3,12 +3,23 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui";
 import { ClientDetailTabs } from "@/components/client-detail-tabs";
-import { clientById, industryLabels } from "@/lib/data/seed";
+import { prisma } from "@/lib/prisma";
+import { industryLabels } from "@/lib/data/seed";
 import { ArrowLeft, FolderOpen, Terminal } from "lucide-react";
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const client = clientById(id);
+
+  const client = await prisma.client.findUnique({
+    where: { id },
+    include: {
+      partnerLead: true,
+      primaryContact: true,
+      billingContact: true,
+      projects: { orderBy: { startDate: "desc" } },
+      invoices: { orderBy: { issuedAt: "desc" } },
+    },
+  });
   if (!client) notFound();
 
   return (
@@ -39,7 +50,14 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       </div>
 
       <div className="px-8 pb-12">
-        <ClientDetailTabs clientId={client.id} />
+        <ClientDetailTabs
+          client={client}
+          partner={client.partnerLead}
+          contact={client.primaryContact}
+          billingContact={client.billingContact ?? client.primaryContact}
+          clientProjects={client.projects}
+          clientInvoices={client.invoices}
+        />
       </div>
     </>
   );

@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Label, Badge, Card } from "@/components/ui";
-import {
-  invoices,
-  clientById,
-  formatCAD,
-  formatDate,
-  daysSince,
-} from "@/lib/data/seed";
+import { prisma } from "@/lib/prisma";
+import { formatCAD, formatDate, daysSince } from "@/lib/format";
 
-export default function InvoicesPage() {
+export default async function InvoicesPage() {
+  const invoices = await prisma.invoice.findMany({
+    include: { client: true },
+    orderBy: { issuedAt: "desc" },
+  });
+
   const outstanding = invoices.filter((i) => i.status === "sent" || i.status === "overdue");
   const overdue = invoices.filter((i) => i.status === "overdue");
   const paid = invoices.filter((i) => i.status === "paid");
@@ -63,7 +63,6 @@ export default function InvoicesPage() {
           </div>
 
           {invoices.map((inv) => {
-            const client = clientById(inv.clientId);
             const overdueDays = inv.status === "overdue" ? daysSince(inv.dueAt) : 0;
             return (
               <Link
@@ -72,7 +71,7 @@ export default function InvoicesPage() {
                 className="grid grid-cols-[140px_1.5fr_1fr_140px_140px_100px] gap-4 px-5 py-4 border-b border-graphite last:border-0 hover:bg-graphite/40 transition-colors"
               >
                 <span className="mono text-[13px] text-bone self-center">{inv.number}</span>
-                <span className="text-[13px] text-bone-dim self-center truncate">{client?.company}</span>
+                <span className="text-[13px] text-bone-dim self-center truncate">{inv.client.company}</span>
                 <span className="mono text-[14px] text-track-gold tabular-nums self-center">
                   {formatCAD(inv.amount).replace("CA$", "$")}
                 </span>

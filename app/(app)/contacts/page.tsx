@@ -1,21 +1,22 @@
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Label, Badge, Card } from "@/components/ui";
-import {
-  contacts,
-  partnerById,
-  industryLabels,
-  formatDate,
-  daysSince,
-} from "@/lib/data/seed";
+import { prisma } from "@/lib/prisma";
+import { daysSince } from "@/lib/format";
+import { industryLabels } from "@/lib/data/seed";
 
-export default function ContactsPage() {
+export default async function ContactsPage() {
+  const contacts = await prisma.contact.findMany({
+    include: { partnerLead: true },
+    orderBy: { lastTouchAt: "desc" },
+  });
+
+  const industryCount = new Set(contacts.map((c) => c.industry)).size;
+  const coldCount = contacts.filter((c) => daysSince(c.lastTouchAt) > 30).length;
+
   return (
     <>
-      <Header
-        eyebrow="People · CRM"
-        title="Contacts."
-      />
+      <Header eyebrow="People · CRM" title="Contacts." />
 
       <div className="px-8 py-6 border-b border-graphite flex items-center gap-8">
         <div className="flex flex-col gap-1">
@@ -24,15 +25,11 @@ export default function ContactsPage() {
         </div>
         <div className="flex flex-col gap-1">
           <Label>— Across industries</Label>
-          <span className="mono text-[24px] text-bone tabular-nums">
-            {new Set(contacts.map((c) => c.industry)).size}
-          </span>
+          <span className="mono text-[24px] text-bone tabular-nums">{industryCount}</span>
         </div>
         <div className="flex flex-col gap-1">
           <Label>— Cold 30d+</Label>
-          <span className="mono text-[24px] text-flag-red tabular-nums">
-            {contacts.filter((c) => daysSince(c.lastTouchAt) > 30).length}
-          </span>
+          <span className="mono text-[24px] text-flag-red tabular-nums">{coldCount}</span>
         </div>
       </div>
 
@@ -47,7 +44,6 @@ export default function ContactsPage() {
           </div>
 
           {contacts.map((c) => {
-            const partner = partnerById(c.partnerLeadId);
             const stale = daysSince(c.lastTouchAt) > 30;
             return (
               <Link
@@ -65,9 +61,9 @@ export default function ContactsPage() {
                 </div>
                 <div className="flex items-center gap-2 self-center">
                   <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">
-                    {partner?.initials}
+                    {c.partnerLead.initials}
                   </div>
-                  <span className="text-[12px] text-bone-dim truncate">{partner?.name.split(" ")[0]}</span>
+                  <span className="text-[12px] text-bone-dim truncate">{c.partnerLead.name.split(" ")[0]}</span>
                 </div>
                 <div className="text-right self-center">
                   <div className={`mono text-[12px] tabular-nums ${stale ? "text-flag-red" : "text-bone-dim"}`}>

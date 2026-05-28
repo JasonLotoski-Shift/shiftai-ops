@@ -2,31 +2,35 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, ArrowRight, Check, FolderPlus, Bot } from "lucide-react";
-import { Button, Input, Textarea, Label, Hairline } from "@/components/ui";
+import { X, ArrowRight, Check, FolderPlus } from "lucide-react";
+import { Button, Textarea, Label, Hairline } from "@/components/ui";
 import { Wordmark } from "@/components/wordmark";
-import type { Deal } from "@/lib/types";
-import { formatCAD, partnerById, contactById } from "@/lib/data/seed";
-import { cn } from "@/lib/cn";
+import type {
+  DealModel as Deal,
+  PartnerModel as Partner,
+  ContactModel as Contact,
+} from "@/lib/generated/prisma/models";
+import { formatCAD } from "@/lib/format";
 
 /**
  * Convert-Deal flow.
- * Demonstrates the seam between Pipeline → Client → Engagement → Claude Code workspace.
- * In production: fires `engagement.created` event, triggers /new-client skill, creates
- * Drive folder + Claude workspace + engagement charter draft.
+ * In production: fires `engagement.created` event, triggers /new-client skill,
+ * creates Drive folder + Claude workspace + engagement charter draft.
  */
 export function ConvertDealModal({
   open,
   onClose,
   deal,
+  partner,
+  contact,
 }: {
   open: boolean;
   onClose: () => void;
   deal: Deal;
+  partner: Partner | null;
+  contact: Contact | null;
 }) {
   const router = useRouter();
-  const partner = partnerById(deal.partnerLeadId);
-  const contact = contactById(deal.contactId);
   const [step, setStep] = useState<"review" | "scaffolding" | "done">("review");
   const [scope, setScope] = useState(
     `Discovery (4 weeks) → Build (12 weeks) → Run (open-ended).\n\nScope: custom internal ops platform with AI layer, integrating with existing systems. Specifics confirmed during discovery embed.`,
@@ -34,7 +38,6 @@ export function ConvertDealModal({
 
   function start() {
     setStep("scaffolding");
-    // Simulate scaffolding steps
     setTimeout(() => setStep("done"), 2400);
   }
 
@@ -49,7 +52,6 @@ export function ConvertDealModal({
         className="w-full max-w-[680px] bg-asphalt border border-graphite mb-16"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-graphite">
           <div className="flex items-center gap-3">
             <ArrowRight size={14} strokeWidth={1.5} className="text-track-gold" />
@@ -85,11 +87,11 @@ export function ConvertDealModal({
                 </div>
                 <div className="bg-bitumen border border-graphite p-4">
                   <Label>— Partner lead</Label>
-                  <div className="text-[14px] text-bone mt-2">{partner?.name}</div>
+                  <div className="text-[14px] text-bone mt-2">{partner?.name ?? "—"}</div>
                 </div>
                 <div className="bg-bitumen border border-graphite p-4">
                   <Label>— Primary contact</Label>
-                  <div className="text-[14px] text-bone mt-2">{contact?.name}</div>
+                  <div className="text-[14px] text-bone mt-2">{contact?.name ?? "—"}</div>
                 </div>
               </div>
 
@@ -105,26 +107,11 @@ export function ConvertDealModal({
               <div className="bg-bitumen border border-graphite p-4 flex flex-col gap-3">
                 <Label gold>— On convert, the system will:</Label>
                 <ul className="flex flex-col gap-1.5 text-[13px] text-bone-dim">
-                  <li className="flex gap-2">
-                    <span className="text-track-gold">01</span>
-                    Create client record + project record in this ops tool
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="text-track-gold">02</span>
-                    Create Drive folder at <code className="mono text-bone-mute">/Shift AI/03-Clients/{deal.company}/</code>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="text-track-gold">03</span>
-                    Scaffold Claude workspace at <code className="mono text-bone-mute">ShiftAI-Clients/{deal.company.replace(/\s+/g, "")}/</code>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="text-track-gold">04</span>
-                    Generate engagement charter draft from the scope above
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="text-track-gold">05</span>
-                    Fire <code className="mono text-bone-mute">engagement.created</code> · partners notified
-                  </li>
+                  <li className="flex gap-2"><span className="text-track-gold">01</span>Create client record + project record in this ops tool</li>
+                  <li className="flex gap-2"><span className="text-track-gold">02</span>Create Drive folder at <code className="mono text-bone-mute">/Shift AI/03-Clients/{deal.company}/</code></li>
+                  <li className="flex gap-2"><span className="text-track-gold">03</span>Scaffold Claude workspace at <code className="mono text-bone-mute">ShiftAI-Clients/{deal.company.replace(/\s+/g, "")}/</code></li>
+                  <li className="flex gap-2"><span className="text-track-gold">04</span>Generate engagement charter draft from the scope above</li>
+                  <li className="flex gap-2"><span className="text-track-gold">05</span>Fire <code className="mono text-bone-mute">engagement.created</code> · partners notified</li>
                 </ul>
               </div>
             </div>
@@ -134,12 +121,8 @@ export function ConvertDealModal({
             <div className="px-6 py-4 flex justify-between items-center">
               <span className="label">~30 seconds · then ready to work</span>
               <div className="flex gap-2">
-                <Button variant="ghost" size="md" onClick={onClose}>
-                  Cancel
-                </Button>
-                <Button variant="primary" size="md" onClick={start}>
-                  Convert & scaffold
-                </Button>
+                <Button variant="ghost" size="md" onClick={onClose}>Cancel</Button>
+                <Button variant="primary" size="md" onClick={start}>Convert & scaffold</Button>
               </div>
             </div>
           </>
@@ -192,20 +175,14 @@ export function ConvertDealModal({
               <Button
                 variant="ghost"
                 size="md"
-                onClick={() => {
-                  onClose();
-                  router.push("/projects");
-                }}
+                onClick={() => { onClose(); router.push("/projects"); }}
               >
                 Stay in pipeline
               </Button>
               <Button
                 variant="primary"
                 size="md"
-                onClick={() => {
-                  onClose();
-                  router.push("/projects");
-                }}
+                onClick={() => { onClose(); router.push("/projects"); }}
               >
                 <FolderPlus size={13} strokeWidth={1.5} />
                 Open project

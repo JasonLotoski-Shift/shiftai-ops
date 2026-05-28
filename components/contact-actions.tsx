@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button, Label, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import type { Contact } from "@/lib/types";
+import type { ContactModel as Contact } from "@/lib/generated/prisma/models";
 import { interactionLabels } from "@/lib/data/seed";
 
 type ActionKey = "email" | "log" | "search" | "enrich";

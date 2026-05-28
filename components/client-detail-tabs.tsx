@@ -3,16 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Card, CardBody, Label, Badge, Button, Hairline, Tabs } from "@/components/ui";
-import {
-  clientById,
-  partnerById,
-  contactById,
-  projects,
-  invoices,
-  industryLabels,
-  formatCAD,
-  formatDate,
-} from "@/lib/data/seed";
+import { industryLabels } from "@/lib/data/seed";
+import { formatCAD, formatDate } from "@/lib/format";
+import type {
+  ClientModel as Client,
+  PartnerModel as Partner,
+  ContactModel as Contact,
+  ProjectModel as Project,
+  InvoiceModel as Invoice,
+} from "@/lib/generated/prisma/models";
 import {
   FolderOpen,
   ExternalLink,
@@ -23,16 +22,25 @@ import {
   Check,
 } from "lucide-react";
 
-export function ClientDetailTabs({ clientId }: { clientId: string }) {
-  const [tab, setTab] = useState("profile");
-  const client = clientById(clientId);
-  if (!client) return null;
+interface ClientDetailTabsProps {
+  client: Client;
+  partner: Partner | null;
+  contact: Contact | null;
+  billingContact: Contact | null;
+  clientProjects: Project[];
+  clientInvoices: Invoice[];
+}
 
-  const partner = partnerById(client.partnerLeadId);
-  const contact = contactById(client.primaryContactId);
-  const billingContact = client.billingContactId ? contactById(client.billingContactId) : contact;
-  const clientProjects = projects.filter((p) => p.clientId === client.id);
-  const clientInvoices = invoices.filter((i) => i.clientId === client.id);
+export function ClientDetailTabs({
+  client,
+  partner,
+  contact,
+  billingContact,
+  clientProjects,
+  clientInvoices,
+}: ClientDetailTabsProps) {
+  const [tab, setTab] = useState("profile");
+
   const totalBilled = clientInvoices.reduce((s, i) => s + i.amount, 0);
   const totalPaid = clientInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amount, 0);
   const outstanding = clientInvoices
@@ -51,7 +59,6 @@ export function ClientDetailTabs({ clientId }: { clientId: string }) {
       />
 
       <div className="grid grid-cols-3 gap-6">
-        {/* Main column */}
         <div className="col-span-2 flex flex-col gap-6">
           {tab === "profile" ? (
             <CompanyProfile client={client} />
@@ -67,7 +74,6 @@ export function ClientDetailTabs({ clientId }: { clientId: string }) {
           )}
         </div>
 
-        {/* Persistent sidebar */}
         <div className="flex flex-col gap-6">
           <Card>
             <div className="px-5 py-4 border-b border-graphite"><Label>— Primary contact</Label></div>
@@ -131,13 +137,13 @@ export function ClientDetailTabs({ clientId }: { clientId: string }) {
 }
 
 /* ──────────────────────────────────────────────────────────────────────
-   Sub-tab A — Company profile (auto-built from comms + web search)
+   Sub-tab A — Company profile
    ────────────────────────────────────────────────────────────────────── */
 
-function CompanyProfile({ client }: { client: NonNullable<ReturnType<typeof clientById>> }) {
+function CompanyProfile({ client }: { client: Client }) {
   const [enrich, setEnrich] = useState<"idle" | "running" | "results" | "applied">("idle");
 
-  const facts: { label: string; value?: string }[] = [
+  const facts: { label: string; value?: string | null }[] = [
     { label: "Industry", value: industryLabels[client.industry] },
     { label: "Revenue", value: client.revenue },
     { label: "Headcount", value: client.companySize },
@@ -153,7 +159,6 @@ function CompanyProfile({ client }: { client: NonNullable<ReturnType<typeof clie
 
   return (
     <>
-      {/* Identity / brand */}
       <Card>
         <div className="p-6 flex items-start gap-5">
           <div
@@ -195,7 +200,6 @@ function CompanyProfile({ client }: { client: NonNullable<ReturnType<typeof clie
         </div>
       </Card>
 
-      {/* Description */}
       {client.description && (
         <Card>
           <div className="px-5 py-4 border-b border-graphite"><Label>— What they do</Label></div>
@@ -203,7 +207,6 @@ function CompanyProfile({ client }: { client: NonNullable<ReturnType<typeof clie
         </Card>
       )}
 
-      {/* Company key facts */}
       {client.companyKeyFacts && client.companyKeyFacts.length > 0 && (
         <Card>
           <div className="px-5 py-4 border-b border-graphite"><Label>— Key facts</Label></div>
@@ -218,7 +221,6 @@ function CompanyProfile({ client }: { client: NonNullable<ReturnType<typeof clie
         </Card>
       )}
 
-      {/* Auto-update / enrich */}
       <Card className="border-track-gold/40 bg-track-gold-dim/5">
         <div className="px-5 py-4 border-b border-track-gold/20 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -290,16 +292,15 @@ function Engagement({
   totalPaid,
   outstanding,
 }: {
-  client: NonNullable<ReturnType<typeof clientById>>;
-  clientProjects: typeof projects;
-  clientInvoices: typeof invoices;
+  client: Client;
+  clientProjects: Project[];
+  clientInvoices: Invoice[];
   totalBilled: number;
   totalPaid: number;
   outstanding: number;
 }) {
   return (
     <>
-      {/* Contract summary */}
       <Card>
         <div className="p-6 grid grid-cols-4 gap-6">
           <div className="flex flex-col gap-2">
@@ -336,8 +337,8 @@ function Engagement({
           <div className="flex flex-col gap-1.5">
             <Label>— Status</Label>
             <div>
-              <Badge tone={client.status === "on-track" ? "steel" : client.status === "at-risk" ? "gold" : client.status === "blocked" ? "red" : "neutral"}>
-                {client.status}
+              <Badge tone={client.status === "on_track" ? "steel" : client.status === "at_risk" ? "gold" : client.status === "blocked" ? "red" : "neutral"}>
+                {client.status.replace("_", "-")}
               </Badge>
             </div>
           </div>
@@ -353,7 +354,6 @@ function Engagement({
         )}
       </Card>
 
-      {/* Projects */}
       <Card>
         <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
           <Label>— Projects ({clientProjects.length})</Label>
@@ -381,8 +381,8 @@ function Engagement({
                 </div>
               </div>
               <div className="self-center flex justify-end">
-                <Badge tone={p.status === "on-track" ? "steel" : p.status === "at-risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>
-                  {p.status}
+                <Badge tone={p.status === "on_track" ? "steel" : p.status === "at_risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>
+                  {p.status.replace("_", "-")}
                 </Badge>
               </div>
             </Link>
@@ -390,7 +390,6 @@ function Engagement({
         })}
       </Card>
 
-      {/* Invoices */}
       <Card>
         <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
           <Label>— Invoices</Label>

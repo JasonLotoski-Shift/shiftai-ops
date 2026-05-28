@@ -1,53 +1,32 @@
-"use client";
-
-import { notFound, useRouter } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
-import { useState, use } from "react";
 import { Header } from "@/components/header";
-import { Card, CardBody, Label, Badge, Button, Hairline } from "@/components/ui";
-import {
-  dealById,
-  contactById,
-  partnerById,
-  stageLabels,
-  industryLabels,
-  formatCAD,
-  formatDate,
-  daysSince,
-} from "@/lib/data/seed";
-import { ArrowLeft, Mail, Phone, FileText, Calendar, Sparkles, Check } from "lucide-react";
-import { ConvertDealModal } from "@/components/convert-deal-modal";
+import { Card, CardBody, Label, Badge, Hairline } from "@/components/ui";
+import { DealActions } from "@/components/deal-actions";
+import { prisma } from "@/lib/prisma";
+import { formatCAD, formatDate, daysSince } from "@/lib/format";
+import { stageLabels, industryLabels } from "@/lib/data/seed";
+import { ArrowLeft, Mail, Phone, Sparkles } from "lucide-react";
 
-export default function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const deal = dealById(id);
+export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const deal = await prisma.deal.findUnique({
+    where: { id },
+    include: { contact: true, partnerLead: true },
+  });
   if (!deal) notFound();
 
-  const contact = contactById(deal.contactId);
-  const partner = partnerById(deal.partnerLeadId);
+  const contact = deal.contact;
+  const partner = deal.partnerLead;
   const stale = daysSince(deal.lastTouchAt) > 30;
-  const [convertOpen, setConvertOpen] = useState(false);
 
   return (
     <>
       <Header
         eyebrow={`Pipeline · ${stageLabels[deal.stage]}`}
         title={deal.company}
-        actions={
-          <>
-            <Button variant="ghost" size="sm">
-              <Mail size={13} strokeWidth={1.5} />
-              Log email
-            </Button>
-            <Button variant="secondary" size="sm">
-              <Calendar size={13} strokeWidth={1.5} />
-              Log call
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setConvertOpen(true)}>
-              Convert → Client
-            </Button>
-          </>
-        }
+        actions={<DealActions deal={deal} partner={partner} contact={contact} />}
       />
 
       <div className="px-8 py-6 flex gap-8">
@@ -58,7 +37,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
       </div>
 
       <div className="px-8 pb-12 grid grid-cols-3 gap-6">
-        {/* Left: deal summary + activity */}
         <div className="col-span-2 flex flex-col gap-6">
           <Card>
             <div className="p-6 grid grid-cols-4 gap-6">
@@ -108,7 +86,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             )}
           </Card>
 
-          {/* AI assist card */}
           <Card className="border-track-gold/40 bg-track-gold-dim/5">
             <CardBody className="flex items-start gap-4">
               <div className="w-8 h-8 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center shrink-0">
@@ -129,7 +106,6 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             </CardBody>
           </Card>
 
-          {/* Activity log (stub) */}
           <Card>
             <div className="px-5 py-4 border-b border-graphite">
               <Label>— Activity</Label>
@@ -154,27 +130,26 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
           </Card>
         </div>
 
-        {/* Right: contact + partner */}
         <div className="flex flex-col gap-6">
           <Card>
             <div className="px-5 py-4 border-b border-graphite flex items-center justify-between">
               <Label>— Primary contact</Label>
-              <Link href={`/contacts/${contact?.id}`} className="label-gold hover:underline">
+              <Link href={`/contacts/${contact.id}`} className="label-gold hover:underline">
                 View →
               </Link>
             </div>
             <CardBody className="flex flex-col gap-3">
               <div>
-                <div className="text-[16px] text-bone">{contact?.name}</div>
-                <div className="text-[12px] text-bone-mute">{contact?.title} · {contact?.company}</div>
+                <div className="text-[16px] text-bone">{contact.name}</div>
+                <div className="text-[12px] text-bone-mute">{contact.title} · {contact.company}</div>
               </div>
               <Hairline />
               <div className="flex flex-col gap-2 text-[12px]">
-                <a href={`mailto:${contact?.email}`} className="flex items-center gap-2 text-bone-dim hover:text-bone">
+                <a href={`mailto:${contact.email}`} className="flex items-center gap-2 text-bone-dim hover:text-bone">
                   <Mail size={12} strokeWidth={1.5} />
-                  {contact?.email}
+                  {contact.email}
                 </a>
-                {contact?.phone && (
+                {contact.phone && (
                   <a href={`tel:${contact.phone}`} className="flex items-center gap-2 text-bone-dim hover:text-bone">
                     <Phone size={12} strokeWidth={1.5} />
                     {contact.phone}
@@ -190,11 +165,11 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
             </div>
             <CardBody className="flex items-center gap-3">
               <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold">
-                {partner?.initials}
+                {partner.initials}
               </div>
               <div>
-                <div className="text-[14px] text-bone">{partner?.name}</div>
-                <div className="text-[11px] text-bone-mute">{partner?.role}</div>
+                <div className="text-[14px] text-bone">{partner.name}</div>
+                <div className="text-[11px] text-bone-mute">{partner.role}</div>
               </div>
             </CardBody>
           </Card>
@@ -204,17 +179,11 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
               <Label>— Source</Label>
             </div>
             <CardBody>
-              <p className="text-[13px] text-bone-dim">{contact?.source ?? "—"}</p>
+              <p className="text-[13px] text-bone-dim">{contact.source ?? "—"}</p>
             </CardBody>
           </Card>
         </div>
       </div>
-
-      <ConvertDealModal
-        open={convertOpen}
-        onClose={() => setConvertOpen(false)}
-        deal={deal}
-      />
     </>
   );
 }

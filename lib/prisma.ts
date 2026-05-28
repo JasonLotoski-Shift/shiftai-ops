@@ -2,17 +2,28 @@
 // In dev, hot-reload creates a fresh module per request — without the global
 // cache, every reload spawns a new connection pool and exhausts Postgres.
 // In prod, modules are loaded once; the global cache is a no-op.
+//
+// We do NOT `import "dotenv/config"` here. Next.js loads .env automatically
+// via @next/env at server start; importing dotenv again races with that and
+// can bake an undefined connection string into the singleton on cold start.
+// The seed script (prisma/seed.ts) imports dotenv itself because it runs
+// outside the Next.js runtime.
 
-import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
-  });
+function makeClient() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. Check .env exists at the project root and the dev server was restarted after creating it.",
+    );
+  }
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+}
+
+export const prisma = globalForPrisma.prisma ?? makeClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

@@ -2,37 +2,40 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Button, Hairline } from "@/components/ui";
-import {
-  invoices,
-  clientById,
-  projectById,
-  partnerById,
-  formatCAD,
-  formatDate,
-  daysSince,
-  hoursEntries,
-} from "@/lib/data/seed";
-import { ArrowLeft, Download, Send, FolderOpen } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { formatCAD, formatDate, daysSince } from "@/lib/format";
+import { ArrowLeft, Download, Send } from "lucide-react";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const invoice = invoices.find((i) => i.id === id);
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id },
+    include: {
+      client: true,
+      project: {
+        include: {
+          partnerLead: true,
+          hoursEntries: true,
+        },
+      },
+    },
+  });
   if (!invoice) notFound();
 
-  const client = clientById(invoice.clientId);
-  const project = projectById(invoice.projectId);
-  const partner = project ? partnerById(project.partnerLeadId) : null;
+  const client = invoice.client;
+  const project = invoice.project;
+  const partner = project.partnerLead;
   const overdueDays = invoice.status === "overdue" ? daysSince(invoice.dueAt) : 0;
 
-  // Mock line items derived from project hours
-  const projectHrs = hoursEntries.filter((h) => h.projectId === invoice.projectId);
+  const projectHrs = project.hoursEntries;
   const totalHours = projectHrs.reduce((s, h) => s + h.hours, 0);
   const hourlyRate = totalHours > 0 ? Math.round(invoice.amount / totalHours) : 0;
 
   return (
     <>
       <Header
-        eyebrow={`${client?.company} · ${invoice.number}`}
+        eyebrow={`${client.company} · ${invoice.number}`}
         title={formatCAD(invoice.amount).replace("CA$", "$")}
         actions={
           <>
@@ -65,7 +68,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
       <div className="px-8 pb-12 grid grid-cols-3 gap-6">
         <div className="col-span-2 flex flex-col gap-6">
-          {/* Invoice header */}
           <Card>
             <div className="p-6 grid grid-cols-4 gap-6">
               <div className="flex flex-col gap-2">
@@ -96,7 +98,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             </div>
           </Card>
 
-          {/* Line items */}
           <Card>
             <div className="px-5 py-4 border-b border-graphite">
               <Label>— Line items</Label>
@@ -109,7 +110,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             </div>
             <div className="grid grid-cols-[2fr_100px_120px_120px] gap-4 px-5 py-4 border-b border-graphite">
               <div className="flex flex-col gap-0.5">
-                <div className="text-[14px] text-bone">{project?.name.split("·")[1]?.trim() ?? project?.name}</div>
+                <div className="text-[14px] text-bone">{project.name.split("·")[1]?.trim() ?? project.name}</div>
                 <div className="text-[11px] text-bone-mute">Professional services — engineered hours</div>
               </div>
               <span className="mono text-[13px] text-bone tabular-nums text-right self-center">{totalHours}</span>
@@ -119,7 +120,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </span>
             </div>
 
-            {/* Totals */}
             <div className="px-5 py-4 flex flex-col gap-2 items-end">
               <div className="grid grid-cols-2 gap-12 text-[13px]">
                 <span className="label">Subtotal</span>
@@ -143,30 +143,28 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             </div>
           </Card>
 
-          {/* Memo */}
           <Card>
             <CardBody className="flex flex-col gap-2">
               <Label>— Memo</Label>
               <p className="text-[13px] text-bone-dim leading-relaxed">
-                Professional services rendered for {project?.name}. Payment due {formatDate(invoice.dueAt)} via wire
-                transfer or e-transfer to <code className="mono text-bone">jason@lotoski.co</code>.
+                Professional services rendered for {project.name}. Payment due {formatDate(invoice.dueAt)} via wire
+                transfer or e-transfer to <code className="mono text-bone">jason@shiftai.partners</code>.
               </p>
             </CardBody>
           </Card>
         </div>
 
-        {/* Right column */}
         <div className="flex flex-col gap-6">
           <Card>
             <div className="px-5 py-4 border-b border-graphite">
               <Label>— Bill to</Label>
             </div>
             <CardBody className="flex flex-col gap-3">
-              <Link href={`/clients/${client?.id}`} className="text-[14px] text-bone hover:text-track-gold">
-                {client?.company}
+              <Link href={`/clients/${client.id}`} className="text-[14px] text-bone hover:text-track-gold">
+                {client.company}
               </Link>
               <div className="text-[12px] text-bone-mute leading-relaxed">
-                {client?.notes?.split(".")[0]}.
+                {client.notes?.split(".")[0]}.
               </div>
             </CardBody>
           </Card>
@@ -176,12 +174,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <Label>— Project</Label>
             </div>
             <CardBody className="flex flex-col gap-3">
-              <Link href={`/projects/${project?.id}`} className="text-[14px] text-bone hover:text-track-gold">
-                {project?.name.split("·")[1]?.trim() ?? project?.name}
+              <Link href={`/projects/${project.id}`} className="text-[14px] text-bone hover:text-track-gold">
+                {project.name.split("·")[1]?.trim() ?? project.name}
               </Link>
               <div className="flex items-center gap-2 text-[12px]">
-                <Badge tone={project?.phase === "build" ? "gold" : project?.phase === "run" ? "steel" : "bone"}>
-                  {project?.phase}
+                <Badge tone={project.phase === "build" ? "gold" : project.phase === "run" ? "steel" : "bone"}>
+                  {project.phase}
                 </Badge>
               </div>
             </CardBody>
