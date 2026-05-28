@@ -7,34 +7,22 @@ import Google from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
 
-// Fires on module load. If we don't see this in the function log on a
-// fresh cold start, auth.ts isn't being loaded by the route handler.
-console.error("[auth-module] loaded · build-marker-2026-05-27c");
-
-// Cookie config now lives in auth.config.ts so middleware reads the
-// same cookie names that this full instance writes. Inherited via the
-// ...authConfig spread below.
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   session: { strategy: "jwt" },
-  // Verbose error logging so failures surface as readable text in Vercel
-  // function logs (not just opaque AccessDenied redirects).
+  // Surface auth errors as readable text in function logs.
   logger: {
     error(error) {
-      console.error("[auth][error]", error.name, error.message, error.stack);
-    },
-    warn(code) {
-      console.warn("[auth][warn]", code);
+      console.error("[auth][error]", error.name, error.message);
     },
   },
   providers: [
     Google({
       authorization: {
         params: {
-          // hd = hosted-domain restriction. Google's sign-in chooser only
-          // shows accounts in this Workspace domain. Belt-and-suspenders:
-          // we also re-check in the signIn callback below.
+          // hd = hosted-domain restriction. Google's chooser only shows
+          // accounts in this Workspace domain. Belt-and-suspenders: the
+          // signIn callback also re-checks the email domain.
           hd: "shiftai.partners",
           prompt: "select_account",
         },
@@ -44,17 +32,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
 
-    async signIn({ user, profile, account }) {
-      // Use console.error so Vercel captures the line reliably (some
-      // function-log views filter console.log on cold starts).
-      console.error("[signin] CALLBACK ENTRY", JSON.stringify({
-        email: user.email,
-        name: user.name,
-        profileEmail: (profile as { email?: string } | undefined)?.email,
-        profileHd: (profile as { hd?: string } | undefined)?.hd,
-        accountProvider: account?.provider,
-      }));
-
+    async signIn({ user }) {
       // Allow both the new primary domain AND the legacy alias domain
       // (shiftcg.ai is retained as a Google Workspace alias during the
       // 90-day+ sunset; Google's OIDC profile can return either address
@@ -63,10 +41,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       const rawEmail = user.email ?? "";
       const domain = rawEmail.split("@")[1] ?? "";
-      if (!ALLOWED_DOMAINS.includes(domain)) {
-        console.warn("[signin] rejected — domain not allowed:", domain);
-        return false;
-      }
+      if (!ALLOWED_DOMAINS.includes(domain)) return false;
 
       // Normalize: both shiftai.partners and shiftcg.ai resolve to the
       // same Workspace user. Pick the canonical (new primary) address
@@ -74,51 +49,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Partner records depending on which alias Google returns.
       const email = normalizeToCanonical(rawEmail);
 
-      try {
-        console.error("[signin] before Prisma findUnique email=", email);
-        const existing = await prisma.partner.findUnique({ where: { email } });
-        console.error("[signin] Prisma findUnique returned, existing=", !!existing, "id=", existing?.id);
-
-        if (!existing) {
-          console.error("[signin] before Prisma create");
-          const name = user.name ?? email.split("@")[0];
-          await prisma.partner.create({
-            data: {
-              email,
-              name,
-              initials: deriveInitials(name),
-              role: "Partner",
-            },
-          });
-          console.error("[signin] Prisma create returned");
-        }
-
-        user.email = email;
-        console.error("[signin] returning true");
-        return true;
-      } catch (err) {
-        console.error("[signin] EXCEPTION:", err instanceof Error ? err.message : String(err), err instanceof Error ? err.stack : "");
-        throw err;
+      // Auto-provision a Partner record on first sign-in. Existing seed
+      // Partners match by email; new emails get a fresh Partner row.
+      const existing = await prisma.partner.findUnique({ where: { email } });
+      if (!existing) {
+        const name = user.name ?? email.split("@")[0];
+        await prisma.partner.create({
+          data: {
+            email,
+            name,
+            initials: deriveInitials(name),
+            role: "Partner",
+          },
+        });
       }
+
+      // Mutate user.email to the canonical form so jwt callback below
+      // looks up the right Partner record.
+      user.email = email;
+      return true;
     },
 
     async jwt({ token, user }) {
       // On initial sign-in, user.email is set. Look up Partner and stash
-      // partnerId on the token so we can read it from session without
-      // another DB call.
+      // partnerId on the token so server components can read it via the
+      // session without another DB call.
       if (user?.email) {
-        try {
-          console.error("[jwt] before Prisma findUnique email=", user.email);
-          const partner = await prisma.partner.findUnique({
-            where: { email: user.email },
-            select: { id: true },
-          });
-          console.error("[jwt] Prisma findUnique returned, partnerId=", partner?.id);
-          if (partner) token.partnerId = partner.id;
-        } catch (err) {
-          console.error("[jwt] EXCEPTION:", err instanceof Error ? err.message : String(err));
-          throw err;
-        }
+        const partner = await prisma.partner.findUnique({
+          where: { email: user.email },
+          select: { id: true },
+        });
+        if (partner) token.partnerId = partner.id;
       }
       return token;
     },
@@ -128,23 +89,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.partnerId = token.partnerId;
       }
       return session;
-    },
-  },
-  // Events fire even if callbacks reject. If we see [event] signIn but
-  // not [signin] CALLBACK ENTRY, the callback is being short-circuited
-  // before reaching us.
-  events: {
-    async signIn(message) {
-      console.error("[event] signIn fired:", JSON.stringify({
-        email: message.user.email,
-        provider: message.account?.provider,
-        isNewUser: message.isNewUser,
-      }));
-    },
-    async createUser(message) {
-      console.error("[event] createUser fired:", JSON.stringify({
-        email: message.user.email,
-      }));
     },
   },
 });
