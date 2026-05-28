@@ -5,6 +5,18 @@
 
 import type { NextAuthConfig } from "next-auth";
 
+// Cookie config lives HERE (not just in auth.ts) so middleware reads the
+// same cookie names that the full auth instance writes. Otherwise middleware
+// looks for the Auth.js default names (__Secure-authjs.session-token etc.),
+// can't find them, treats every request as unauthenticated → redirect loop
+// between /login and /dashboard.
+const cookieDefaults = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  path: "/",
+  secure: true,
+};
+
 export const authConfig: NextAuthConfig = {
   pages: {
     signIn: "/login",
@@ -13,6 +25,14 @@ export const authConfig: NextAuthConfig = {
     // Real providers are injected in auth.ts. Empty here is fine for the
     // middleware-only build — it just needs to know how to read sessions.
   ],
+  cookies: {
+    sessionToken: { name: "authjs.session-token", options: cookieDefaults },
+    callbackUrl: { name: "authjs.callback-url", options: cookieDefaults },
+    csrfToken: { name: "authjs.csrf-token", options: cookieDefaults },
+    pkceCodeVerifier: { name: "authjs.pkce.code-verifier", options: { ...cookieDefaults, maxAge: 60 * 15 } },
+    state: { name: "authjs.state", options: { ...cookieDefaults, maxAge: 60 * 15 } },
+    nonce: { name: "authjs.nonce", options: cookieDefaults },
+  },
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
