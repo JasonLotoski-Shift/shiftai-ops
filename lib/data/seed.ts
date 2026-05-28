@@ -6,6 +6,7 @@
 
 import type {
   Activity,
+  Artifact,
   Client,
   Contact,
   Deal,
@@ -341,12 +342,107 @@ export const activities: Activity[] = [
 
 export const tasks: Task[] = [
   { id: "t-1", title: "Send Cascade the 2-week pilot SOW (Heather wants it before MSA)", due: "2026-05-19", priority: "high", ownerId: "p-1", relatedTo: "Cascade Heavy Civil", done: false },
-  { id: "t-2", title: "Chase Driveline DMS vendor on integration access", due: "2026-05-19", priority: "high", ownerId: "p-2", relatedTo: "Driveline Auto Holdings", done: false },
+  { id: "t-2", title: "Chase Driveline DMS vendor on integration access", due: "2026-05-19", priority: "high", ownerId: "p-2", relatedTo: "Driveline Auto Holdings", clientId: "cl-2", projectId: "pr-2", done: false },
   { id: "t-3", title: "Re-engage Granite Bay (cold 47d)", due: "2026-05-20", priority: "medium", ownerId: "p-2", relatedTo: "Granite Bay Auto Group", done: false },
-  { id: "t-4", title: "Review Claude's Driveline weekly brief before partner mtg", due: "2026-05-19", priority: "medium", ownerId: "p-1", relatedTo: "Driveline Auto Holdings", done: false },
+  { id: "t-4", title: "Review Claude's Driveline weekly brief before partner mtg", due: "2026-05-19", priority: "medium", ownerId: "p-1", relatedTo: "Driveline Auto Holdings", clientId: "cl-2", projectId: "pr-2", done: false },
   { id: "t-5", title: "Confirm two operator interviews for Westline discovery", due: "2026-05-22", priority: "medium", ownerId: "p-3", relatedTo: "Westline Engineering", done: false },
   { id: "t-6", title: "Scope Apex discovery before Sept race calendar locks", due: "2026-05-26", priority: "low", ownerId: "p-4", relatedTo: "Apex Racing Group", done: false },
-  { id: "t-7", title: "Approve Helix build plan (milestone due 23rd)", due: "2026-05-23", priority: "high", ownerId: "p-1", relatedTo: "Helix Construction Partners", done: true },
+  { id: "t-7", title: "Approve Helix build plan (milestone due 23rd)", due: "2026-05-23", priority: "high", ownerId: "p-1", relatedTo: "Helix Construction Partners", clientId: "cl-3", projectId: "pr-3", done: true },
+];
+
+/* ──────────────────────────────────────────────────────────────────────
+   Artifacts — every AI-generated or partner-uploaded deliverable.
+   Demo fixtures: mix of types, partner + agent creators, statuses.
+   ────────────────────────────────────────────────────────────────────── */
+
+export const artifacts: Artifact[] = [
+  {
+    id: "ar-1",
+    type: "sow",
+    title: "Brightline · Phase 1 Discovery SOW",
+    driveUrl: "https://drive.google.com/.../Shift%20AI/03-Clients/Brightline/00-Engagement/Phase1-Discovery-SOW.pdf",
+    fileName: "Phase1-Discovery-SOW.pdf",
+    createdBy: "Devon Reyes",
+    reviewStatus: "approved",
+    clientId: "cl-1",
+    projectId: "pr-4",
+    createdAt: "2026-01-09T15:22:00Z",
+  },
+  {
+    id: "ar-2",
+    type: "deck",
+    title: "Brightline · Phase 2 Build Plan",
+    driveUrl: "https://drive.google.com/.../Shift%20AI/03-Clients/Brightline/30-Deliverables/Phase2-Build-Plan.pdf",
+    fileName: "Phase2-Build-Plan.pdf",
+    createdBy: "Devon Reyes",
+    reviewStatus: "sent",
+    clientId: "cl-1",
+    projectId: "pr-1",
+    createdAt: "2026-02-18T09:40:00Z",
+  },
+  {
+    id: "ar-3",
+    type: "report",
+    title: "Brightline · Weekly status brief — week 12",
+    driveUrl: "https://drive.google.com/.../Shift%20AI/03-Clients/Brightline/30-Deliverables/weekly-w12.md",
+    fileName: "weekly-w12.md",
+    createdBy: "AGENT · CLAUDE",
+    generatedFromSkill: "weekly-brief",
+    reviewStatus: "draft",
+    clientId: "cl-1",
+    projectId: "pr-1",
+    createdAt: "2026-05-19T08:15:00Z",
+  },
+  {
+    id: "ar-4",
+    type: "report",
+    title: "Driveline · DMS Integration Risk Memo",
+    driveUrl: "https://drive.google.com/.../Shift%20AI/03-Clients/Driveline/30-Deliverables/dms-risk-memo.pdf",
+    fileName: "dms-risk-memo.pdf",
+    createdBy: "Marcus Halloran",
+    reviewStatus: "sent",
+    clientId: "cl-2",
+    projectId: "pr-2",
+    createdAt: "2026-05-12T17:05:00Z",
+  },
+  {
+    id: "ar-5",
+    type: "email",
+    title: "Driveline CTO · re-engage on vendor escalation",
+    driveUrl: "https://drive.google.com/.../Shift%20AI/03-Clients/Driveline/40-Comms/cto-reengage-draft.md",
+    fileName: "cto-reengage-draft.md",
+    createdBy: "AGENT · CLAUDE",
+    generatedFromSkill: "draft-email",
+    reviewStatus: "draft",
+    clientId: "cl-2",
+    projectId: "pr-2",
+    createdAt: "2026-05-18T11:30:00Z",
+  },
+  {
+    id: "ar-6",
+    type: "deck",
+    title: "Helix · Discovery Findings",
+    driveUrl: "https://drive.google.com/.../Shift%20AI/03-Clients/Helix/30-Deliverables/discovery-findings.pdf",
+    fileName: "discovery-findings.pdf",
+    createdBy: "Jason Lotoski",
+    reviewStatus: "approved",
+    clientId: "cl-3",
+    projectId: "pr-3",
+    createdAt: "2026-04-22T14:12:00Z",
+  },
+  {
+    id: "ar-7",
+    type: "report",
+    title: "Helix · AI Site Brief — Foreman 042 pilot output",
+    driveUrl: "https://drive.google.com/.../Shift%20AI/03-Clients/Helix/30-Deliverables/site-brief-f042.md",
+    fileName: "site-brief-f042.md",
+    createdBy: "AGENT · CLAUDE",
+    generatedFromSkill: "site-brief",
+    reviewStatus: "draft",
+    clientId: "cl-3",
+    projectId: "pr-3",
+    createdAt: "2026-05-17T07:48:00Z",
+  },
 ];
 
 /* ──────────────────────────────────────────────────────────────────────

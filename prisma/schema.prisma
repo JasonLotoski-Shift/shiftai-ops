@@ -91,6 +91,23 @@ enum UpdateCadence {
   weekly
 }
 
+enum ArtifactType {
+  proposal
+  deck
+  email
+  sow
+  invoice
+  report
+  other
+}
+
+enum ArtifactReviewStatus {
+  draft
+  approved
+  sent
+  archived
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Partner — firm members. Doubles as the actor reference for owner /
 // lead fields. NextAuth tables will be added when SSO is wired —
@@ -194,6 +211,8 @@ model Deal {
   partnerLead   Partner @relation("PartnerDealLead", fields: [partnerLeadId], references: [id])
   partnerLeadId String
 
+  artifacts Artifact[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -238,8 +257,10 @@ model Client {
   billingContact   Contact?  @relation("ClientBillingContact", fields: [billingContactId], references: [id])
   billingContactId String?
 
-  projects Project[]
-  invoices Invoice[]
+  projects  Project[]
+  invoices  Invoice[]
+  tasks     Task[]
+  artifacts Artifact[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -272,6 +293,8 @@ model Project {
   milestones   Milestone[]
   hoursEntries HoursEntry[]
   invoices     Invoice[]
+  tasks        Task[]
+  artifacts    Artifact[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -370,8 +393,18 @@ model Task {
   owner   Partner @relation(fields: [ownerId], references: [id])
   ownerId String
 
+  // Scoping FKs (nullable — firm-wide tasks have neither).
+  // Enables "what's open on Acme" queries without parsing relatedTo.
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([projectId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -405,6 +438,40 @@ model NewsItem {
   createdAt DateTime @default(now())
 
   @@index([ts])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Artifact — first-class deliverable tracking. Every AI-generated or
+// partner-uploaded file gets a row. Powers Deliverables tabs + harvest.
+// Persistence recipe in shiftai-ops/CLAUDE.md "Wire a Quick Action".
+// ──────────────────────────────────────────────────────────────────────
+
+model Artifact {
+  id                 String               @id @default(cuid())
+  type               ArtifactType
+  title              String
+  driveUrl           String
+  fileName           String?
+  // Free-text actor — partner name OR agent label ("AGENT · CLAUDE").
+  createdBy          String
+  generatedFromSkill String?
+  reviewStatus       ArtifactReviewStatus @default(draft)
+
+  // Scope FKs — exactly one expected at write time, all nullable so
+  // a single model serves Client/Project/Deal scopes without a join table.
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+  deal      Deal?    @relation(fields: [dealId], references: [id])
+  dealId    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([dealId, createdAt])
 }
 
 // ──────────────────────────────────────────────────────────────────────

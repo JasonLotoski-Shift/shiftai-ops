@@ -3,9 +3,10 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui";
 import { ClientDetailTabs } from "@/components/client-detail-tabs";
+import { ClientHeaderActions } from "@/components/client-header-actions";
 import { prisma } from "@/lib/prisma";
 import { industryLabels } from "@/lib/data/seed";
-import { ArrowLeft, FolderOpen, Terminal } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,14 +30,10 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         title={client.company}
         actions={
           <>
-            <Button variant="ghost" size="sm">
-              <FolderOpen size={13} strokeWidth={1.5} />
-              Open Drive folder
-            </Button>
-            <Button variant="secondary" size="sm">
-              <Terminal size={13} strokeWidth={1.5} />
-              Open workspace
-            </Button>
+            <ClientHeaderActions
+              driveFolderUrl={client.driveFolderUrl}
+              workspacePath={client.workspacePath}
+            />
             <Button variant="primary" size="sm">+ New project</Button>
           </>
         }

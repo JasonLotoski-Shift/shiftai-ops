@@ -167,8 +167,41 @@ export type Task = {
   due: string; // ISO date
   priority: "high" | "medium" | "low";
   ownerId: string; // partner.id
-  relatedTo?: string; // contact / client / project name
+  relatedTo?: string; // contact / client / project name (legacy free-text)
+  // Scope FKs — nullable; firm-wide tasks have neither.
+  clientId?: string;
+  projectId?: string;
   done: boolean;
+};
+
+/* Artifact — first-class deliverable tracking.
+ * Every AI-generated or partner-uploaded file gets one of these. */
+
+export type ArtifactType =
+  | "proposal"
+  | "deck"
+  | "email"
+  | "sow"
+  | "invoice"
+  | "report"
+  | "other";
+
+export type ArtifactReviewStatus = "draft" | "approved" | "sent" | "archived";
+
+export type Artifact = {
+  id: string;
+  type: ArtifactType;
+  title: string;
+  driveUrl: string;
+  fileName?: string;
+  createdBy: string; // partner name or "AGENT · CLAUDE"
+  generatedFromSkill?: string; // "scope", "html-brief", "draft-email", etc.
+  reviewStatus: ArtifactReviewStatus;
+  // Scope — exactly one expected at write time
+  clientId?: string;
+  projectId?: string;
+  dealId?: string;
+  createdAt: string;
 };
 
 /* Dashboard — view B (know) */

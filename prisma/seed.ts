@@ -8,6 +8,7 @@ import { PrismaClient } from "../lib/generated/prisma/client";
 
 import {
   activities,
+  artifacts,
   clients,
   contacts,
   deals,
@@ -32,6 +33,7 @@ const toEnum = (s: string) => s.replace(/-/g, "_");
 async function main() {
   console.log("Clearing existing data…");
   await prisma.auditLog.deleteMany();
+  await prisma.artifact.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.hoursEntry.deleteMany();
   await prisma.milestone.deleteMany();
@@ -237,6 +239,28 @@ async function main() {
         relatedTo: t.relatedTo,
         done: t.done,
         ownerId: t.ownerId,
+        clientId: t.clientId,
+        projectId: t.projectId,
+      },
+    });
+  }
+
+  console.log(`Inserting ${artifacts.length} artifacts…`);
+  for (const ar of artifacts) {
+    await prisma.artifact.create({
+      data: {
+        id: ar.id,
+        type: ar.type as any,
+        title: ar.title,
+        driveUrl: ar.driveUrl,
+        fileName: ar.fileName,
+        createdBy: ar.createdBy,
+        generatedFromSkill: ar.generatedFromSkill,
+        reviewStatus: ar.reviewStatus as any,
+        clientId: ar.clientId,
+        projectId: ar.projectId,
+        dealId: ar.dealId,
+        createdAt: new Date(ar.createdAt),
       },
     });
   }
