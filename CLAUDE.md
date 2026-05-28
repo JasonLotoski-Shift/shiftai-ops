@@ -115,14 +115,27 @@ shiftai-ops/
 6. Commit + push — Vercel auto-deploys; Vercel reads the same Supabase, sees the new column
 
 ### Wire a Quick Action end-to-end
-Pattern (per plan §2C):
+**Canonical persistence recipe.** Every Quick Action (and every Phase 5 agent) follows this exact pattern — no exceptions. Full architecture in [docs/ROADMAP.md](docs/ROADMAP.md) "Tracking architecture."
+
 1. Server action in `app/(app)/<scope>/actions.ts` (or co-located with the page)
 2. Action loads the matching skill content (`shiftai-ops/skills/<name>/SKILL.md` once we sync skills here, or `~/.claude/skills/...` for now)
 3. Pulls firm context from Prisma (client + interactions + brand + relevant history)
-4. Calls Claude API (`@anthropic-ai/sdk`) with skill content as system prompt + context + user intake
-5. Streams result back to UI
-6. Persists artifact to DB (new model TBD — `Artifact`?) linked to the record
-7. **Writes one `AuditLog` row** (actor + action + targetType + targetId + changes)
+4. *Optional:* fetches specific Drive files via Drive API for additional context (scoped to the action's Client/Project FK — never "read the whole folder")
+5. Calls Claude API (`@anthropic-ai/sdk`) with skill content as system prompt + context + user intake
+6. Streams result back to UI
+7. **Persists the deliverable:**
+   - Save the file to Drive via Drive API (if it's a document/deck/proposal)
+   - Write an `Artifact` row (`type`, `title`, `driveUrl`, `createdBy: "AGENT · CLAUDE"`, `generatedFromSkill: "<skill-name>"`, `reviewStatus: "draft"`, FK to Client/Project/Deal)
+8. **If the artifact is an outreach draft** (email, re-engage), also write an `Interaction` row tagged `loggedBy: "AGENT · CLAUDE"`
+9. **Write one `AuditLog` row via `writeAudit(actor, action, target, changes)`** — shared helper; adding a new mutation = one line
+
+All persistence writes (7–9) in one server-action transaction; partial failures roll back. **Nothing happens silently — every channel round-trips into the DB.**
+
+### Reach files in a client's Drive folder
+Three pathways, ordered by integration depth:
+1. **Click out** — UI button uses `Client.driveFolderUrl` field directly; opens Drive in the browser. Zero AI, zero Drive API.
+2. **Server-side scoped fetch** — Quick Action server action calls Drive API with the specific file ID(s) it needs (e.g. "pull the last SOW for style reference"). Scoped to the action's Client FK — not folder-wide scans.
+3. **Local filesystem** — for heavy multi-file work (building proposals, decks, deliverables), the partner launches Claude Code at the client's local workspace folder (synced from Drive via Drive for Desktop). Per-client isolation = Claude launched in `Acme-Corp/` can't see `Beta-Corp/`. This is the firm decision in [../shiftai-firm/planning/file-system-platform-decision.md](../shiftai-firm/planning/file-system-platform-decision.md).
 
 ### Add a new route
 - Server component by default (`page.tsx` is async, queries Prisma directly)
@@ -148,12 +161,15 @@ Pattern (per plan §2C):
 
 ---
 
-## Skills & agents (Phase 5 — not yet built)
+## Skills & agents
 
-When Quick Actions / agents start landing:
-- **Skills live in `shiftai-ops/skills/<name>/SKILL.md`** (repo-versioned; canonical firm copy the ops tool reads server-side)
+Skills land in **Phase 3** (with Quick Actions); agents land in **Phase 4–5**. See [docs/ROADMAP.md](docs/ROADMAP.md) for phase detail.
+
+- **Skills live in `shiftai-ops/skills/<name>/SKILL.md`** (repo-versioned; canonical firm copy the ops tool reads server-side at Quick Action runtime)
 - Personal Claude Code copies at `~/.claude/skills/` for Jason's iteration in chat; promote to repo when stable
-- MCP server (Phase 5) lives alongside the web app, exposes read/write tools to Claude Code sessions
+- **MCP server** (Phase 4) lives alongside the web app, exposes read/write tools to Claude Code sessions and scheduled agents per [docs/mcp-contract.md](docs/mcp-contract.md)
+- **Agent persistence rule** — agents follow the same recipe as Quick Actions (write `Artifact` + optional `Interaction` + `AuditLog` row). No agent is exempt; the round-trip is the design.
+- **Skill learning loop:** `/harvest-engagement` (Phase 5) fires on `engagement.closed`, walks the closed client workspace, proposes sanitized IP lifts into `00-Firm/_Templates/` for partner review. Formal "skills get smarter from real engagements" mechanism.
 
 ---
 
