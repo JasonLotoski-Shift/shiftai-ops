@@ -4,7 +4,7 @@ import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Button, Hairline } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate } from "@/lib/format";
-import { ArrowLeft, Clock, Bot, Check, Circle, AlertTriangle, FolderOpen, Terminal } from "lucide-react";
+import { ArrowLeft, Clock, Bot, Check, Circle, AlertTriangle, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink } from "lucide-react";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,6 +18,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       milestones: { orderBy: { dueDate: "asc" } },
       hoursEntries: { orderBy: { date: "desc" } },
       invoices: true,
+      artifacts: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!project) notFound();
@@ -28,6 +29,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const projectMilestones = project.milestones;
   const projectHours = project.hoursEntries;
   const projectInvoices = project.invoices;
+  const projectArtifacts = project.artifacts;
+
+  const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, invoice: FileText, report: FileText, other: FileText } as const;
+  const reviewTone = { draft: "neutral", approved: "steel", sent: "gold", archived: "bone" } as const;
 
   const burn = (project.hoursLogged / project.budgetHours) * 100;
   const feeBurn = projectInvoices.reduce((s, i) => s + i.amount, 0) / project.budgetFee * 100;
@@ -189,6 +194,59 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
+              <Label>— Deliverables</Label>
+              <span className="label">{projectArtifacts.length} {projectArtifacts.length === 1 ? "artifact" : "artifacts"}</span>
+            </div>
+            {projectArtifacts.length === 0 ? (
+              <CardBody>
+                <span className="label">— No deliverables logged yet. AI-generated drafts and partner uploads appear here.</span>
+              </CardBody>
+            ) : (
+              <div className="flex flex-col">
+                {projectArtifacts.map((ar, i) => {
+                  const Icon = artifactIcon[ar.type] ?? FileText;
+                  const isAgent = ar.createdBy.startsWith("AGENT");
+                  return (
+                    <a
+                      href={ar.driveUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      key={ar.id}
+                      className={`grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 ${i < projectArtifacts.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors group`}
+                    >
+                      <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
+                        <Icon size={16} strokeWidth={1.5} />
+                      </div>
+                      <div className="min-w-0 flex flex-col gap-1 self-center">
+                        <div className="text-[14px] text-bone truncate">{ar.title}</div>
+                        <div className="flex items-center gap-2 text-[11px] text-bone-mute">
+                          <span className="mono uppercase tracking-[0.08em]">{ar.type}</span>
+                          {ar.fileName && (<><span>·</span><span className="truncate">{ar.fileName}</span></>)}
+                          {ar.generatedFromSkill && (<><span>·</span><span className="mono text-track-gold">/{ar.generatedFromSkill}</span></>)}
+                        </div>
+                      </div>
+                      <div className="self-center flex flex-col gap-0.5 min-w-0">
+                        <div className={`text-[12px] truncate flex items-center gap-1.5 ${isAgent ? "text-track-gold" : "text-bone"}`}>
+                          {isAgent && <Bot size={11} strokeWidth={1.5} />}
+                          <span className="truncate">{ar.createdBy}</span>
+                        </div>
+                        <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(ar.createdAt)}</span>
+                      </div>
+                      <div className="self-center flex justify-end">
+                        <Badge tone={reviewTone[ar.reviewStatus]}>{ar.reviewStatus}</Badge>
+                      </div>
+                      <div className="self-center text-bone-mute opacity-50 group-hover:opacity-100 transition-opacity">
+                        <ExternalLink size={12} strokeWidth={1.5} />
+                      </div>
+                    </a>
+                  );
+                })}
               </div>
             )}
           </Card>
