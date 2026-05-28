@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, ArrowRight, Check, FolderPlus } from "lucide-react";
+import { X, ArrowRight, Check, FolderPlus, ShieldAlert } from "lucide-react";
 import { Button, Textarea, Label, Hairline } from "@/components/ui";
 import { Wordmark } from "@/components/wordmark";
 import type {
@@ -11,6 +11,7 @@ import type {
   ContactModel as Contact,
 } from "@/lib/generated/prisma/models";
 import { formatCAD } from "@/lib/format";
+import { convertDeal } from "@/app/(app)/pipeline/[id]/actions";
 
 /**
  * Convert-Deal flow.
@@ -35,10 +36,23 @@ export function ConvertDealModal({
   const [scope, setScope] = useState(
     `Discovery (4 weeks) → Build (12 weeks) → Run (open-ended).\n\nScope: custom internal ops platform with AI layer, integrating with existing systems. Specifics confirmed during discovery embed.`,
   );
+  const [error, setError] = useState<string | null>(null);
+  const [createdIds, setCreatedIds] = useState<{ clientId: string; projectId: string } | null>(null);
+  const [, startTransition] = useTransition();
 
   function start() {
+    setError(null);
     setStep("scaffolding");
-    setTimeout(() => setStep("done"), 2400);
+    startTransition(async () => {
+      try {
+        const res = await convertDeal(deal.id, { scope });
+        setCreatedIds(res);
+        setStep("done");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Convert failed");
+        setStep("review");
+      }
+    });
   }
 
   if (!open) return null;
@@ -107,22 +121,32 @@ export function ConvertDealModal({
               <div className="bg-bitumen border border-graphite p-4 flex flex-col gap-3">
                 <Label gold>— On convert, the system will:</Label>
                 <ul className="flex flex-col gap-1.5 text-[13px] text-bone-dim">
-                  <li className="flex gap-2"><span className="text-track-gold">01</span>Create client record + project record in this ops tool</li>
-                  <li className="flex gap-2"><span className="text-track-gold">02</span>Create Drive folder at <code className="mono text-bone-mute">/Shift AI/03-Clients/{deal.company}/</code></li>
-                  <li className="flex gap-2"><span className="text-track-gold">03</span>Scaffold Claude workspace at <code className="mono text-bone-mute">ShiftAI-Clients/{deal.company.replace(/\s+/g, "")}/</code></li>
-                  <li className="flex gap-2"><span className="text-track-gold">04</span>Generate engagement charter draft from the scope above</li>
-                  <li className="flex gap-2"><span className="text-track-gold">05</span>Fire <code className="mono text-bone-mute">engagement.created</code> · partners notified</li>
+                  <li className="flex gap-2"><span className="text-track-gold">01</span>Create client + project records in this ops tool</li>
+                  <li className="flex gap-2"><span className="text-track-gold">02</span>Create Drive folder for <code className="mono text-bone-mute">{deal.company}</code> in the firm Shared Drive</li>
+                  <li className="flex gap-2"><span className="text-track-gold">03</span>Flip the deal stage to <code className="mono text-bone-mute">signed</code></li>
+                  <li className="flex gap-2"><span className="text-track-gold">04</span>Open the new project page</li>
                 </ul>
+                <span className="label text-[10px] text-bone-mute">
+                  Claude workspace scaffolding + engagement charter draft are Phase 4 (the
+                  <code className="mono"> /onboard-client</code> skill).
+                </span>
               </div>
+
+              {error && (
+                <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+                  <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+                  <span className="text-[12px] text-bone-dim">{error}</span>
+                </div>
+              )}
             </div>
 
             <Hairline />
 
             <div className="px-6 py-4 flex justify-between items-center">
-              <span className="label">~30 seconds · then ready to work</span>
+              <span className="label">~5 seconds · then ready to work</span>
               <div className="flex gap-2">
                 <Button variant="ghost" size="md" onClick={onClose}>Cancel</Button>
-                <Button variant="primary" size="md" onClick={start}>Convert & scaffold</Button>
+                <Button variant="primary" size="md" onClick={start} disabled={!scope.trim()}>Convert & scaffold</Button>
               </div>
             </div>
           </>
@@ -133,11 +157,11 @@ export function ConvertDealModal({
             <Wordmark size="sm" />
             <div className="flex flex-col gap-3 w-full max-w-[420px]">
               {[
-                "Creating client record…",
                 "Creating Drive folder…",
-                "Scaffolding Claude workspace…",
-                "Drafting engagement charter…",
-                "Firing engagement.created event…",
+                "Creating client record…",
+                "Creating project record…",
+                "Flipping deal stage…",
+                "Writing audit log…",
               ].map((line, i) => (
                 <div
                   key={i}
@@ -175,14 +199,20 @@ export function ConvertDealModal({
               <Button
                 variant="ghost"
                 size="md"
-                onClick={() => { onClose(); router.push("/projects"); }}
+                onClick={() => {
+                  onClose();
+                  router.push(createdIds ? `/clients/${createdIds.clientId}` : "/clients");
+                }}
               >
-                Stay in pipeline
+                Open client
               </Button>
               <Button
                 variant="primary"
                 size="md"
-                onClick={() => { onClose(); router.push("/projects"); }}
+                onClick={() => {
+                  onClose();
+                  router.push(createdIds ? `/projects/${createdIds.projectId}` : "/projects");
+                }}
               >
                 <FolderPlus size={13} strokeWidth={1.5} />
                 Open project
