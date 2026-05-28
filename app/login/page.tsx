@@ -1,18 +1,12 @@
-"use client";
-
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { Wordmark } from "@/components/wordmark";
-import { Button, Input, Label } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { signIn, auth } from "@/auth";
+import { redirect } from "next/navigation";
 
-export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("jason@lotoski.co");
-
-  function signIn() {
-    router.push("/dashboard");
-  }
+export default async function LoginPage() {
+  // If already signed in, skip the page entirely.
+  const session = await auth();
+  if (session?.user) redirect("/dashboard");
 
   return (
     <div className="min-h-screen bg-bitumen flex">
@@ -23,7 +17,7 @@ export default function LoginPage() {
         </div>
 
         <div className="flex flex-col gap-8 max-w-[640px]">
-          <span className="label">— Internal · v1.0 prototype</span>
+          <span className="label">— Internal · ops tool</span>
           <h1 className="display-lg text-bone">
             THE OPERATING<br />SYSTEM OF<br />
             <span className="text-track-gold">THE FIRM.</span>
@@ -42,7 +36,7 @@ export default function LoginPage() {
           </div>
           <div className="flex flex-col gap-1 items-end">
             <span className="label">— Status</span>
-            <span className="mono text-[13px] text-track-gold">PROTOTYPE</span>
+            <span className="mono text-[13px] text-track-gold">DEV</span>
           </div>
         </div>
       </div>
@@ -60,49 +54,23 @@ export default function LoginPage() {
           </div>
 
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              signIn();
+            action={async () => {
+              "use server";
+              await signIn("google", { redirectTo: "/dashboard" });
             }}
             className="flex flex-col gap-5"
           >
-            <div className="flex flex-col gap-2">
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@lotoski.co"
-                required
-              />
-            </div>
-
             <Button type="submit" size="lg" className="w-full">
               Continue with Google Workspace
-            </Button>
-
-            <div className="flex items-center gap-3 py-2">
-              <div className="flex-1 border-t border-graphite" />
-              <span className="label text-[9px]">Or</span>
-              <div className="flex-1 border-t border-graphite" />
-            </div>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="lg"
-              className="w-full"
-              onClick={signIn}
-            >
-              Enter prototype with seed data
             </Button>
           </form>
 
           <div className="pt-8 border-t border-graphite flex flex-col gap-2">
-            <span className="label">— Note</span>
+            <span className="label">— Access</span>
             <p className="text-[12px] text-bone-mute leading-relaxed max-w-[420px]">
-              This is a UI/UX prototype with fake data. No real authentication, no real records.
-              See <code className="mono text-bone-dim">ops-tool/WorkspacePlan.md</code> for context.
+              Sign-in is restricted to <code className="mono text-bone-dim">@shiftai.partners</code> Google
+              Workspace accounts. If you sign in with a different account, Google
+              will refuse the request.
             </p>
           </div>
         </div>
