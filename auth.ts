@@ -10,6 +10,16 @@ import { authConfig } from "./auth.config";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   session: { strategy: "jwt" },
+  // Verbose error logging so failures surface as readable text in Vercel
+  // function logs (not just opaque AccessDenied redirects).
+  logger: {
+    error(error) {
+      console.error("[auth][error]", error.name, error.message, error.stack);
+    },
+    warn(code) {
+      console.warn("[auth][warn]", code);
+    },
+  },
   providers: [
     Google({
       authorization: {
