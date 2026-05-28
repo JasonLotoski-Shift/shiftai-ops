@@ -11,9 +11,30 @@ import { authConfig } from "./auth.config";
 // fresh cold start, auth.ts isn't being loaded by the route handler.
 console.error("[auth-module] loaded · build-marker-2026-05-27c");
 
+// Cookie config without __Host-/__Secure- prefixes. Auth.js v5's defaults
+// use __Host- which has strict requirements (no Domain attribute, Path=/,
+// Secure) that can fail on Vercel custom-domain setups in subtle ways
+// (state/PKCE cookies set on sign-in but not sent on callback → AccessDenied
+// with no signIn callback hit). Plain names + sameSite=lax + secure=true
+// still keep us safe in HTTPS-only prod.
+const cookieDefaults = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  path: "/",
+  secure: true,
+};
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   session: { strategy: "jwt" },
+  cookies: {
+    sessionToken: { name: "authjs.session-token", options: cookieDefaults },
+    callbackUrl: { name: "authjs.callback-url", options: cookieDefaults },
+    csrfToken: { name: "authjs.csrf-token", options: cookieDefaults },
+    pkceCodeVerifier: { name: "authjs.pkce.code-verifier", options: { ...cookieDefaults, maxAge: 60 * 15 } },
+    state: { name: "authjs.state", options: { ...cookieDefaults, maxAge: 60 * 15 } },
+    nonce: { name: "authjs.nonce", options: cookieDefaults },
+  },
   // Verbose error logging so failures surface as readable text in Vercel
   // function logs (not just opaque AccessDenied redirects).
   logger: {
