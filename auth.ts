@@ -7,6 +7,10 @@ import Google from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
 
+// Fires on module load. If we don't see this in the function log on a
+// fresh cold start, auth.ts isn't being loaded by the route handler.
+console.error("[auth-module] loaded · build-marker-2026-05-27c");
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   session: { strategy: "jwt" },
@@ -36,19 +40,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
 
-    async signIn({ user, profile }) {
+    async signIn({ user, profile, account }) {
+      // Use console.error so Vercel captures the line reliably (some
+      // function-log views filter console.log on cold starts).
+      console.error("[signin] CALLBACK ENTRY", JSON.stringify({
+        email: user.email,
+        name: user.name,
+        profileEmail: (profile as { email?: string } | undefined)?.email,
+        profileHd: (profile as { hd?: string } | undefined)?.hd,
+        accountProvider: account?.provider,
+      }));
+
       // Allow both the new primary domain AND the legacy alias domain
       // (shiftcg.ai is retained as a Google Workspace alias during the
       // 90-day+ sunset; Google's OIDC profile can return either address
       // for the same Workspace user). Drop shiftcg.ai once sunset closes.
       const ALLOWED_DOMAINS = ["shiftai.partners", "shiftcg.ai"];
-
-      console.log("[signin] attempt", {
-        email: user.email,
-        name: user.name,
-        profileEmail: (profile as { email?: string } | undefined)?.email,
-        profileHd: (profile as { hd?: string } | undefined)?.hd,
-      });
 
       const rawEmail = user.email ?? "";
       const domain = rawEmail.split("@")[1] ?? "";
@@ -105,6 +112,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.partnerId = token.partnerId;
       }
       return session;
+    },
+  },
+  // Events fire even if callbacks reject. If we see [event] signIn but
+  // not [signin] CALLBACK ENTRY, the callback is being short-circuited
+  // before reaching us.
+  events: {
+    async signIn(message) {
+      console.error("[event] signIn fired:", JSON.stringify({
+        email: message.user.email,
+        provider: message.account?.provider,
+        isNewUser: message.isNewUser,
+      }));
+    },
+    async createUser(message) {
+      console.error("[event] createUser fired:", JSON.stringify({
+        email: message.user.email,
+      }));
     },
   },
 });
