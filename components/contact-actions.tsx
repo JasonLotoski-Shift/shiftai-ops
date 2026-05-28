@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import {
   X,
   Mail,
@@ -16,6 +16,7 @@ import { Button, Label, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { ContactModel as Contact } from "@/lib/generated/prisma/models";
 import { interactionLabels } from "@/lib/data/seed";
+import { logInteraction } from "@/app/(app)/contacts/[id]/actions";
 
 type ActionKey = "email" | "log" | "search" | "enrich";
 
@@ -237,11 +238,21 @@ function LogInteractionModal({ contact, onClose }: { contact: Contact; onClose: 
   const [date, setDate] = useState(TODAY);
   const [summary, setSummary] = useState("");
   const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    setDone(true);
-    setTimeout(onClose, 900);
+    setError(null);
+    startTransition(async () => {
+      try {
+        await logInteraction(contact.id, { type, date, summary });
+        setDone(true);
+        setTimeout(onClose, 900);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to log interaction");
+      }
+    });
   }
 
   return (
@@ -275,9 +286,17 @@ function LogInteractionModal({ contact, onClose }: { contact: Contact; onClose: 
             <Label>What happened?</Label>
             <Textarea rows={4} placeholder="Short summary of the interaction…" value={summary} onChange={(e) => setSummary(e.target.value)} required />
           </div>
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+              <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+              <span className="text-[12px] text-bone-dim">{error}</span>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" size="sm" type="submit" disabled={!summary.trim()}>Log it</Button>
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button variant="primary" size="sm" type="submit" disabled={!summary.trim() || isPending}>
+              {isPending ? "Logging…" : "Log it"}
+            </Button>
           </div>
         </form>
       )}
