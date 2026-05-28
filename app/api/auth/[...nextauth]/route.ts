@@ -8,20 +8,31 @@
 import type { NextRequest } from "next/server";
 import { handlers } from "@/auth";
 
-export async function GET(request: NextRequest) {
-  console.error("[route GET]", request.nextUrl.pathname + request.nextUrl.search);
+type RouteContext = { params: Promise<{ nextauth: string[] }> };
+
+export async function GET(request: NextRequest, ctx: RouteContext) {
+  const url = request.nextUrl;
+  console.error("[route GET]", url.pathname + url.search);
+  console.error("[route GET] cookies:", request.cookies.getAll().map((c) => c.name).join(",") || "(none)");
+  console.error("[route GET] host:", request.headers.get("host"));
+  console.error("[route GET] x-forwarded-host:", request.headers.get("x-forwarded-host"));
+  console.error("[route GET] x-forwarded-proto:", request.headers.get("x-forwarded-proto"));
   try {
-    return await handlers.GET(request);
+    return await handlers.GET(request, ctx);
   } catch (err) {
     console.error("[route GET] EXCEPTION", err);
     throw err;
   }
 }
 
-export async function POST(request: NextRequest) {
-  console.error("[route POST]", request.nextUrl.pathname + request.nextUrl.search);
+export async function POST(request: NextRequest, ctx: RouteContext) {
+  const url = request.nextUrl;
+  console.error("[route POST]", url.pathname + url.search);
+  console.error("[route POST] cookies:", request.cookies.getAll().map((c) => c.name).join(",") || "(none)");
+  console.error("[route POST] host:", request.headers.get("host"));
+  console.error("[route POST] x-forwarded-host:", request.headers.get("x-forwarded-host"));
   try {
-    return await handlers.POST(request);
+    return await handlers.POST(request, ctx);
   } catch (err) {
     console.error("[route POST] EXCEPTION", err);
     throw err;
