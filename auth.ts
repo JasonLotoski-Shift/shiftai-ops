@@ -91,27 +91,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Partner records depending on which alias Google returns.
       const email = normalizeToCanonical(rawEmail);
 
-      // Auto-provision a Partner record on first sign-in. Existing seed
-      // Partners match by email; new emails get a fresh Partner row.
-      const existing = await prisma.partner.findUnique({
-        where: { email },
-      });
-      if (!existing) {
-        const name = user.name ?? email.split("@")[0];
-        await prisma.partner.create({
-          data: {
-            email,
-            name,
-            initials: deriveInitials(name),
-            role: "Partner",
-          },
-        });
-        console.log("[signin] auto-provisioned new Partner:", email);
+      try {
+        console.error("[signin] before Prisma findUnique email=", email);
+        const existing = await prisma.partner.findUnique({ where: { email } });
+        console.error("[signin] Prisma findUnique returned, existing=", !!existing, "id=", existing?.id);
+
+        if (!existing) {
+          console.error("[signin] before Prisma create");
+          const name = user.name ?? email.split("@")[0];
+          await prisma.partner.create({
+            data: {
+              email,
+              name,
+              initials: deriveInitials(name),
+              role: "Partner",
+            },
+          });
+          console.error("[signin] Prisma create returned");
+        }
+
+        user.email = email;
+        console.error("[signin] returning true");
+        return true;
+      } catch (err) {
+        console.error("[signin] EXCEPTION:", err instanceof Error ? err.message : String(err), err instanceof Error ? err.stack : "");
+        throw err;
       }
-      // Mutate the user object so the JWT callback below stores the
-      // canonical email, not the alias.
-      user.email = email;
-      return true;
     },
 
     async jwt({ token, user }) {
@@ -119,11 +124,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // partnerId on the token so we can read it from session without
       // another DB call.
       if (user?.email) {
-        const partner = await prisma.partner.findUnique({
-          where: { email: user.email },
-          select: { id: true },
-        });
-        if (partner) token.partnerId = partner.id;
+        try {
+          console.error("[jwt] before Prisma findUnique email=", user.email);
+          const partner = await prisma.partner.findUnique({
+            where: { email: user.email },
+            select: { id: true },
+          });
+          console.error("[jwt] Prisma findUnique returned, partnerId=", partner?.id);
+          if (partner) token.partnerId = partner.id;
+        } catch (err) {
+          console.error("[jwt] EXCEPTION:", err instanceof Error ? err.message : String(err));
+          throw err;
+        }
       }
       return token;
     },
