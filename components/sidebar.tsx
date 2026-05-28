@@ -12,6 +12,7 @@ import {
   Library,
   Settings,
   Bot,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sigil } from "@/components/wordmark";
@@ -23,6 +24,10 @@ const nav = [
   { href: "/clients", label: "Clients", icon: Briefcase },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/invoices", label: "Invoices", icon: Receipt },
+];
+
+const reference = [
+  { href: "/how-it-works", label: "How it works", icon: BookOpen },
 ];
 
 const secondary = [
@@ -51,6 +56,33 @@ export function Sidebar() {
         </div>
         <ul>
           {nav.map((item) => {
+            const Icon = item.icon;
+            const active = pathname === item.href || pathname.startsWith(item.href + "/");
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-5 py-2.5 text-[13px] transition-colors",
+                    "border-l-2",
+                    active
+                      ? "bg-asphalt text-bone border-track-gold"
+                      : "text-bone-dim border-transparent hover:text-bone hover:bg-asphalt/60",
+                  )}
+                >
+                  <Icon size={15} strokeWidth={1.5} />
+                  <span>{item.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="px-5 pb-2 pt-6">
+          <span className="label">— Reference</span>
+        </div>
+        <ul>
+          {reference.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
