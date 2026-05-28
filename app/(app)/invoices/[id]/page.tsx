@@ -2,9 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Button, Hairline } from "@/components/ui";
+import { InvoiceStatusActions } from "@/components/invoice-status-actions";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
-import { ArrowLeft, Download, Send } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -43,18 +44,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <Download size={13} strokeWidth={1.5} />
               PDF
             </Button>
-            {invoice.status === "draft" && (
-              <Button variant="primary" size="sm">
-                <Send size={13} strokeWidth={1.5} />
-                Send invoice
-              </Button>
-            )}
-            {invoice.status === "overdue" && (
-              <Button variant="danger" size="sm">
-                <Send size={13} strokeWidth={1.5} />
-                Send reminder
-              </Button>
-            )}
+            <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} />
           </>
         }
       />
