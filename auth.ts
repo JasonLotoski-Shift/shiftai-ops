@@ -36,32 +36,53 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
 
-    async signIn({ user }) {
-      // Hard-stop: only firm emails. hd above usually prevents this from
-      // ever firing for the wrong domain, but if Google ever changes
-      // behavior or someone bypasses the chooser, we still refuse.
-      if (!user.email?.endsWith("@shiftai.partners")) {
+    async signIn({ user, profile }) {
+      // Allow both the new primary domain AND the legacy alias domain
+      // (shiftcg.ai is retained as a Google Workspace alias during the
+      // 90-day+ sunset; Google's OIDC profile can return either address
+      // for the same Workspace user). Drop shiftcg.ai once sunset closes.
+      const ALLOWED_DOMAINS = ["shiftai.partners", "shiftcg.ai"];
+
+      console.log("[signin] attempt", {
+        email: user.email,
+        name: user.name,
+        profileEmail: (profile as { email?: string } | undefined)?.email,
+        profileHd: (profile as { hd?: string } | undefined)?.hd,
+      });
+
+      const rawEmail = user.email ?? "";
+      const domain = rawEmail.split("@")[1] ?? "";
+      if (!ALLOWED_DOMAINS.includes(domain)) {
+        console.warn("[signin] rejected — domain not allowed:", domain);
         return false;
       }
 
-      // Auto-provision a Partner record on first sign-in.
-      // Existing seed Partners (jason@, marcus@, devon@, sasha@) match by
-      // email and are reused. New emails (jay@, steve@, etc.) get a fresh
-      // Partner row with placeholder fields the user can edit later.
+      // Normalize: both shiftai.partners and shiftcg.ai resolve to the
+      // same Workspace user. Pick the canonical (new primary) address
+      // as the Partner row key so a person doesn't end up with two
+      // Partner records depending on which alias Google returns.
+      const email = normalizeToCanonical(rawEmail);
+
+      // Auto-provision a Partner record on first sign-in. Existing seed
+      // Partners match by email; new emails get a fresh Partner row.
       const existing = await prisma.partner.findUnique({
-        where: { email: user.email },
+        where: { email },
       });
       if (!existing) {
-        const name = user.name ?? user.email.split("@")[0];
+        const name = user.name ?? email.split("@")[0];
         await prisma.partner.create({
           data: {
-            email: user.email,
+            email,
             name,
             initials: deriveInitials(name),
             role: "Partner",
           },
         });
+        console.log("[signin] auto-provisioned new Partner:", email);
       }
+      // Mutate the user object so the JWT callback below stores the
+      // canonical email, not the alias.
+      user.email = email;
       return true;
     },
 
@@ -95,4 +116,10 @@ function deriveInitials(name: string): string {
     .map((w) => w[0]?.toUpperCase() ?? "")
     .slice(0, 2)
     .join("");
+}
+
+function normalizeToCanonical(email: string): string {
+  return email.endsWith("@shiftcg.ai")
+    ? email.slice(0, -"@shiftcg.ai".length) + "@shiftai.partners"
+    : email;
 }
