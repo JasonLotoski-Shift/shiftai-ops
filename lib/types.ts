@@ -112,8 +112,6 @@ export type Project = {
   status: EngagementStatus;
   startDate: string;
   targetEndDate: string;
-  budgetHours: number;
-  hoursLogged: number;
   budgetFee: number;
   partnerLeadId: string;
   consultantIds: string[];
@@ -126,16 +124,6 @@ export type Milestone = {
   title: string;
   dueDate: string;
   status: "pending" | "in-progress" | "complete" | "at-risk";
-};
-
-export type HoursEntry = {
-  id: string;
-  projectId: string;
-  loggedBy: string; // partner.id or "agent:claude"
-  loggedByLabel: string;
-  hours: number;
-  description: string;
-  date: string;
 };
 
 export type Invoice = {
@@ -154,7 +142,7 @@ export type Activity = {
   id: string;
   ts: string; // ISO datetime
   actor: string; // name or "AGENT · CLAUDE"
-  type: "touch" | "status" | "hours" | "doc" | "ai";
+  type: "touch" | "status" | "doc" | "ai";
   target: string; // contact name, project name, etc
   detail: string;
   link?: string; // optional relative URL to click through to the record

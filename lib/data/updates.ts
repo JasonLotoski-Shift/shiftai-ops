@@ -44,7 +44,7 @@ export const updates: Update[] = [
     date: "2026-05-28",
     tag: "improved",
     title: "The activity feed is live",
-    detail: "Logging hours, moving a deal, sending an email — it shows up on the dashboard as it happens, so the whole team sees the firm's pulse.",
+    detail: "Moving a deal, completing a task, sending an email — it shows up on the dashboard as it happens, so the whole team sees the firm's pulse.",
   },
   {
     date: "2026-05-28",
@@ -69,12 +69,6 @@ export const updates: Update[] = [
     tag: "new",
     title: "Draft an email from a contact",
     detail: "Quick Action drafts the email, saves it, and logs the interaction — all in one step.",
-  },
-  {
-    date: "2026-05-26",
-    tag: "new",
-    title: "Log hours from anywhere",
-    detail: "The Log hours button records time against a project and keeps a full audit trail.",
   },
   {
     date: "2026-05-26",

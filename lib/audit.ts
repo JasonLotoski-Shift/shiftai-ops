@@ -65,7 +65,7 @@ export async function writeAudit(db: DBClient, input: AuditInput) {
 //
 // AuditLog is the complete ledger (every write, diligence-grade). Activity
 // is the subset worth surfacing in the dashboard feed — deal moved, task
-// done, hours logged, outreach sent. Call it in the SAME $transaction as
+// done, outreach sent. Call it in the SAME $transaction as
 // the mutation + writeAudit so the feed never drifts from the ledger.
 //
 // Not every mutation writes an Activity row — only feed-worthy ones.
@@ -74,7 +74,7 @@ export async function writeAudit(db: DBClient, input: AuditInput) {
 export type ActivityInput = {
   actor: Actor;
   /** Visual category — drives feed styling (e.g. "ai" renders gold). */
-  type: ActivityType; // "touch" | "status" | "hours" | "doc" | "ai"
+  type: ActivityType; // "touch" | "status" | "doc" | "ai"
   /** Short subject, e.g. "Brightline · Dispatch & WO" or a company name. */
   target: string;
   /** Human sentence, e.g. "Logged 3.5h — operator interviews". */

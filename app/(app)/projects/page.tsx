@@ -12,8 +12,6 @@ export default async function ProjectsPage() {
 
   const active = projects.filter((p) => p.status !== "closed");
   const closed = projects.filter((p) => p.status === "closed");
-  const totalHours = active.reduce((s, p) => s + p.hoursLogged, 0);
-  const totalBudget = active.reduce((s, p) => s + p.budgetHours, 0);
 
   return (
     <>
@@ -25,12 +23,6 @@ export default async function ProjectsPage() {
           <span className="mono text-[24px] text-bone tabular-nums">{active.length}</span>
         </div>
         <div className="flex flex-col gap-1">
-          <Label>— Hours logged · this engagement set</Label>
-          <span className="mono text-[24px] text-bone tabular-nums">
-            {totalHours} <span className="text-bone-mute text-[14px]">/ {totalBudget}</span>
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
           <Label>— Closed (archive)</Label>
           <span className="mono text-[24px] text-bone-dim tabular-nums">{closed.length}</span>
         </div>
@@ -38,12 +30,10 @@ export default async function ProjectsPage() {
 
       <div className="px-8 py-8 flex flex-col gap-3">
         {projects.map((p) => {
-          const burn = (p.hoursLogged / p.budgetHours) * 100;
-          const overBudget = burn > 90;
           return (
             <Link key={p.id} href={`/projects/${p.id}`}>
               <Card className="hover:border-bone-mute transition-colors">
-                <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_120px] gap-6 px-6 py-5">
+                <div className="grid grid-cols-[1.5fr_1fr_1fr_120px] gap-6 px-6 py-5">
                   <div className="flex flex-col gap-1 min-w-0">
                     <div className="text-[15px] text-bone truncate">{p.name}</div>
                     <div className="text-[11px] text-bone-mute">{p.client.company}</div>
@@ -59,18 +49,6 @@ export default async function ProjectsPage() {
                     <span className="mono text-[12px] text-bone-dim tabular-nums">
                       {formatDate(p.startDate).split(",")[0]} → {formatDate(p.targetEndDate).split(",")[0]}
                     </span>
-                  </div>
-                  <div className="flex flex-col gap-1 self-center">
-                    <Label>Hours</Label>
-                    <span className={`mono text-[13px] tabular-nums ${overBudget ? "text-flag-red" : "text-bone"}`}>
-                      {p.hoursLogged} / {p.budgetHours}
-                    </span>
-                    <div className="h-[2px] bg-graphite w-full">
-                      <div
-                        className={`h-full ${overBudget ? "bg-flag-red" : burn > 75 ? "bg-track-gold" : "bg-diagnostic-steel"}`}
-                        style={{ width: `${Math.min(burn, 100)}%` }}
-                      />
-                    </div>
                   </div>
                   <div className="flex items-center justify-end self-center">
                     <Badge tone={p.status === "on_track" ? "steel" : p.status === "at_risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>

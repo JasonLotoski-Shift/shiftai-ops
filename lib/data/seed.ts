@@ -10,7 +10,6 @@ import type {
   Client,
   Contact,
   Deal,
-  HoursEntry,
   Interaction,
   Invoice,
   Milestone,
@@ -224,8 +223,6 @@ export const projects: Project[] = [
     status: "on-track",
     startDate: "2026-02-19",
     targetEndDate: "2026-07-31",
-    budgetHours: 1200,
-    hoursLogged: 684,
     budgetFee: 540000,
     partnerLeadId: "p-3",
     consultantIds: ["p-1"],
@@ -239,8 +236,6 @@ export const projects: Project[] = [
     status: "at-risk",
     startDate: "2025-11-18",
     targetEndDate: "2026-06-30",
-    budgetHours: 1800,
-    hoursLogged: 1612,
     budgetFee: 720000,
     partnerLeadId: "p-2",
     consultantIds: ["p-4"],
@@ -254,8 +249,6 @@ export const projects: Project[] = [
     status: "on-track",
     startDate: "2026-03-25",
     targetEndDate: "2026-09-15",
-    budgetHours: 1100,
-    hoursLogged: 220,
     budgetFee: 460000,
     partnerLeadId: "p-1",
     consultantIds: ["p-3"],
@@ -269,8 +262,6 @@ export const projects: Project[] = [
     status: "closed",
     startDate: "2026-01-08",
     targetEndDate: "2026-02-12",
-    budgetHours: 280,
-    hoursLogged: 274,
     budgetFee: 95000,
     partnerLeadId: "p-3",
     consultantIds: ["p-1"],
@@ -294,20 +285,6 @@ export const milestones: Milestone[] = [
 ];
 
 /* ──────────────────────────────────────────────────────────────────────
-   Hours entries (recent)
-   ────────────────────────────────────────────────────────────────────── */
-
-export const hoursEntries: HoursEntry[] = [
-  { id: "h-1", projectId: "pr-1", loggedBy: "p-1", loggedByLabel: "Jason Lotoski", hours: 3.5, description: "Operator interviews — dispatcher shift", date: "2026-05-11" },
-  { id: "h-2", projectId: "pr-1", loggedBy: "agent:claude", loggedByLabel: "AGENT · CLAUDE", hours: 1.2, description: "Drafted work-order routing logic spec", date: "2026-05-11" },
-  { id: "h-3", projectId: "pr-2", loggedBy: "p-2", loggedByLabel: "Marcus Halloran", hours: 5.0, description: "DMS integration debug — escalation call", date: "2026-05-11" },
-  { id: "h-4", projectId: "pr-1", loggedBy: "p-3", loggedByLabel: "Devon Reyes", hours: 4.2, description: "Phase Review prep", date: "2026-05-10" },
-  { id: "h-5", projectId: "pr-3", loggedBy: "p-1", loggedByLabel: "Jason Lotoski", hours: 2.8, description: "Field-ops shadowing — Helix site visit", date: "2026-05-09" },
-  { id: "h-6", projectId: "pr-2", loggedBy: "agent:claude", loggedByLabel: "AGENT · CLAUDE", hours: 0.8, description: "Drafted weekly brief — Driveline", date: "2026-05-09" },
-  { id: "h-7", projectId: "pr-1", loggedBy: "p-1", loggedByLabel: "Jason Lotoski", hours: 6.1, description: "Dispatcher dashboard build session", date: "2026-05-08" },
-];
-
-/* ──────────────────────────────────────────────────────────────────────
    Invoices
    ────────────────────────────────────────────────────────────────────── */
 
@@ -327,12 +304,10 @@ export const invoices: Invoice[] = [
 
 export const activities: Activity[] = [
   { id: "a-1", ts: "2026-05-11T15:42", actor: "AGENT · CLAUDE", type: "ai", target: "Driveline weekly brief", detail: "Drafted weekly brief — awaiting partner review" },
-  { id: "a-2", ts: "2026-05-11T14:18", actor: "Jason Lotoski", type: "hours", target: "Brightline · Dispatch & WO", detail: "Logged 3.5h — operator interviews" },
   { id: "a-3", ts: "2026-05-11T11:02", actor: "Marcus Halloran", type: "status", target: "Driveline · DMS-Integrated Sales Ops", detail: "Status flagged AT-RISK (week 2)" },
   { id: "a-4", ts: "2026-05-11T09:34", actor: "Sasha Whitfield", type: "touch", target: "Apex Racing Group", detail: "Discovery call — scoping pilot for September" },
   { id: "a-5", ts: "2026-05-10T17:11", actor: "Devon Reyes", type: "doc", target: "Helix · Discovery report", detail: "Sent discovery report to operating sponsor" },
   { id: "a-6", ts: "2026-05-10T16:00", actor: "AGENT · CLAUDE", type: "ai", target: "Pipeline hygiene", detail: "Flagged 3 stale leads (30+ days) for re-engagement" },
-  { id: "a-7", ts: "2026-05-09T13:44", actor: "Jason Lotoski", type: "hours", target: "Helix · Field-Ops Reporting", detail: "Logged 2.8h — site shadowing" },
   { id: "a-8", ts: "2026-05-09T10:12", actor: "Marcus Halloran", type: "touch", target: "Northshore Powertrain", detail: "Sent SOW v2 — phased pilot" },
 ];
 

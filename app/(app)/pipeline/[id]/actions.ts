@@ -108,9 +108,7 @@ export async function convertDeal(
         status: "on_track",
         startDate,
         targetEndDate,
-        budgetHours: 0, // partner sets when scoping
-        hoursLogged: 0,
-        budgetFee: 0,
+        budgetFee: 0, // partner sets when scoping
         description: scope,
         clientId: client.id,
         partnerLeadId: deal.partnerLeadId,

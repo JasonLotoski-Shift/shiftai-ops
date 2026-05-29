@@ -75,7 +75,6 @@ enum InvoiceStatus {
 enum ActivityType {
   touch
   status
-  hours
   doc
   ai
 }
@@ -278,8 +277,6 @@ model Project {
   status        EngagementStatus
   startDate     DateTime
   targetEndDate DateTime
-  budgetHours   Int
-  hoursLogged   Float
   budgetFee     Int
   description   String
 
@@ -292,7 +289,6 @@ model Project {
   consultants Partner[] @relation("ProjectConsultants")
 
   milestones   Milestone[]
-  hoursEntries HoursEntry[]
   invoices     Invoice[]
   tasks        Task[]
   artifacts    Artifact[]
@@ -316,27 +312,6 @@ model Milestone {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// HoursEntry — time log. loggedBy = partner.id OR "agent:<name>" string;
-// not a Partner FK because agents aren't Partners.
-// ──────────────────────────────────────────────────────────────────────
-
-model HoursEntry {
-  id            String   @id @default(cuid())
-  loggedBy      String
-  loggedByLabel String
-  hours         Float
-  description   String
-  date          DateTime
-
-  project   Project @relation(fields: [projectId], references: [id])
-  projectId String
-
-  createdAt DateTime @default(now())
-
-  @@index([projectId, date])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -376,7 +351,7 @@ model Activity {
   // Optional deep-link (relative URL like "/pipeline/<id>") so a feed row
   // clicks through to the record it describes. Free-text, not an FK —
   // matches the loose-coupling convention of the other log models
-  // (Interaction.loggedBy, HoursEntry.loggedBy, Activity.actor).
+  // (Interaction.loggedBy, Activity.actor).
   link   String?
 
   createdAt DateTime @default(now())

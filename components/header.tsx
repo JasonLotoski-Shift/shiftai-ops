@@ -1,9 +1,7 @@
 "use client";
 
-import { Search, Clock, Plus } from "lucide-react";
-import { useState } from "react";
+import { Search, Plus } from "lucide-react";
 import { Button } from "@/components/ui";
-import { TimeLogModal } from "@/components/time-log-modal";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Header({
@@ -15,8 +13,6 @@ export function Header({
   title: string;
   actions?: React.ReactNode;
 }) {
-  const [logOpen, setLogOpen] = useState(false);
-
   return (
     <>
       <header className="border-b border-graphite bg-bitumen">
@@ -31,10 +27,6 @@ export function Header({
             <span className="label text-[9px]">⌘K</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setLogOpen(true)}>
-              <Clock size={13} strokeWidth={1.5} />
-              Log hours
-            </Button>
             <Button size="sm" variant="secondary">
               <Plus size={13} strokeWidth={1.5} />
               New
@@ -52,8 +44,6 @@ export function Header({
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       </header>
-
-      <TimeLogModal open={logOpen} onClose={() => setLogOpen(false)} />
     </>
   );
 }

@@ -12,7 +12,6 @@ import {
   clients,
   contacts,
   deals,
-  hoursEntries,
   interactions,
   invoices,
   milestones,
@@ -35,7 +34,6 @@ async function main() {
   await prisma.auditLog.deleteMany();
   await prisma.artifact.deleteMany();
   await prisma.invoice.deleteMany();
-  await prisma.hoursEntry.deleteMany();
   await prisma.milestone.deleteMany();
   await prisma.activity.deleteMany();
   await prisma.task.deleteMany();
@@ -158,8 +156,6 @@ async function main() {
         status: toEnum(pr.status) as any,
         startDate: new Date(pr.startDate),
         targetEndDate: new Date(pr.targetEndDate),
-        budgetHours: pr.budgetHours,
-        hoursLogged: pr.hoursLogged,
         budgetFee: pr.budgetFee,
         description: pr.description,
         clientId: pr.clientId,
@@ -182,20 +178,6 @@ async function main() {
     });
   }
 
-  console.log(`Inserting ${hoursEntries.length} hours entries…`);
-  for (const h of hoursEntries) {
-    await prisma.hoursEntry.create({
-      data: {
-        id: h.id,
-        loggedBy: h.loggedBy,
-        loggedByLabel: h.loggedByLabel,
-        hours: h.hours,
-        description: h.description,
-        date: new Date(h.date),
-        projectId: h.projectId,
-      },
-    });
-  }
 
   console.log(`Inserting ${invoices.length} invoices…`);
   for (const inv of invoices) {

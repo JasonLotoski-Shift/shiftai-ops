@@ -368,12 +368,11 @@ function Engagement({
           <Link href="/projects" className="label-gold hover:underline">All projects →</Link>
         </div>
         {clientProjects.map((p, i) => {
-          const burn = (p.hoursLogged / p.budgetHours) * 100;
           return (
             <Link
               href={`/projects/${p.id}`}
               key={p.id}
-              className={`grid grid-cols-[2fr_100px_120px_100px] gap-4 px-5 py-4 ${i < clientProjects.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors`}
+              className={`grid grid-cols-[2fr_120px_100px] gap-4 px-5 py-4 ${i < clientProjects.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors`}
             >
               <div className="min-w-0">
                 <div className="text-[14px] text-bone truncate">{p.name.split("·")[1]?.trim() ?? p.name}</div>
@@ -381,12 +380,6 @@ function Engagement({
               </div>
               <div className="self-center">
                 <Badge tone={p.phase === "build" ? "gold" : p.phase === "run" ? "steel" : "bone"}>{p.phase}</Badge>
-              </div>
-              <div className="self-center flex flex-col gap-1">
-                <span className="mono text-[12px] text-bone tabular-nums">{p.hoursLogged} / {p.budgetHours}h</span>
-                <div className="h-[2px] bg-graphite w-full">
-                  <div className="h-full bg-track-gold" style={{ width: `${Math.min(burn, 100)}%` }} />
-                </div>
               </div>
               <div className="self-center flex justify-end">
                 <Badge tone={p.status === "on_track" ? "steel" : p.status === "at_risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>

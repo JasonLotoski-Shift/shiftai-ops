@@ -14,21 +14,23 @@ import type {
 import {
   Mail,
   Sparkles,
-  Clock,
   FileText,
   UserPlus,
-  RefreshCw,
+  ClipboardList,
+  NotebookPen,
+  Upload,
   Bot,
   Newspaper,
 } from "lucide-react";
 
 const quickActions = [
   { icon: Mail, label: "Draft email", hint: "Claude drafts to a contact — confirms any missing facts first" },
-  { icon: Sparkles, label: "Run an action", hint: "Enrich a contact, generate a brief, run a health check" },
-  { icon: Clock, label: "Log hours", hint: "15-second time entry against a project" },
   { icon: FileText, label: "Draft proposal", hint: "Scope → SOW draft for partner review" },
+  { icon: ClipboardList, label: "Draft client survey", hint: "A tailored survey built from the engagement context" },
+  { icon: NotebookPen, label: "Draft discussion doc", hint: "Agenda / discussion doc for an upcoming client conversation" },
   { icon: UserPlus, label: "Add contact", hint: "Capture an intro in under 30 seconds" },
-  { icon: RefreshCw, label: "Re-engage stale", hint: "3 leads cold 30d+ — draft outreach" },
+  { icon: Upload, label: "Upload client files", hint: "Drop in meeting notes (e.g. Fireflies) — filed to the client and logged" },
+  { icon: Sparkles, label: "Run an action", hint: "Enrich a contact, generate a brief, run a health check" },
 ] as const;
 
 type ProjectWithClient = Project & { client: Client };
@@ -124,20 +126,17 @@ export function DashboardViews({
                 <Link href="/projects" className="label-gold hover:underline">View all →</Link>
               </div>
               <Card>
-                <div className="grid grid-cols-[1fr_120px_140px_120px] gap-4 px-5 py-3 border-b border-graphite">
+                <div className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-3 border-b border-graphite">
                   <span className="label">Project</span>
                   <span className="label">Phase</span>
-                  <span className="label">Hours · budget</span>
                   <span className="label text-right">Status</span>
                 </div>
                 {activeProjects.map((p) => {
-                  const burn = (p.hoursLogged / p.budgetHours) * 100;
-                  const overBudget = burn > 90;
                   return (
                     <Link
                       href={`/projects/${p.id}`}
                       key={p.id}
-                      className="grid grid-cols-[1fr_120px_140px_120px] gap-4 px-5 py-4 border-b border-graphite last:border-0 hover:bg-graphite/40 transition-colors"
+                      className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-4 border-b border-graphite last:border-0 hover:bg-graphite/40 transition-colors"
                     >
                       <div className="flex flex-col gap-1 min-w-0">
                         <span className="text-[14px] text-bone truncate">{p.client.company}</span>
@@ -145,17 +144,6 @@ export function DashboardViews({
                       </div>
                       <div>
                         <Badge tone={p.phase === "build" ? "gold" : p.phase === "run" ? "steel" : "bone"}>{p.phase}</Badge>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <span className={`mono text-[13px] ${overBudget ? "text-flag-red" : "text-bone"}`}>
-                          {p.hoursLogged} / {p.budgetHours}
-                        </span>
-                        <div className="h-[2px] bg-graphite w-full">
-                          <div
-                            className={`h-full ${overBudget ? "bg-flag-red" : burn > 75 ? "bg-track-gold" : "bg-diagnostic-steel"}`}
-                            style={{ width: `${Math.min(burn, 100)}%` }}
-                          />
-                        </div>
                       </div>
                       <div className="flex justify-end">
                         <Badge tone={p.status === "on_track" ? "steel" : p.status === "at_risk" ? "gold" : p.status === "blocked" ? "red" : "neutral"}>

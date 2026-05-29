@@ -40,7 +40,7 @@ export default async function DashboardPage() {
 
       <div className="px-8 py-8 flex flex-col gap-10">
         {/* Top-line stats */}
-        <section className="grid grid-cols-4 gap-px bg-graphite border border-graphite">
+        <section className="grid grid-cols-3 gap-px bg-graphite border border-graphite">
           <div className="bg-bitumen p-6">
             <Stat
               label="— Active engagements"
@@ -62,10 +62,6 @@ export default async function DashboardPage() {
               value={formatCAD(outstandingAR).replace("CA$", "$")}
               delta={overdueAR > 0 ? `${formatCAD(overdueAR).replace("CA$", "$")} overdue` : "On track"}
             />
-          </div>
-          <div className="bg-bitumen p-6">
-            {/* Hours this week — still a placeholder; computing from HoursEntry comes when we add a date-range helper */}
-            <Stat label="— Hours this week" value="38.4" delta="+12% vs last wk" />
           </div>
         </section>
 

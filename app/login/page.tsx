@@ -23,7 +23,7 @@ export default async function LoginPage() {
             <span className="text-track-gold">THE FIRM.</span>
           </h1>
           <p className="text-[16px] text-bone-dim max-w-[480px] leading-relaxed">
-            Pipeline, contracts, projects, hours — all in one system. Built custom,
+            Pipeline, contracts, projects, deliverables — all in one system. Built custom,
             run on AI, connected end to end. The same thing we build for our clients,
             we run on ourselves first.
           </p>

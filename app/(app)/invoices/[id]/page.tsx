@@ -17,7 +17,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       project: {
         include: {
           partnerLead: true,
-          hoursEntries: true,
         },
       },
     },
@@ -28,10 +27,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const project = invoice.project;
   const partner = project.partnerLead;
   const overdueDays = invoice.status === "overdue" ? daysSince(invoice.dueAt) : 0;
-
-  const projectHrs = project.hoursEntries;
-  const totalHours = projectHrs.reduce((s, h) => s + h.hours, 0);
-  const hourlyRate = totalHours > 0 ? Math.round(invoice.amount / totalHours) : 0;
 
   return (
     <>
@@ -92,19 +87,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <div className="px-5 py-4 border-b border-graphite">
               <Label>— Line items</Label>
             </div>
-            <div className="grid grid-cols-[2fr_100px_120px_120px] gap-4 px-5 py-3 border-b border-graphite">
+            <div className="grid grid-cols-[1fr_140px] gap-4 px-5 py-3 border-b border-graphite">
               <span className="label">Description</span>
-              <span className="label text-right">Hours</span>
-              <span className="label text-right">Rate</span>
               <span className="label text-right">Amount</span>
             </div>
-            <div className="grid grid-cols-[2fr_100px_120px_120px] gap-4 px-5 py-4 border-b border-graphite">
+            <div className="grid grid-cols-[1fr_140px] gap-4 px-5 py-4 border-b border-graphite">
               <div className="flex flex-col gap-0.5">
                 <div className="text-[14px] text-bone">{project.name.split("·")[1]?.trim() ?? project.name}</div>
-                <div className="text-[11px] text-bone-mute">Professional services — engineered hours</div>
+                <div className="text-[11px] text-bone-mute">Professional services</div>
               </div>
-              <span className="mono text-[13px] text-bone tabular-nums text-right self-center">{totalHours}</span>
-              <span className="mono text-[13px] text-bone tabular-nums text-right self-center">${hourlyRate}/h</span>
               <span className="mono text-[14px] text-bone tabular-nums text-right self-center">
                 {formatCAD(invoice.amount).replace("CA$", "$")}
               </span>

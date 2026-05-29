@@ -126,12 +126,19 @@ The generative layer. **The order matters:** the spine and the brain come before
 - [ ] **Promote, don't copy.** Personal skills (`html-brief-jason`, etc.) get de-personalized into firm-generic skills: strip the `-jason`, write for *any partner clicking the button*, point voice at `skills/_firm/context.md`.
 
 #### A4 — The Quick Actions *(one at a time, each the full round-trip)*
-Clone the `draft-email` persistence recipe, now with real generation wired through `generate()`:
-- [ ] **Draft email** — retrofit the shipped persistence action to generate the body via `generate()` (sets `generatedFromSkill: "draft-email"`).
-- [ ] **Draft proposal** — wraps a new `scope` skill (written fresh; no personal equivalent exists).
-- [ ] **Build presentation** — wraps the promoted `html-brief` skill.
-- [ ] **Re-engage stale** — outreach → `Interaction` + `Artifact`.
-- [ ] **Add contact**, **Run an action** — the lighter mutations.
+The lineup (reset 2026-05-28). Generative actions clone the `draft-email` recipe (firm brain + SKILL.md + live context → `generate()` → persist):
+- [x] **Draft email** — ✅ shipped. `generateEmailDraft()` → editable draft → `Artifact` (+ `Interaction` on send) + `AuditLog`.
+- [ ] **Draft proposal** — wraps a new `scope` skill (written fresh). `Artifact` (proposal → Drive) + `AuditLog`.
+- [ ] **Draft client survey** — wraps a new `client-survey` skill; generates a tailored survey from the engagement context. `Artifact` + `AuditLog`.
+- [ ] **Draft discussion doc** — wraps a new `discussion-doc` skill; drafts an agenda / discussion doc for an upcoming client conversation. `Artifact` + `AuditLog`.
+- [ ] **Upload client files** — *ingest, not generation.* Drop in external docs (e.g. Fireflies meeting notes): upload to the client's Drive, register an `Artifact`, and — if it's a meeting — log an `Interaction`. Optional Fireflies API pull later; manual upload first.
+- [ ] **Add contact** — fast capture. `Contact` + `AuditLog`. (Mutation, not generative.)
+- [ ] **Run an action** — generic launcher (enrich a contact, generate a brief, run a health check).
+
+> **Dropped from the lineup (2026-05-28):**
+> - **Build presentation** → moves to the Claude Code **workspace**. Heavy multi-file decks belong at the client folder, not the ops tool.
+> - **Re-engage stale** → replaced by **visual pipeline aging** (Track B, B3b). The team *sees* the stall on the board and acts; no action chasing it.
+> - **Log hours** → **removed from the ops tool entirely** (UI + action + `HoursEntry` model via migration). Not part of how the firm wants to operate the tool.
 
 ---
 
@@ -165,6 +172,12 @@ Not "chat plus a separate log." One timeline of timestamped events, rendered in 
 - Today `app/(app)/pipeline/page.tsx` renders stage columns as static `<Link>` cards (no DnD). Extract the board into a client component using **dnd-kit** (React 19 / Next 15-safe; `react-beautiful-dnd` is unmaintained).
 - On drop → `updateDealStage(dealId, newStage)` server action → `writeAudit` + `writeActivity` (feeds the activity lane).
 - On successful drop → **next-task modal**: "Acme moved to Negotiation. Action the next task?" with (a) a stage-suggested next action, (b) a context textarea. Confirming creates a `Task` (with context) or kicks off the matching Quick Action.
+
+#### B3b — Pipeline card aging (visual staleness) — *replaces the dropped "Re-engage stale" action*
+Each deal card carries a color by **time in its current stage**: green → orange → red, stepping every **14 days without movement**. New deal = green; 14 days unmoved → orange; 28+ → red. The team sees the stall on the board and acts — no agent chasing it.
+- Add a `stageEnteredAt` timestamp to `Deal`: set on create, **reset whenever the stage changes** (`updateDealStage` from B3).
+- Pure render after that: color derived from `daysSince(stageEnteredAt)` (already in `lib/format`). No new writes beyond the timestamp.
+- Thresholds (14/28d) as named constants so they're easy to tune.
 
 #### B4 — Messaging (channels + DMs + polling)
 - New models:
@@ -229,13 +242,13 @@ Build **one agent at a time** off the MCP rails. Each agent = a SKILL.md + `gene
 
 > **Principle:** every channel where work happens — partner typing in the UI, a Quick Action running, a Claude Code session in a client folder, a scheduled agent — must round-trip a row into the ops tool. Nothing happens silently. The ops tool is the system of record; if it isn't tracked here, it didn't happen.
 
-**Four tracking models + the audit ledger underneath** (all shipped in Phase 3):
+**Three tracking models + the audit ledger underneath** (Hours removed 2026-05-28):
 
 | Dimension | Model | What writes to it |
 |---|---|---|
 | Calls / meetings / emails | [`Interaction`](../prisma/schema.prisma) — `loggedBy` free-text so agents log too | Manual UI form · Quick Action drafting outreach (tags `AGENT · CLAUDE`) · Gmail/Calendar ingest (backlog) |
 | Tasks | [`Task`](../prisma/schema.prisma) — has `clientId` + `projectId` FKs, plus `context` + `assignedById` (B2) | Manual UI form · convert-deal (kickoff tasks) · AI suggestions |
-| Hours | [`HoursEntry`](../prisma/schema.prisma) | Manual UI form · Claude Code session-end hook (backlog) |
+| ~~Hours~~ | ~~`HoursEntry`~~ | **Removed 2026-05-28** — Log hours pulled from the tool entirely (UI + action + model). |
 | Deliverables | [`Artifact`](../prisma/schema.prisma) | Quick Action recipe · manual upload · Drive change watcher (backlog) |
 | Audit trail | [`AuditLog`](../prisma/schema.prisma) — writer = `writeAudit()` | **Every** mutation, no exceptions |
 
