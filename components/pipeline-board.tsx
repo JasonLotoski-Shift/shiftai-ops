@@ -165,7 +165,9 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
   return (
     <>
       <div className="flex-1 overflow-x-auto">
-        <div className="flex gap-px bg-graphite min-w-max h-full">
+        {/* Columns flex to fill the width; each has a min so on narrow screens
+            they floor out and the container scrolls instead of clipping. */}
+        <div className="flex gap-px bg-graphite h-full">
           {DROP_STAGES.map((stage) => {
             const stageDeals = deals.filter((d) => d.stage === stage);
             const stageValue = stageDeals.reduce((s, d) => s + d.valueEstimate, 0);
@@ -186,7 +188,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                 }}
                 onDrop={(e) => onDrop(e, stage)}
                 className={cn(
-                  "bg-bitumen w-[300px] flex flex-col transition-colors",
+                  "bg-bitumen flex-1 basis-0 min-w-[172px] flex flex-col transition-colors",
                   isOver && "bg-asphalt ring-1 ring-inset ring-track-gold/50",
                 )}
               >
@@ -257,7 +259,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
             );
           })}
 
-          <div className="bg-bitumen w-[260px] flex flex-col border-l-2 border-track-gold">
+          <div className="bg-bitumen flex-1 basis-0 min-w-[180px] flex flex-col border-l-2 border-track-gold">
             <div className="px-4 py-4 border-b border-graphite">
               <Label gold>— Signed → Convert</Label>
               <span className="block label mt-2 text-[10px] text-bone-mute">

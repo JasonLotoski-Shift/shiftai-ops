@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
-import type { DealStage } from "@/lib/generated/prisma/enums";
+import type { DealStage, Industry } from "@/lib/generated/prisma/enums";
 
 const STAGE_LABELS: Record<DealStage, string> = {
   lead: "Lead",
@@ -77,4 +77,98 @@ export async function updateDealStage(dealId: string, newStage: string) {
   revalidatePath("/pipeline");
   revalidatePath("/dashboard");
   return { stage };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// createDeal — add a lead/deal to the funnel from an existing contact.
+//
+// A Deal requires a Contact (FK), so the funnel is built from people already
+// in Contacts. Company + industry default from the contact; everything else
+// is the partner's call. New stage deals start "fresh" (green) — stageEnteredAt
+// defaults to now. Canonical recipe: create + writeAudit + writeActivity.
+// ──────────────────────────────────────────────────────────────────────
+
+const VALID_STAGES: DealStage[] = ["lead", "qualified", "discovery", "proposal", "negotiation", "signed"];
+const VALID_INDUSTRIES: Industry[] = ["automotive", "motorsport", "engineering", "construction", "other"];
+
+export async function createDeal(input: {
+  contactId: string;
+  company?: string;
+  stage?: string;
+  valueEstimate: number;
+  industry?: string;
+  closeTargetDate: string; // YYYY-MM-DD
+  partnerLeadId?: string;
+  notes?: string;
+}) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const contact = await prisma.contact.findUnique({
+    where: { id: input.contactId },
+    select: { id: true, name: true, company: true, industry: true },
+  });
+  if (!contact) throw new Error("Pick a contact for this deal");
+
+  const company = input.company?.trim() || contact.company;
+  const stage = (input.stage && VALID_STAGES.includes(input.stage as DealStage)
+    ? (input.stage as DealStage)
+    : "lead");
+  const industry = (input.industry && VALID_INDUSTRIES.includes(input.industry as Industry)
+    ? (input.industry as Industry)
+    : contact.industry);
+
+  const value = Math.round(Number(input.valueEstimate));
+  if (!Number.isFinite(value) || value < 0) throw new Error("Enter a valid estimated value");
+
+  const closeTargetDate = new Date(input.closeTargetDate);
+  if (Number.isNaN(closeTargetDate.getTime())) throw new Error("Enter a valid close-target date");
+
+  // Default the deal lead to whoever's signed in; allow an explicit override.
+  const partnerLeadId = input.partnerLeadId?.trim() || session.user.partnerId;
+  const lead = await prisma.partner.findUnique({ where: { id: partnerLeadId }, select: { id: true } });
+  if (!lead) throw new Error("Partner lead not found");
+
+  const now = new Date();
+
+  const deal = await prisma.$transaction(async (tx) => {
+    const created = await tx.deal.create({
+      data: {
+        company,
+        stage,
+        valueEstimate: value,
+        industry,
+        closeTargetDate,
+        lastTouchAt: now,
+        stageEnteredAt: now,
+        notes: input.notes?.trim() || null,
+        contactId: contact.id,
+        partnerLeadId,
+      },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "create.deal",
+      targetType: "Deal",
+      targetId: created.id,
+      changes: { company, stage, valueEstimate: value, industry, contactId: contact.id },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: company,
+      detail: `Added to pipeline at ${STAGE_LABELS[stage]} — ${contact.name}`,
+      link: `/pipeline/${created.id}`,
+    });
+
+    return created;
+  });
+
+  revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
+  return { id: deal.id };
 }
