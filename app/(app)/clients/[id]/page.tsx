@@ -32,6 +32,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         actions={
           <>
             <ClientHeaderActions
+              clientId={client.id}
+              company={client.company}
               driveFolderUrl={client.driveFolderUrl}
               workspacePath={client.workspacePath}
             />

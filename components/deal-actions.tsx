@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Calendar } from "lucide-react";
+import { Mail, Calendar, FileText } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
+import { DraftProposalModal } from "@/components/draft-proposal-modal";
 import type {
   DealModel as Deal,
   PartnerModel as Partner,
@@ -20,15 +21,20 @@ export function DealActions({
   contact: Contact | null;
 }) {
   const [convertOpen, setConvertOpen] = useState(false);
+  const [proposalOpen, setProposalOpen] = useState(false);
   return (
     <>
       <Button variant="ghost" size="sm">
         <Mail size={13} strokeWidth={1.5} />
         Log email
       </Button>
-      <Button variant="secondary" size="sm">
+      <Button variant="ghost" size="sm">
         <Calendar size={13} strokeWidth={1.5} />
         Log call
+      </Button>
+      <Button variant="secondary" size="sm" onClick={() => setProposalOpen(true)}>
+        <FileText size={13} strokeWidth={1.5} />
+        Draft proposal
       </Button>
       <Button variant="primary" size="sm" onClick={() => setConvertOpen(true)}>
         Convert → Client
@@ -41,6 +47,14 @@ export function DealActions({
         partner={partner}
         contact={contact}
       />
+
+      {proposalOpen && (
+        <DraftProposalModal
+          dealId={deal.id}
+          company={deal.company}
+          onClose={() => setProposalOpen(false)}
+        />
+      )}
     </>
   );
 }

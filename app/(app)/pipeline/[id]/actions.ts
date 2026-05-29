@@ -5,12 +5,15 @@
 // Canonical mutation recipe (see shiftai-ops/CLAUDE.md "Wire a Quick
 // Action end-to-end").
 
+import { Readable } from "node:stream";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
+import { generate } from "@/lib/ai";
+import { formatCAD, formatDate } from "@/lib/format";
 
 /**
  * Convert a deal in stage `proposal` or `negotiation` into a signed Client.
@@ -151,4 +154,149 @@ export async function convertDeal(
   revalidatePath("/dashboard");
 
   return result;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Draft proposal Quick Action — generation + persistence for the `scope` skill.
+//
+// generateProposal: read/generate only — pulls deal + contact + recent
+// interactions, runs the scope skill, returns the draft (editable in the modal).
+// saveProposal: persists per the recipe — Drive upload + Artifact + AuditLog +
+// Activity, one transaction. A deal has no Drive folder yet, so the file lands
+// in the Shared Drive root; the Artifact is scoped to the deal.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function generateProposal(
+  dealId: string,
+  input: { focus: string; fee?: string; timeline?: string; notes?: string },
+): Promise<{ body: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+
+  const focus = input.focus.trim();
+  if (!focus) throw new Error("Focus is required");
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    include: {
+      contact: {
+        select: {
+          name: true,
+          title: true,
+          company: true,
+          interactions: {
+            orderBy: { date: "desc" },
+            take: 6,
+            select: { type: true, date: true, summary: true },
+          },
+        },
+      },
+      partnerLead: { select: { name: true } },
+    },
+  });
+  if (!deal) throw new Error("Deal not found");
+
+  const contextLines: string[] = [
+    "## Opportunity",
+    `Company: ${deal.company}`,
+    `Industry: ${deal.industry}`,
+    `Deal stage: ${deal.stage}`,
+    `Estimated value: ${formatCAD(deal.valueEstimate)}`,
+    `Target close: ${formatDate(deal.closeTargetDate)}`,
+  ];
+  if (deal.notes) contextLines.push(`Deal notes: ${deal.notes}`);
+  contextLines.push(
+    "",
+    "## Primary contact",
+    `${deal.contact.name} — ${deal.contact.title}, ${deal.contact.company}`,
+  );
+  if (deal.contact.interactions.length) {
+    contextLines.push("", "## Recent interactions (newest first)");
+    for (const i of deal.contact.interactions) {
+      contextLines.push(`- ${formatDate(i.date)} · ${i.type.replace("_", "-")} — ${i.summary}`);
+    }
+  } else {
+    contextLines.push("", "## Recent interactions", "None logged yet.");
+  }
+  const context = contextLines.join("\n");
+
+  const intake = [
+    "## This proposal",
+    `Focus / what to scope: ${focus}`,
+    `Fee to state: ${input.fee?.trim() || "(none provided — do not invent one; use [NEEDS INPUT] where a fee belongs)"}`,
+    `Timeline to state: ${input.timeline?.trim() || "(none provided — do not invent dates; use [NEEDS INPUT])"}`,
+    `Extra notes from the partner: ${input.notes?.trim() || "(none)"}`,
+    `Prepared by: ${deal.partnerLead?.name ?? "[NEEDS INPUT: preparer name]"}`,
+  ].join("\n");
+
+  const body = await generate({ skill: "scope", context, intake, maxTokens: 6000 });
+  return { body: body.trim() };
+}
+
+export async function saveProposal(dealId: string, input: { body: string }) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const body = input.body.trimEnd();
+  if (!body.trim()) throw new Error("Proposal body is required");
+  assertNoNeedsInput(body, "proposal");
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: { id: true, company: true },
+  });
+  if (!deal) throw new Error("Deal not found");
+
+  const sharedDriveFolderId = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
+  if (!sharedDriveFolderId) throw new Error("DRIVE_SHARED_DRIVE_FOLDER_ID is not configured");
+
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-proposal.md`;
+  const res = await drive.files.create({
+    requestBody: { name: fileName, parents: [sharedDriveFolderId], mimeType: "text/markdown" },
+    media: { mimeType: "text/markdown", body: Readable.from(body) },
+    fields: "id, webViewLink",
+    supportsAllDrives: true,
+  });
+  const fileId = res.data.id;
+  const webViewLink = res.data.webViewLink;
+  if (!fileId || !webViewLink) throw new Error("Drive upload returned no ID");
+
+  const artifact = await prisma.$transaction(async (tx) => {
+    const created = await tx.artifact.create({
+      data: {
+        type: "proposal",
+        title: `Proposal · ${deal.company} · ${today}`,
+        driveUrl: webViewLink,
+        fileName,
+        createdBy: partnerLabel,
+        generatedFromSkill: "scope",
+        reviewStatus: "draft",
+        dealId: deal.id,
+      },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "create.artifact.proposal.draft",
+      targetType: "Artifact",
+      targetId: created.id,
+      changes: { dealId, driveFileId: fileId, bodyLength: body.length },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: deal.company,
+      detail: "Drafted proposal — awaiting review",
+      link: `/pipeline/${dealId}`,
+    });
+
+    return created;
+  });
+
+  revalidatePath(`/pipeline/${dealId}`);
+  return { artifactId: artifact.id, driveUrl: webViewLink };
 }

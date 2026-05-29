@@ -127,11 +127,11 @@ The generative layer. **The order matters:** the spine and the brain come before
 
 #### A4 — The Quick Actions *(one at a time, each the full round-trip)*
 The lineup (reset 2026-05-28). Generative actions clone the `draft-email` recipe (firm brain + SKILL.md + live context → `generate()` → persist):
-- [x] **Draft email** — ✅ shipped. `generateEmailDraft()` → editable draft → `Artifact` (+ `Interaction` on send) + `AuditLog`.
-- [ ] **Draft proposal** — wraps a new `scope` skill (written fresh). `Artifact` (proposal → Drive) + `AuditLog`.
-- [ ] **Draft client survey** — wraps a new `client-survey` skill; generates a tailored survey from the engagement context. `Artifact` + `AuditLog`.
-- [ ] **Draft discussion doc** — wraps a new `discussion-doc` skill; drafts an agenda / discussion doc for an upcoming client conversation. `Artifact` + `AuditLog`.
-- [ ] **Upload client files** — *ingest, not generation.* Drop in external docs (e.g. Fireflies meeting notes): upload to the client's Drive, register an `Artifact`, and — if it's a meeting — log an `Interaction`. Optional Fireflies API pull later; manual upload first.
+- [x] **Draft email** — ✅ shipped. `generateEmailDraft()` → editable draft → `Artifact` (+ `Interaction` on send) + `AuditLog`. *(Contact page.)*
+- [x] **Draft proposal** — ✅ shipped 2026-05-29. `scope` skill; `generateProposal()`/`saveProposal()` → `Artifact` (proposal → Drive) + `AuditLog` + `Activity`. *(Deal page.)*
+- [x] **Draft client survey** — ✅ shipped 2026-05-29. `client-survey` skill via shared `generateClientDoc()`/`saveClientDoc()` → `Artifact` (report) + `AuditLog` + `Activity`. *(Client page.)*
+- [x] **Draft discussion doc** — ✅ shipped 2026-05-29. `discussion-doc` skill, same shared client-doc pair. *(Client page.)*
+- [x] **Upload client files** — ✅ shipped 2026-05-29. *Ingest, not generation.* `uploadClientFile()` — file/paste → client Drive → `Artifact` (+ `Interaction` when logged as a meeting) + `AuditLog` + `Activity`. *(Client page.)* Optional Fireflies API pull later.
 - [ ] **Add contact** — fast capture. `Contact` + `AuditLog`. (Mutation, not generative.)
 - [ ] **Run an action** — generic launcher (enrich a contact, generate a brief, run a health check).
 
