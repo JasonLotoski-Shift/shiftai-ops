@@ -117,7 +117,7 @@ export async function convertDeal(
 
     await tx.deal.update({
       where: { id: dealId },
-      data: { stage: "signed", lastTouchAt: new Date() },
+      data: { stage: "signed", lastTouchAt: new Date(), stageEnteredAt: new Date() },
     });
 
     await writeAudit(tx, {

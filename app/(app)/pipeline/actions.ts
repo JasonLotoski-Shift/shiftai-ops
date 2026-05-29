@@ -54,8 +54,9 @@ export async function updateDealStage(dealId: string, newStage: string) {
   await prisma.$transaction(async (tx) => {
     await tx.deal.update({
       where: { id: dealId },
-      // Moving a deal forward is a touch — reset the staleness clock.
-      data: { stage, lastTouchAt: new Date() },
+      // Moving a deal forward is a touch — reset both clocks. stageEnteredAt
+      // resets the board's aging color back to fresh/green.
+      data: { stage, lastTouchAt: new Date(), stageEnteredAt: new Date() },
     });
     await writeAudit(tx, {
       actor,

@@ -105,6 +105,7 @@ async function main() {
         industry: d.industry as any,
         closeTargetDate: new Date(d.closeTargetDate),
         lastTouchAt: new Date(d.lastTouchAt),
+        stageEnteredAt: new Date(d.stageEnteredAt),
         notes: d.notes,
         contactId: d.contactId,
         partnerLeadId: d.partnerLeadId,

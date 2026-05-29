@@ -67,6 +67,7 @@ export type Deal = {
   closeTargetDate: string;
   createdAt: string;
   lastTouchAt: string;
+  stageEnteredAt: string; // when it entered the current stage — drives board aging colors
   notes?: string;
 };
 

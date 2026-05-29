@@ -3,7 +3,7 @@
 import { useEffect, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Label, Badge, Button, Textarea, Input } from "@/components/ui";
-import { formatCAD, daysSince } from "@/lib/format";
+import { formatCAD, daysSince, stageAgeTier, type StageAgeTier } from "@/lib/format";
 import { industryLabels, stageOrder, stageLabels } from "@/lib/data/seed";
 import { updateDealStage } from "@/app/(app)/pipeline/actions";
 import { createTask } from "@/app/(app)/tasks/actions";
@@ -52,6 +52,13 @@ function dueInDays(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
+// Left-accent color by time-in-stage — green (fresh) → orange (warming) → red (stale).
+const AGE_ACCENT: Record<StageAgeTier, string> = {
+  fresh: "border-l-signal-fresh",
+  warming: "border-l-signal-warming",
+  stale: "border-l-flag-red",
+};
+
 interface PipelineBoardProps {
   initialDeals: DealWithRel[];
 }
@@ -98,8 +105,10 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
     if (!deal || deal.stage === stage) return;
 
     const previous = deals;
-    // Optimistic move.
-    setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, stage } : d)));
+    // Optimistic move — reset stageEnteredAt so the card flips back to fresh/green.
+    setDeals((prev) =>
+      prev.map((d) => (d.id === dealId ? { ...d, stage, stageEnteredAt: new Date() } : d)),
+    );
 
     try {
       await updateDealStage(dealId, stage);
@@ -193,7 +202,8 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
 
                 <div className="flex flex-col gap-2 p-3 flex-1">
                   {stageDeals.map((deal) => {
-                    const stale = daysSince(deal.lastTouchAt) > 30;
+                    const tier = stageAgeTier(deal.stageEnteredAt);
+                    const daysInStage = daysSince(deal.stageEnteredAt);
                     const dragging = draggingId === deal.id;
                     return (
                       <div
@@ -203,8 +213,8 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         onDragEnd={onDragEnd}
                         onClick={() => router.push(`/pipeline/${deal.id}`)}
                         className={cn(
-                          "block bg-asphalt border border-graphite p-3 transition-colors cursor-grab active:cursor-grabbing hover:border-bone-mute",
-                          stale && "border-flag-red/60",
+                          "block bg-asphalt border border-graphite border-l-2 p-3 transition-colors cursor-grab active:cursor-grabbing hover:bg-graphite/40",
+                          AGE_ACCENT[tier],
                           dragging && "opacity-40",
                         )}
                       >
@@ -216,11 +226,16 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         </div>
                         <div className="flex items-center gap-2 mb-3">
                           <Badge tone="bone">{industryLabels[deal.industry]}</Badge>
-                          {stale && (
-                            <Badge tone="red">
-                              <AlertCircle size={9} strokeWidth={2} className="mr-1" />
-                              {daysSince(deal.lastTouchAt)}d cold
-                            </Badge>
+                          {tier !== "fresh" && (
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 mono text-[10px] uppercase tracking-[0.08em]",
+                                tier === "stale" ? "text-flag-red" : "text-signal-warming",
+                              )}
+                            >
+                              <AlertCircle size={9} strokeWidth={2} />
+                              {daysInStage}d in stage
+                            </span>
                           )}
                         </div>
                         <div className="flex justify-between items-center pt-2 border-t border-graphite">

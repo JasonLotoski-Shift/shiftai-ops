@@ -23,6 +23,12 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-05-29",
+    tag: "new",
+    title: "Pipeline cards show their age",
+    detail: "A deal's card turns from green to orange to red the longer it sits in one stage — stepping about every two weeks. Drag it forward and it resets to green. The board now shows at a glance which deals have stalled.",
+  },
+  {
     date: "2026-05-28",
     tag: "improved",
     title: "Draft email now writes the email for you",

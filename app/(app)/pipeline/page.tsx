@@ -2,7 +2,7 @@ import { Header } from "@/components/header";
 import { Label, Button } from "@/components/ui";
 import { PipelineBoard } from "@/components/pipeline-board";
 import { prisma } from "@/lib/prisma";
-import { formatCAD, daysSince } from "@/lib/format";
+import { formatCAD, stageAgeTier } from "@/lib/format";
 import { Filter } from "lucide-react";
 
 export default async function PipelinePage() {
@@ -13,7 +13,7 @@ export default async function PipelinePage() {
 
   const openDeals = deals.filter((d) => d.stage !== "signed");
   const totalValue = openDeals.reduce((s, d) => s + d.valueEstimate, 0);
-  const staleCount = openDeals.filter((d) => daysSince(d.lastTouchAt) > 30).length;
+  const staleCount = openDeals.filter((d) => stageAgeTier(d.stageEnteredAt) === "stale").length;
 
   return (
     <>
@@ -43,7 +43,7 @@ export default async function PipelinePage() {
           <span className="mono text-[24px] text-bone tabular-nums">{openDeals.length}</span>
         </div>
         <div className="flex flex-col gap-1">
-          <Label>— Stale (30d+)</Label>
+          <Label>— Stale (28d+ in stage)</Label>
           <span className="mono text-[24px] text-flag-red tabular-nums">{staleCount}</span>
         </div>
       </div>

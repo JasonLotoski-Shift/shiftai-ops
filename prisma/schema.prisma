@@ -203,6 +203,9 @@ model Deal {
   industry        Industry
   closeTargetDate DateTime
   lastTouchAt     DateTime
+  // When the deal entered its CURRENT stage — drives the board's aging colors
+  // (green < 14d, orange < 28d, red beyond). Reset on every stage move.
+  stageEnteredAt  DateTime  @default(now())
   notes           String?
 
   contact   Contact @relation(fields: [contactId], references: [id])

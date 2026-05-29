@@ -19,3 +19,16 @@ export function daysSince(d: string | Date) {
   const ms = Date.now() - date.getTime();
   return Math.floor(ms / (1000 * 60 * 60 * 24));
 }
+
+// Pipeline staleness: a deal turns a color the longer it sits in one stage.
+// Steps every STAGE_AGE_STEP_DAYS — green (fresh) → orange (warming) → red (stale).
+export const STAGE_AGE_STEP_DAYS = 14;
+
+export type StageAgeTier = "fresh" | "warming" | "stale";
+
+export function stageAgeTier(stageEnteredAt: string | Date): StageAgeTier {
+  const days = daysSince(stageEnteredAt);
+  if (days < STAGE_AGE_STEP_DAYS) return "fresh"; // 0–13d
+  if (days < STAGE_AGE_STEP_DAYS * 2) return "warming"; // 14–27d
+  return "stale"; // 28d+
+}

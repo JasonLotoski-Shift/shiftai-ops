@@ -173,11 +173,11 @@ Not "chat plus a separate log." One timeline of timestamped events, rendered in 
 - On drop → `updateDealStage(dealId, newStage)` server action → `writeAudit` + `writeActivity` (feeds the activity lane).
 - On successful drop → **next-task modal**: "Acme moved to Negotiation. Action the next task?" with (a) a stage-suggested next action, (b) a context textarea. Confirming creates a `Task` (with context) or kicks off the matching Quick Action.
 
-#### B3b — Pipeline card aging (visual staleness) — *replaces the dropped "Re-engage stale" action*
-Each deal card carries a color by **time in its current stage**: green → orange → red, stepping every **14 days without movement**. New deal = green; 14 days unmoved → orange; 28+ → red. The team sees the stall on the board and acts — no agent chasing it.
-- Add a `stageEnteredAt` timestamp to `Deal`: set on create, **reset whenever the stage changes** (`updateDealStage` from B3).
-- Pure render after that: color derived from `daysSince(stageEnteredAt)` (already in `lib/format`). No new writes beyond the timestamp.
-- Thresholds (14/28d) as named constants so they're easy to tune.
+#### B3b — Pipeline card aging (visual staleness) — ✅ done 2026-05-29 — *replaces the dropped "Re-engage stale" action*
+Each deal card carries a left-accent color by **time in its current stage**: green → orange → red, stepping every **14 days without movement**. New/just-moved deal = green; 14d → orange; 28d+ → red. The team sees the stall on the board and acts — no agent chasing it.
+- `Deal.stageEnteredAt` (migration `deal_stage_entered_at`): set on create, **reset on every stage change** (`updateDealStage` + convert-deal). Existing rows backfilled from `lastTouchAt`.
+- `stageAgeTier()` + `STAGE_AGE_STEP_DAYS` (14) in `lib/format` — thresholds as named constants. Cards/`text-signal-*` colors via two theme tokens (`signal-fresh`/`signal-warming`, dark+light) + `flag-red`. Optimistic move flips a card to green instantly.
+- Pipeline "Stale" summary stat now counts stale-in-stage (28d+).
 
 #### B4 — Messaging (channels + DMs + polling)
 - New models:
