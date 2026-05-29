@@ -24,6 +24,54 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-05-29",
+    tag: "new",
+    title: "Add a deal to the pipeline",
+    detail: "Use New deal on the Pipeline page to put a lead in the funnel: search for the contact, set the stage, value, and target close, and it lands on the board. New to a lead? Add the contact first, then add the deal.",
+  },
+  {
+    date: "2026-05-29",
+    tag: "fixed",
+    title: "The pipeline board fits your screen",
+    detail: "The stage columns now stretch to fill a wide window and shrink to stay readable on a narrow one, so Discovery through Signed all stay in view instead of getting cut off.",
+  },
+  {
+    date: "2026-05-29",
+    tag: "new",
+    title: "Meeting ingest — notes become records",
+    detail: "Under Meeting ingest, drop in a notes file or paste a transcript. Claude pulls out a summary, action items, and facts about the people and company, and holds them for your review. Nothing is written until you approve it, item by item. (Fireflies auto-import plugs into this same queue once it's connected.)",
+  },
+  {
+    date: "2026-05-29",
+    tag: "new",
+    title: "Message the team in the tool",
+    detail: "A new Messages area with firm channels (#general, #pipeline, #deals) and direct messages. Assign someone a task and it shows up in your chat with them as a card you can tick off — the same task, in one place.",
+  },
+  {
+    date: "2026-05-29",
+    tag: "new",
+    title: "Agents tab",
+    detail: "Draft what an agent should do — its goal and key tasks — before it's built. The Live skills view shows exactly how each AI action thinks: the real instructions behind every Quick Action, in plain sight.",
+  },
+  {
+    date: "2026-05-29",
+    tag: "new",
+    title: "Add a contact in seconds",
+    detail: "A new Add contact button on the Contacts page (and from the dashboard) captures a new person fast — name, company, who's leading the relationship — and drops you straight onto their record.",
+  },
+  {
+    date: "2026-05-29",
+    tag: "improved",
+    title: "AI enrich reads the history, never guesses",
+    detail: "AI enrich on a contact now reads their logged calls and emails and proposes facts to add — persona, how they communicate, key facts — for you to approve. It only uses what's actually been logged; it won't invent anything.",
+  },
+  {
+    date: "2026-05-29",
+    tag: "improved",
+    title: "Fresh start on real data",
+    detail: "The sample data is cleared — the tool is now running on the real firm. Your pipeline, contacts, and clients start from a clean slate, so what you see is real.",
+  },
+  {
+    date: "2026-05-29",
     tag: "improved",
     title: "Quick Actions launch from the dashboard",
     detail: "The dashboard Quick Actions now work end-to-end — click one, pick the contact, deal, or client, and the real action opens on that record. No more placeholder.",
