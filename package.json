@@ -8,10 +8,12 @@
     "build": "next build",
     "start": "next start -p 3030",
     "lint": "next lint",
+    "mcp": "tsx mcp/server.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "clsx": "^2.1.1",
