@@ -13,6 +13,7 @@ import {
   Settings,
   Bot,
   BookOpen,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sigil } from "@/components/wordmark";
@@ -27,6 +28,7 @@ const nav = [
 ];
 
 const reference = [
+  { href: "/whats-new", label: "What's new", icon: Sparkles },
   { href: "/how-it-works", label: "How it works", icon: BookOpen },
 ];
 

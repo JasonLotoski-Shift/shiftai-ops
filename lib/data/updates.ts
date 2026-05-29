@@ -1,0 +1,61 @@
+// What's new — the ops tool changelog.
+//
+// Dev-authored. Add an entry here when a change actually matters to the
+// partners using the tool — a new thing they can do, something that got
+// better, or a fix they'd notice. Skip routine internal work.
+//
+// Keep entries plain English and short: one headline, one optional line of
+// detail. No jargon. Newest first (the page sorts by date, but keep this
+// list tidy by adding to the top).
+
+export type UpdateTag = "new" | "improved" | "fixed";
+
+export type Update = {
+  /** ISO date "YYYY-MM-DD" — when it shipped. */
+  date: string;
+  /** What kind of change it is. */
+  tag: UpdateTag;
+  /** Short plain-English headline, e.g. "Pipeline is now drag-and-drop". */
+  title: string;
+  /** Optional one line of extra context. Keep it simple. */
+  detail?: string;
+};
+
+export const updates: Update[] = [
+  {
+    date: "2026-05-28",
+    tag: "new",
+    title: "What's new page",
+    detail: "This page. A running, plain-English log of changes to the tool that matter to you.",
+  },
+  {
+    date: "2026-05-28",
+    tag: "improved",
+    title: "Dashboard feed items now click through",
+    detail: "Activity rows link straight to the deal, project, or invoice they're about.",
+  },
+  {
+    date: "2026-05-27",
+    tag: "new",
+    title: "How it works reference",
+    detail: "A walkthrough of how the ops tool is put together, under Reference in the sidebar.",
+  },
+  {
+    date: "2026-05-27",
+    tag: "new",
+    title: "Draft an email from a contact",
+    detail: "Quick Action drafts the email, saves it, and logs the interaction — all in one step.",
+  },
+  {
+    date: "2026-05-26",
+    tag: "new",
+    title: "Log hours from anywhere",
+    detail: "The Log hours button records time against a project and keeps a full audit trail.",
+  },
+  {
+    date: "2026-05-26",
+    tag: "new",
+    title: "Convert a deal to a client",
+    detail: "Closing a deal creates the Drive folder, the client, and the project in one move.",
+  },
+];
