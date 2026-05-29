@@ -1,22 +1,37 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Label, Badge, Card } from "@/components/ui";
+import { AddContact } from "@/components/add-contact";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { daysSince } from "@/lib/format";
 import { industryLabels } from "@/lib/data/seed";
 
 export default async function ContactsPage() {
-  const contacts = await prisma.contact.findMany({
-    include: { partnerLead: true },
-    orderBy: { lastTouchAt: "desc" },
-  });
+  const [contacts, partners, session] = await Promise.all([
+    prisma.contact.findMany({
+      include: { partnerLead: true },
+      orderBy: { lastTouchAt: "desc" },
+    }),
+    prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    auth(),
+  ]);
 
   const industryCount = new Set(contacts.map((c) => c.industry)).size;
   const coldCount = contacts.filter((c) => daysSince(c.lastTouchAt) > 30).length;
 
   return (
     <>
-      <Header eyebrow="People · CRM" title="Contacts." />
+      <Header
+        eyebrow="People · CRM"
+        title="Contacts."
+        actions={
+          <Suspense fallback={null}>
+            <AddContact partners={partners} defaultPartnerId={session?.user?.partnerId} />
+          </Suspense>
+        }
+      />
 
       <div className="px-8 py-6 border-b border-graphite flex items-center gap-8">
         <div className="flex flex-col gap-1">

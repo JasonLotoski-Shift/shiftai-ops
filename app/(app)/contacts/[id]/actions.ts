@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, folderIdFromUrl } from "@/lib/drive";
-import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { formatCAD, formatDate } from "@/lib/format";
@@ -478,5 +478,267 @@ export async function sendEmail(
   revalidatePath(`/contacts/${contactId}`);
   if (scope.clientId) revalidatePath(`/clients/${scope.clientId}`);
   return { ...result, driveUrl: webViewLink };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// AI enrich — the "Run an action" / "AI enrich" Quick Action.
+//
+// Two-step, propose-then-apply (the firm's non-destructive merge pattern):
+//   generateEnrichment() reads the interaction log and PROPOSES additions
+//   (returns structured items + conflicts — writes nothing).
+//   applyEnrichment() takes the partner-approved additions and merges them
+//   append-only into the Contact record (never overwrites an existing
+//   single-value field; only appends new list items), then audits.
+//
+// Strictly log-based: Claude infers only from the record + logged history.
+// No web access, no invented facts (enforced by the enrich-contact skill).
+// ──────────────────────────────────────────────────────────────────────
+
+// Fields the enrich-contact skill is allowed to touch. Split by shape so the
+// merge knows append (lists) vs set-if-empty (scalars).
+const ENRICH_LIST_FIELDS = ["keyFacts", "hobbies", "networkAffiliations"] as const;
+const ENRICH_SCALAR_FIELDS = ["persona", "communicationStyle", "background"] as const;
+type EnrichListField = (typeof ENRICH_LIST_FIELDS)[number];
+type EnrichScalarField = (typeof ENRICH_SCALAR_FIELDS)[number];
+type EnrichField = EnrichListField | EnrichScalarField;
+
+export type EnrichAddition = { field: EnrichField; value: string };
+export type EnrichConflict = {
+  field: EnrichScalarField;
+  existing: string;
+  proposed: string;
+  note?: string;
+};
+
+const ALL_ENRICH_FIELDS: string[] = [...ENRICH_LIST_FIELDS, ...ENRICH_SCALAR_FIELDS];
+
+function isEnrichField(f: unknown): f is EnrichField {
+  return typeof f === "string" && ALL_ENRICH_FIELDS.includes(f);
+}
+
+export async function generateEnrichment(
+  contactId: string,
+): Promise<{ additions: EnrichAddition[]; conflicts: EnrichConflict[] }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+
+  const contact = await prisma.contact.findUnique({
+    where: { id: contactId },
+    select: {
+      name: true,
+      title: true,
+      company: true,
+      industry: true,
+      notes: true,
+      persona: true,
+      communicationStyle: true,
+      background: true,
+      keyFacts: true,
+      hobbies: true,
+      networkAffiliations: true,
+      interactions: {
+        orderBy: { date: "desc" },
+        take: 20,
+        select: { type: true, date: true, summary: true },
+      },
+    },
+  });
+  if (!contact) throw new Error("Contact not found");
+
+  if (contact.interactions.length === 0) {
+    // Nothing to infer from — be honest rather than invent.
+    return { additions: [], conflicts: [] };
+  }
+
+  const ctx: string[] = [
+    "## Contact record (existing)",
+    `Name: ${contact.name}`,
+    `Title: ${contact.title}`,
+    `Company: ${contact.company}`,
+    `Industry: ${contact.industry}`,
+    `Persona: ${contact.persona || "(empty)"}`,
+    `Communication style: ${contact.communicationStyle || "(empty)"}`,
+    `Background: ${contact.background || "(empty)"}`,
+    `Key facts: ${contact.keyFacts.length ? contact.keyFacts.join("; ") : "(none)"}`,
+    `Hobbies: ${contact.hobbies.length ? contact.hobbies.join("; ") : "(none)"}`,
+    `Network affiliations: ${contact.networkAffiliations.length ? contact.networkAffiliations.join("; ") : "(none)"}`,
+    `Notes: ${contact.notes || "(none)"}`,
+    "",
+    "## Logged interactions (newest first)",
+  ];
+  for (const i of contact.interactions) {
+    ctx.push(`- ${formatDate(i.date)} · ${i.type.replace("_", "-")} — ${i.summary}`);
+  }
+
+  const raw = await generate({
+    skill: "enrich-contact",
+    context: ctx.join("\n"),
+    intake:
+      "Propose enrichment additions for this contact, inferring ONLY from the record and logged interactions above. Return the JSON object exactly as specified.",
+  });
+
+  // Parse the JSON object. Be tolerant of stray prose / code fences around it.
+  const parsed = parseEnrichmentJSON(raw);
+  return parsed;
+}
+
+function parseEnrichmentJSON(raw: string): {
+  additions: EnrichAddition[];
+  conflicts: EnrichConflict[];
+} {
+  let text = raw.trim();
+  // Strip a ```json fence if the model added one despite instructions.
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  // Otherwise slice to the outermost braces.
+  if (!text.startsWith("{")) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end !== -1) text = text.slice(start, end + 1);
+  }
+
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    throw new Error("Enrichment returned malformed output — try again.");
+  }
+  const o = obj as { additions?: unknown; conflicts?: unknown };
+
+  const additions: EnrichAddition[] = Array.isArray(o.additions)
+    ? o.additions
+        .filter(
+          (a): a is { field: EnrichField; value: string } =>
+            !!a &&
+            typeof a === "object" &&
+            isEnrichField((a as { field?: unknown }).field) &&
+            typeof (a as { value?: unknown }).value === "string" &&
+            (a as { value: string }).value.trim().length > 0,
+        )
+        .map((a) => ({ field: a.field, value: a.value.trim() }))
+    : [];
+
+  const isScalarField = (f: unknown): f is EnrichScalarField =>
+    typeof f === "string" && (ENRICH_SCALAR_FIELDS as readonly string[]).includes(f);
+
+  const conflicts: EnrichConflict[] = Array.isArray(o.conflicts)
+    ? o.conflicts
+        .filter(
+          (c): c is EnrichConflict =>
+            !!c &&
+            typeof c === "object" &&
+            isScalarField((c as { field?: unknown }).field) &&
+            typeof (c as { existing?: unknown }).existing === "string" &&
+            typeof (c as { proposed?: unknown }).proposed === "string",
+        )
+        .map((c) => ({
+          field: c.field,
+          existing: c.existing,
+          proposed: c.proposed,
+          note: typeof c.note === "string" ? c.note : undefined,
+        }))
+    : [];
+
+  return { additions, conflicts };
+}
+
+export async function applyEnrichment(
+  contactId: string,
+  additions: EnrichAddition[],
+) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+
+  const clean = (additions ?? []).filter((a) => isEnrichField(a?.field) && a.value?.trim());
+  if (clean.length === 0) throw new Error("No additions to apply");
+
+  const contact = await prisma.contact.findUnique({
+    where: { id: contactId },
+    select: {
+      name: true,
+      persona: true,
+      communicationStyle: true,
+      background: true,
+      keyFacts: true,
+      hobbies: true,
+      networkAffiliations: true,
+    },
+  });
+  if (!contact) throw new Error("Contact not found");
+
+  // Build the non-destructive update: append new list items; set scalar
+  // fields ONLY if currently empty (never overwrite — that's a conflict the
+  // partner resolves by hand).
+  const data: Record<string, unknown> = {};
+  const lists: Record<EnrichListField, string[]> = {
+    keyFacts: [...contact.keyFacts],
+    hobbies: [...contact.hobbies],
+    networkAffiliations: [...contact.networkAffiliations],
+  };
+  const applied: EnrichAddition[] = [];
+  const skipped: EnrichAddition[] = [];
+
+  for (const a of clean) {
+    if ((ENRICH_LIST_FIELDS as readonly string[]).includes(a.field)) {
+      const f = a.field as EnrichListField;
+      const exists = lists[f].some((v) => v.toLowerCase() === a.value.toLowerCase());
+      if (!exists) {
+        lists[f].push(a.value);
+        applied.push(a);
+      } else {
+        skipped.push(a);
+      }
+    } else {
+      const f = a.field as EnrichScalarField;
+      const current = contact[f];
+      if (!current || !current.trim()) {
+        data[f] = a.value;
+        applied.push(a);
+      } else {
+        // Already set — don't overwrite. Partner resolves conflicts manually.
+        skipped.push(a);
+      }
+    }
+  }
+
+  for (const f of ENRICH_LIST_FIELDS) {
+    if (lists[f].length !== contact[f].length) data[f] = lists[f];
+  }
+
+  if (applied.length === 0) {
+    return { applied: 0, skipped: skipped.length };
+  }
+
+  data.enrichedAt = new Date();
+  // The act of enriching is itself an AI surface, attributed to the skill.
+  const aiActor = agentActor("enrich-contact");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.contact.update({ where: { id: contactId }, data });
+
+    await writeAudit(tx, {
+      actor: aiActor,
+      action: "update.contact.enrich",
+      targetType: "Contact",
+      targetId: contactId,
+      changes: {
+        approvedBy: partnerLabel,
+        applied: applied.map((a) => ({ field: a.field, value: a.value })),
+        skipped: skipped.length,
+      },
+    });
+
+    await writeActivity(tx, {
+      actor: aiActor,
+      type: "ai",
+      target: contact.name,
+      detail: `Enriched record — ${applied.length} fact(s) added (approved by ${partnerLabel.split(" ")[0]})`,
+      link: `/contacts/${contactId}`,
+    });
+  });
+
+  revalidatePath(`/contacts/${contactId}`);
+  return { applied: applied.length, skipped: skipped.length };
 }
 

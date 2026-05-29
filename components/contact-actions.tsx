@@ -10,13 +10,21 @@ import {
   Sparkles,
   ShieldAlert,
   Check,
-  Plus,
 } from "lucide-react";
 import { Button, Label, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { ContactModel as Contact } from "@/lib/generated/prisma/models";
 import { interactionLabels } from "@/lib/data/seed";
-import { generateEmailDraft, logInteraction, saveEmailDraft, sendEmail } from "@/app/(app)/contacts/[id]/actions";
+import {
+  generateEmailDraft,
+  logInteraction,
+  saveEmailDraft,
+  sendEmail,
+  generateEnrichment,
+  applyEnrichment,
+  type EnrichAddition,
+  type EnrichConflict,
+} from "@/app/(app)/contacts/[id]/actions";
 
 type ActionKey = "email" | "log" | "search" | "enrich";
 
@@ -31,11 +39,13 @@ export function ContactActions({
 }) {
   const [open, setOpen] = useState<ActionKey | null>(null);
 
-  // Auto-open the email draft when launched from the dashboard Quick Action
-  // (which routes here with ?qa=email after the contact is picked).
+  // Auto-open the matching modal when launched from a dashboard Quick Action
+  // (which routes here with ?qa=email / ?qa=enrich after the contact is picked).
   const searchParams = useSearchParams();
   useEffect(() => {
-    if (searchParams.get("qa") === "email") setOpen("email");
+    const qa = searchParams.get("qa");
+    if (qa === "email") setOpen("email");
+    else if (qa === "enrich") setOpen("enrich");
   }, [searchParams]);
 
   return (
@@ -386,42 +396,109 @@ function LogInteractionModal({ contact, onClose }: { contact: Contact; onClose: 
 }
 
 /* ──────────────────────────────────────────────────────────────────────
-   Web search + AI enrich — both end in a non-destructive MERGE review.
-   New facts are ADDED; nothing existing is silently overwritten. Anything that
-   conflicts with a known fact is flagged for the partner to resolve.
+   AI enrich — non-destructive MERGE review, grounded in the interaction log.
+   Claude reads ONLY the record + logged history (no web), proposes additions,
+   and the partner approves. New list facts are ADDED; existing single-value
+   fields are never overwritten — divergences come back as conflicts to resolve.
+
+   Web search mode is not wired yet (no server-side web access) — it shows an
+   honest "coming soon" rather than fabricating facts (no-hallucination rule).
    ────────────────────────────────────────────────────────────────────── */
 
-function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "search" | "ai"; onClose: () => void }) {
-  const [phase, setPhase] = useState<"idle" | "running" | "results" | "applied">("idle");
+const ENRICH_FIELD_LABELS: Record<string, string> = {
+  persona: "Persona",
+  communicationStyle: "Communication style",
+  background: "Background",
+  keyFacts: "Key facts",
+  hobbies: "Hobbies",
+  networkAffiliations: "Network affiliations",
+};
 
+function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "search" | "ai"; onClose: () => void }) {
   const isSearch = mode === "search";
   const title = isSearch ? `Web search · ${contact.company}` : `AI enrich · ${contact.name}`;
   const Icon = isSearch ? Globe : Sparkles;
-  const sourceLine = isSearch
-    ? "Searches the public web (news, filings, company site, professional profiles) and proposes additions."
-    : "Reads this contact's communications log and proposes additions to the record.";
 
-  const additions = isSearch
-    ? [
-        { field: "Background", value: `Public profile confirms 20+ yrs in ${contact.industry}; named to a regional industry board in 2024.` },
-        { field: "Network affiliations", value: "Industry association membership (verified on association directory)." },
-        { field: "Key facts", value: "Company referenced an ownership-succession plan in a recent trade-press interview." },
-      ]
-    : [
-        { field: "Key facts", value: "Wants success measured concretely (their words across two logged calls) — surface metrics early." },
-        { field: "Communication style", value: "Prefers short calls + bullet recaps over long email (pattern across logged interactions)." },
-        { field: "Persona", value: "Proof-driven operator — asks to see the build run before committing." },
-      ];
+  const [phase, setPhase] = useState<"idle" | "results" | "applied">("idle");
+  const [additions, setAdditions] = useState<EnrichAddition[]>([]);
+  const [conflicts, setConflicts] = useState<EnrichConflict[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [appliedCount, setAppliedCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [isRunning, startRun] = useTransition();
+  const [isApplying, startApply] = useTransition();
 
-  const conflicts = isSearch
-    ? [{ field: "Title", existing: contact.title, found: "Chief Operating Officer (long form on company site)" }]
-    : [];
+  function runEnrichment() {
+    setError(null);
+    startRun(async () => {
+      try {
+        const res = await generateEnrichment(contact.id);
+        setAdditions(res.additions);
+        setConflicts(res.conflicts);
+        setSelected(new Set(res.additions.map((_, i) => i))); // all checked by default
+        setPhase("results");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Enrichment failed");
+      }
+    });
+  }
+
+  function toggle(i: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
+  function apply() {
+    setError(null);
+    const chosen = additions.filter((_, i) => selected.has(i));
+    startApply(async () => {
+      try {
+        const res = await applyEnrichment(contact.id, chosen);
+        setAppliedCount(res.applied);
+        setPhase("applied");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to apply");
+      }
+    });
+  }
+
+  // Web search: honest not-yet-wired state — never fabricate facts.
+  if (isSearch) {
+    return (
+      <Modal icon={<Icon size={14} strokeWidth={1.5} className="text-track-gold" />} title={title} onClose={onClose} wide>
+        <div className="px-5 py-6 flex flex-col gap-4">
+          <p className="text-[13px] text-bone-dim leading-relaxed">
+            Web-search enrichment isn&apos;t wired up yet — the ops tool has no server-side web access today, and
+            inventing facts about {contact.company} would break the no-hallucination rule.
+          </p>
+          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen">
+            <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
+            <span className="text-[12px] text-bone-dim">
+              When connected, it will use the same <span className="text-bone">propose → approve → merge</span> flow as AI enrich —
+              nothing written without your sign-off. For now, use <span className="text-bone">AI enrich</span> (grounded in the
+              logged interactions).
+            </span>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal icon={<Icon size={14} strokeWidth={1.5} className="text-track-gold" />} title={title} onClose={onClose} wide>
       {phase === "idle" && (
         <div className="px-5 py-6 flex flex-col gap-4">
-          <p className="text-[13px] text-bone-dim leading-relaxed">{sourceLine}</p>
+          <p className="text-[13px] text-bone-dim leading-relaxed">
+            Reads {contact.name.split(" ")[0]}&apos;s record and logged interactions, then proposes additions — persona,
+            communication style, key facts, background. Grounded only in what&apos;s logged; nothing invented.
+          </p>
           <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
             <span className="text-[12px] text-bone-dim">
@@ -429,76 +506,108 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
               never overwritten, and anything that conflicts is flagged for you to resolve.
             </span>
           </div>
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+              <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+              <span className="text-[12px] text-bone-dim">{error}</span>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={() => { setPhase("running"); setTimeout(() => setPhase("results"), 1100); }}>
-              {isSearch ? "Run web search" : "Run enrichment"}
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={isRunning}>Cancel</Button>
+            <Button variant="primary" size="sm" onClick={runEnrichment} disabled={isRunning}>
+              {isRunning ? "Reading log…" : "Run enrichment"}
             </Button>
           </div>
         </div>
       )}
 
-      {phase === "running" && (
-        <div className="px-5 py-14 text-center flex flex-col items-center gap-3">
-          <Icon size={22} strokeWidth={1.5} className="text-track-gold animate-pulse" />
-          <span className="label">{isSearch ? "Searching the web…" : "Reading communications log…"}</span>
+      {phase === "results" && (
+        <div className="px-5 py-5 flex flex-col gap-5">
+          {additions.length === 0 && conflicts.length === 0 ? (
+            <p className="text-[13px] text-bone-dim leading-relaxed">
+              Nothing new to add — the logged interactions don&apos;t support any additions beyond what&apos;s already on the record.
+              That&apos;s the correct, honest result for a thin log.
+            </p>
+          ) : (
+            <>
+              {additions.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <Label gold>— Proposed additions ({additions.length}) · check what to keep</Label>
+                  <div className="border border-graphite">
+                    {additions.map((a, i) => (
+                      <label
+                        key={i}
+                        className={`flex items-start gap-3 px-4 py-3 cursor-pointer ${i < additions.length - 1 ? "border-b border-graphite" : ""} ${selected.has(i) ? "" : "opacity-50"}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected.has(i)}
+                          onChange={() => toggle(i)}
+                          className="mt-1 accent-track-gold"
+                        />
+                        <div className="min-w-0">
+                          <Label>{ENRICH_FIELD_LABELS[a.field] ?? a.field}</Label>
+                          <p className="text-[13px] text-bone mt-0.5 leading-snug">{a.value}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {conflicts.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <Label>— Conflicts · review ({conflicts.length})</Label>
+                  {conflicts.map((c, i) => (
+                    <div key={i} className="border border-flag-red/40 bg-flag-red/5 px-4 py-3 flex flex-col gap-2">
+                      <Label>{ENRICH_FIELD_LABELS[c.field] ?? c.field}</Label>
+                      <div className="grid grid-cols-2 gap-3 text-[13px]">
+                        <div className="flex flex-col gap-1">
+                          <span className="label text-[9px]">Keep (current)</span>
+                          <span className="text-bone">{c.existing}</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="label text-[9px]">Proposed</span>
+                          <span className="text-bone-dim">{c.proposed}</span>
+                        </div>
+                      </div>
+                      {c.note && <span className="text-[11px] text-bone-mute">{c.note}</span>}
+                      <span className="text-[11px] text-bone-mute">Not applied — edit the record by hand if you want this.</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+              <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+              <span className="text-[12px] text-bone-dim">{error}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={isApplying}>Discard</Button>
+            {additions.length > 0 && (
+              <Button variant="primary" size="sm" onClick={apply} disabled={isApplying || selected.size === 0}>
+                {isApplying ? "Merging…" : `Add ${selected.size} (keep existing)`}
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
-      {(phase === "results" || phase === "applied") && (
-        <div className="px-5 py-5 flex flex-col gap-5">
-          {/* Proposed additions */}
-          <div className="flex flex-col gap-2">
-            <Label gold>— Proposed additions ({additions.length})</Label>
-            <div className="border border-graphite">
-              {additions.map((a, i) => (
-                <div key={i} className={`flex items-start gap-3 px-4 py-3 ${i < additions.length - 1 ? "border-b border-graphite" : ""}`}>
-                  <Plus size={13} strokeWidth={2} className="text-diagnostic-steel shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <Label>{a.field}</Label>
-                    <p className="text-[13px] text-bone mt-0.5 leading-snug">{a.value}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {phase === "applied" && (
+        <div className="px-5 py-12 text-center">
+          <div className="display-md text-track-gold mb-2 inline-block">MERGED</div>
+          <p className="text-[13px] text-bone-dim flex items-center justify-center gap-2">
+            <Check size={14} strokeWidth={2} className="text-diagnostic-steel" />
+            {appliedCount} fact(s) added to {contact.name}&apos;s record.
+          </p>
+          <div className="pt-5">
+            <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
           </div>
-
-          {/* Conflicts — never auto-overwritten */}
-          {conflicts.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <Label>— Conflicts · review ({conflicts.length})</Label>
-              {conflicts.map((c, i) => (
-                <div key={i} className="border border-flag-red/40 bg-flag-red/5 px-4 py-3 flex flex-col gap-2">
-                  <Label>{c.field}</Label>
-                  <div className="grid grid-cols-2 gap-3 text-[13px]">
-                    <div className="flex flex-col gap-1">
-                      <span className="label text-[9px]">Keep (current)</span>
-                      <span className="text-bone">{c.existing}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="label text-[9px]">Found</span>
-                      <span className="text-bone-dim">{c.found}</span>
-                    </div>
-                  </div>
-                  <span className="text-[11px] text-bone-mute">Not applied — your call which wins.</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {phase === "applied" ? (
-            <div className="flex items-center gap-2 px-3 py-2 border border-diagnostic-steel/40 bg-diagnostic-steel/10">
-              <Check size={14} strokeWidth={2} className="text-diagnostic-steel" />
-              <span className="text-[13px] text-bone">Additions merged into the record. Conflicts left for review.</span>
-            </div>
-          ) : (
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={onClose}>Discard</Button>
-              <Button variant="primary" size="sm" onClick={() => setPhase("applied")}>
-                Add {additions.length} (keep existing)
-              </Button>
-            </div>
-          )}
         </div>
       )}
     </Modal>

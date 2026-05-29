@@ -26,16 +26,17 @@ import {
   X,
 } from "lucide-react";
 
-// Each tile picks a target record, then opens the real action on that record's
-// page via a ?qa=<action> param the detail page auto-opens. `soon` = not built
-// yet (Add contact, Run an action).
-type QAType = "contact" | "deal" | "client" | "soon";
+// Each tile either navigates straight to a route (e.g. Add contact opens a
+// create form) or picks a target record, then opens the real action on that
+// record's page via a ?qa=<action> param the detail page auto-opens.
+type QAType = "contact" | "deal" | "client" | "nav" | "soon";
 type QuickAction = {
   icon: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   label: string;
   hint: string;
   type: QAType;
   qa?: string; // query param the detail page reads to auto-open the modal
+  route?: string; // for type "nav" — navigate straight here
 };
 
 const quickActions: QuickAction[] = [
@@ -43,9 +44,9 @@ const quickActions: QuickAction[] = [
   { icon: FileText, label: "Draft proposal", hint: "Pick a deal — scope → proposal draft for review", type: "deal", qa: "proposal" },
   { icon: ClipboardList, label: "Draft client survey", hint: "Pick a client — a tailored survey from the engagement context", type: "client", qa: "survey" },
   { icon: NotebookPen, label: "Draft discussion doc", hint: "Pick a client — agenda for an upcoming conversation", type: "client", qa: "discussion" },
-  { icon: UserPlus, label: "Add contact", hint: "Capture an intro in under 30 seconds", type: "soon" },
+  { icon: UserPlus, label: "Add contact", hint: "Capture an intro in under 30 seconds", type: "nav", route: "/contacts?qa=add" },
   { icon: Upload, label: "Upload client files", hint: "Pick a client — drop in meeting notes (e.g. Fireflies), filed and logged", type: "client", qa: "upload" },
-  { icon: Sparkles, label: "Run an action", hint: "Enrich a contact, generate a brief, run a health check", type: "soon" },
+  { icon: Sparkles, label: "Run an action", hint: "Pick a contact — Claude enriches the record from its interaction log", type: "contact", qa: "enrich" },
 ];
 
 type ProjectWithClient = Project & { client: Client };
@@ -93,6 +94,10 @@ export function DashboardViews({
   function openPicker(a: QuickAction) {
     if (a.type === "soon") {
       setSoon(a.label);
+      return;
+    }
+    if (a.type === "nav" && a.route) {
+      router.push(a.route);
       return;
     }
     setSoon(null);
