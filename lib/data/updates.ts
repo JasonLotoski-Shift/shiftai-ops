@@ -25,6 +25,24 @@ export const updates: Update[] = [
   {
     date: "2026-05-28",
     tag: "new",
+    title: "Drag deals across the pipeline",
+    detail: "Move a deal between stages by dragging its card. When you drop it, the tool offers to set up the next task with a head start on the details.",
+  },
+  {
+    date: "2026-05-28",
+    tag: "new",
+    title: "Tasks have their own page",
+    detail: "Find everything to do under Tasks in the sidebar. Assign tasks to each other, and add context so anyone picking it up knows what it's for.",
+  },
+  {
+    date: "2026-05-28",
+    tag: "improved",
+    title: "The activity feed is live",
+    detail: "Logging hours, moving a deal, sending an email — it shows up on the dashboard as it happens, so the whole team sees the firm's pulse.",
+  },
+  {
+    date: "2026-05-28",
+    tag: "new",
     title: "What's new page",
     detail: "This page. A running, plain-English log of changes to the tool that matter to you.",
   },
