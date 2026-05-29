@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { findOrCreateDMChannel } from "@/lib/messaging";
 import type { TaskPriority } from "@/lib/generated/prisma/enums";
 
 const VALID_PRIORITIES: TaskPriority[] = ["high", "medium", "low"];
@@ -94,10 +95,26 @@ export async function createTask(input: {
       link: "/tasks",
     });
 
+    // Hand-off: post a system task-card message into the DM between the
+    // assigner and the assignee. One Task row, surfaced in chat + Tasks tab +
+    // feed. The card renders interactively (toggle done from the chat).
+    if (assignedById) {
+      const dmId = await findOrCreateDMChannel(tx, assignedById, owner.id);
+      await tx.message.create({
+        data: {
+          channelId: dmId,
+          authorId: null, // system message
+          body: `Assigned you a task: ${title}`,
+          taskId: created.id,
+        },
+      });
+    }
+
     return created;
   });
 
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  revalidatePath("/messages");
   return { id: task.id };
 }

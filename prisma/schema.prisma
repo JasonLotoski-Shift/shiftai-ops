@@ -114,6 +114,11 @@ enum AgentPlanStatus {
   done
 }
 
+enum ChannelKind {
+  channel
+  dm
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Partner — firm members. Doubles as the actor reference for owner /
 // lead fields. NextAuth tables will be added when SSO is wired —
@@ -135,6 +140,8 @@ model Partner {
   tasksOwned      Task[]    @relation("TaskOwner")
   tasksAssigned   Task[]    @relation("TaskAssignedBy")
   agentPlans      AgentPlan[] @relation("AgentPlanCreatedBy")
+  channelMemberships ChannelMember[]
+  messagesAuthored   Message[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -400,6 +407,10 @@ model Task {
   project   Project? @relation(fields: [projectId], references: [id])
   projectId String?
 
+  // Messages that reference this task render as inline task cards in chat.
+  // One Task row, surfaced in three places (chat card, Tasks tab, feed).
+  messages Message[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -502,6 +513,51 @@ model AgentPlan {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Messaging (B4) — the firm timeline's two interactive lanes (channels + DMs).
+// The third lane is the existing Activity feed. Real-time is short-interval
+// polling (getMessagesSince) — no new infra. A system Message (authorId null)
+// with a taskId set renders as an inline task card.
+// ──────────────────────────────────────────────────────────────────────
+
+model Channel {
+  id        String      @id @default(cuid())
+  kind      ChannelKind
+  name      String? // null for DMs (label derived from the members)
+  members   ChannelMember[]
+  messages  Message[]
+  createdAt DateTime    @default(now())
+
+  @@index([kind])
+}
+
+model ChannelMember {
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channelId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id])
+  partnerId  String
+  lastReadAt DateTime? // drives unread badges
+
+  @@id([channelId, partnerId])
+  @@index([partnerId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channelId String
+  // Partner FK; null = system message (e.g. a task-assignment card).
+  author    Partner? @relation(fields: [authorId], references: [id])
+  authorId  String?
+  body      String
+  // If set, render this message as an inline task card.
+  task      Task?    @relation(fields: [taskId], references: [id])
+  taskId    String?
+  createdAt DateTime @default(now())
+
+  @@index([channelId, createdAt])
 }
 
 model AuditLog {

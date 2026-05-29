@@ -1,0 +1,86 @@
+import { Header } from "@/components/header";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { ensureFirmChannels } from "@/lib/messaging";
+import { MessagesView, type Conversation } from "@/components/messages-view";
+
+export default async function MessagesPage() {
+  const session = await auth();
+  const partnerId = session?.user?.partnerId;
+  if (!partnerId) return null; // middleware gates this; defensive.
+
+  // Guarantee the firm channels exist + everyone's a member (idempotent).
+  await ensureFirmChannels();
+
+  const memberships = await prisma.channelMember.findMany({
+    where: { partnerId },
+    select: {
+      lastReadAt: true,
+      channel: {
+        select: {
+          id: true,
+          kind: true,
+          name: true,
+          createdAt: true,
+          members: { select: { partner: { select: { id: true, name: true, initials: true } } } },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { body: true, createdAt: true, taskId: true },
+          },
+        },
+      },
+    },
+  });
+
+  // Unread = messages newer than this member's lastReadAt.
+  const unreadCounts = await Promise.all(
+    memberships.map((m) =>
+      prisma.message.count({
+        where: {
+          channelId: m.channel.id,
+          ...(m.lastReadAt ? { createdAt: { gt: m.lastReadAt } } : {}),
+        },
+      }),
+    ),
+  );
+
+  const conversations: Conversation[] = memberships.map((m, i) => {
+    const ch = m.channel;
+    const last = ch.messages[0] ?? null;
+    const isDM = ch.kind === "dm";
+    const other = isDM
+      ? ch.members.map((mm) => mm.partner).find((p) => p.id !== partnerId)
+      : null;
+    return {
+      id: ch.id,
+      kind: ch.kind,
+      label: isDM ? other?.name ?? "Direct message" : `#${ch.name ?? "channel"}`,
+      initials: isDM ? other?.initials ?? "··" : null,
+      unread: unreadCounts[i],
+      lastTs: last?.createdAt.toISOString() ?? null,
+      lastPreview: last ? (last.taskId ? "📋 Task assigned" : last.body) : null,
+    };
+  });
+
+  // Sort: channels first (by name), then DMs by most-recent activity.
+  conversations.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === "channel" ? -1 : 1;
+    if (a.kind === "channel") return a.label.localeCompare(b.label);
+    return (b.lastTs ?? "").localeCompare(a.lastTs ?? "");
+  });
+
+  // Partners available to DM (everyone but me).
+  const partners = await prisma.partner.findMany({
+    where: { id: { not: partnerId } },
+    select: { id: true, name: true, initials: true },
+    orderBy: { name: "asc" },
+  });
+
+  return (
+    <>
+      <Header eyebrow="Firm · Messages" title="Messages." />
+      <MessagesView conversations={conversations} partners={partners} currentPartnerId={partnerId} />
+    </>
+  );
+}
