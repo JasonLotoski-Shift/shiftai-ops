@@ -25,7 +25,8 @@
 ### 1. DATABASE_URL split — different value on local vs Vercel (permanent)
 
 - **Local `.env`**: Supabase **Direct connection** (`postgresql://postgres:PWD@db.tqtpglnbotaguiirodou.supabase.co:5432/postgres`). Works because local has IPv4 to direct + Prisma migrations need direct.
-- **Vercel `DATABASE_URL`**: Supabase **Session pooler** (`postgresql://postgres.tqtpglnbotaguiirodou:PWD@aws-0-us-west-2.pooler.supabase.com:5432/postgres`). Required because Vercel functions have no IPv6 outbound (AWS Lambda limit) and Supabase free-tier direct is IPv6-only.
+- **Vercel `DATABASE_URL`**: Supabase **Transaction pooler** — same host, **port `6543`** (`postgresql://postgres.tqtpglnbotaguiirodou:PWD@aws-1-us-west-2.pooler.supabase.com:6543/postgres`). The pooler (not direct) is required because Vercel functions have no IPv6 outbound (AWS Lambda limit) and Supabase free-tier direct is IPv6-only. **Transaction mode (6543), NOT session mode (5432):** session mode gives each client a dedicated connection so total clients are capped at the pool size (15) — under serverless concurrency that exhausts instantly with `EMAXCONNSESSION: max clients reached in session mode`. Transaction mode returns connections per-statement and multiplexes ~200 clients over the 15 server connections. (Burned a prod outage on this 2026-05-28.)
+- **Pool is also capped in code:** [lib/prisma.ts](lib/prisma.ts) sets the pg pool `max: 5` + `idleTimeoutMillis: 10_000` so no single warm Lambda can hoard the pooler. Defense-in-depth on top of the mode choice — don't remove.
 - **Don't unify.** If migrations are ever run from Vercel CI (not currently), set `DIRECT_URL` env var alongside.
 
 ### 2. Auth.js cookie config MUST live in `auth.config.ts` (not `auth.ts`)

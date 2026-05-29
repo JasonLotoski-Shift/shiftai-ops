@@ -21,7 +21,19 @@ function makeClient() {
       "DATABASE_URL is not set. Check .env exists at the project root and the dev server was restarted after creating it.",
     );
   }
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+  // Cap the underlying pg pool per instance. On Vercel, each warm Lambda runs
+  // its own pool; pg's default max is 10, so two concurrent instances (20) blow
+  // past Supabase's pooler client limit. Keep max low and release idle clients
+  // quickly so connections free up between invocations. The Vercel DATABASE_URL
+  // MUST point at the transaction-mode pooler (port 6543), not session mode
+  // (5432) — see CLAUDE.md gotcha #1.
+  return new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: url,
+      max: 5,
+      idleTimeoutMillis: 10_000,
+    }),
+  });
 }
 
 export const prisma = globalForPrisma.prisma ?? makeClient();
