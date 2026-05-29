@@ -36,7 +36,7 @@ const reference = [
 
 const secondary = [
   { href: "/library", label: "Library", icon: Library, disabled: true },
-  { href: "/agents", label: "Agents", icon: Bot, disabled: true },
+  { href: "/agents", label: "Agents", icon: Bot, disabled: false },
   { href: "/settings", label: "Settings", icon: Settings, disabled: true },
 ];
 
@@ -115,20 +115,40 @@ export function Sidebar() {
         <ul>
           {secondary.map((item) => {
             const Icon = item.icon;
+            if (item.disabled) {
+              return (
+                <li key={item.href}>
+                  <div
+                    className={cn(
+                      "flex items-center justify-between gap-3 px-5 py-2.5 text-[13px]",
+                      "border-l-2 border-transparent text-bone-mute cursor-not-allowed",
+                    )}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Icon size={15} strokeWidth={1.5} />
+                      <span>{item.label}</span>
+                    </span>
+                    <span className="label text-[9px]">Soon</span>
+                  </div>
+                </li>
+              );
+            }
+            const active = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <li key={item.href}>
-                <div
+                <Link
+                  href={item.href}
                   className={cn(
-                    "flex items-center justify-between gap-3 px-5 py-2.5 text-[13px]",
-                    "border-l-2 border-transparent text-bone-mute cursor-not-allowed",
+                    "flex items-center gap-3 px-5 py-2.5 text-[13px] transition-colors",
+                    "border-l-2",
+                    active
+                      ? "bg-asphalt text-bone border-track-gold"
+                      : "text-bone-dim border-transparent hover:text-bone hover:bg-asphalt/60",
                   )}
                 >
-                  <span className="flex items-center gap-3">
-                    <Icon size={15} strokeWidth={1.5} />
-                    <span>{item.label}</span>
-                  </span>
-                  <span className="label text-[9px]">Soon</span>
-                </div>
+                  <Icon size={15} strokeWidth={1.5} />
+                  <span>{item.label}</span>
+                </Link>
               </li>
             );
           })}

@@ -107,6 +107,13 @@ enum ArtifactReviewStatus {
   archived
 }
 
+enum AgentPlanStatus {
+  idea
+  active
+  paused
+  done
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Partner — firm members. Doubles as the actor reference for owner /
 // lead fields. NextAuth tables will be added when SSO is wired —
@@ -127,6 +134,7 @@ model Partner {
   projectsConsult Project[] @relation("ProjectConsultants")
   tasksOwned      Task[]    @relation("TaskOwner")
   tasksAssigned   Task[]    @relation("TaskAssignedBy")
+  agentPlans      AgentPlan[] @relation("AgentPlanCreatedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -471,6 +479,30 @@ model Artifact {
 // Foundation for the AI activity audit acquirers will want (Phase 2C, §11).
 // Append-only by convention (no updatedAt; no UI delete path).
 // ──────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────
+// AgentPlan — Firm Agents tab (B5). A collaboration surface, NOT a deploy:
+// partners draft what an agent SHOULD do (goal + key tasks) before any
+// SKILL.md / scheduled run exists. Simple CRUD. The "live agents" half of
+// the tab reads the actual SKILL.md files off disk (no model needed).
+// ──────────────────────────────────────────────────────────────────────
+
+model AgentPlan {
+  id        String          @id @default(cuid())
+  name      String
+  goal      String
+  keyTasks  String[]
+  notes     String?
+  status    AgentPlanStatus @default(idea)
+
+  createdBy   Partner @relation("AgentPlanCreatedBy", fields: [createdById], references: [id])
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
 
 model AuditLog {
   id         String   @id @default(cuid())
