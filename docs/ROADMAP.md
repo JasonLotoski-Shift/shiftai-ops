@@ -3,7 +3,7 @@
 > **Status (2026-05-28):** Phases 1–3 shipped — live at `https://ops.shiftai.partners` with Google SSO, Prisma/Supabase persistence, all mutations, the tracking round-trip, the activity feed, and the Tasks surface. **The AI generation layer is not built yet** (see the reality check below). Two tracks run next: **Track A — the AI layer** (the generative spine → firm brain → skills → Quick Actions) and **Track B — the Firm Hub** (messaging, pipeline drag-and-drop, agents tab). They converge at **Phase 4 (MCP)** and **Phase 5 (agents)**.
 > **Parent:** [../../shiftai-firm/WorkspacePlan.md](../../shiftai-firm/WorkspacePlan.md) — firm-level operating architecture; the ops tool is Surface 1 (the spine).
 > **Stack & conventions:** [../CLAUDE.md](../CLAUDE.md) — production stack, gotchas, repo layout. Not duplicated here.
-> **Companions:** [update.md](../update.md) (active Firm-Hub build plan, Track B), [mcp-contract.md](mcp-contract.md) (Phase 4 interface), [agent-flow-design.md](agent-flow-design.md) (Phase 5 build queue).
+> **Companions:** [mcp-contract.md](mcp-contract.md) (Phase 4 interface), [agent-flow-design.md](agent-flow-design.md) (Phase 5 build queue).
 
 ---
 
@@ -137,14 +137,78 @@ Clone the `draft-email` persistence recipe, now with real generation wired throu
 
 ### Track B — the Firm Hub (between 3e and Phase 4) — ⏳ in progress
 
-Make the tool *come alive* for the three partners: one firm timeline, real tasks, a live pipeline, and a window into the agents. Full build plan and schema in **[update.md](../update.md)** (decisions of 2026-05-28: real-time = short-interval polling; data wipe on hold). Summary of the sequence and status:
+Make the tool *come alive* for the three partners: one firm timeline, real tasks, a live pipeline, and a window into the agents. **Decisions (Jason, 2026-05-28): real-time = short-interval polling; data wipe on hold.** Mostly *wiring*, not new foundations — the schema is most of the way there (`Activity` model exists but only the seed writes it; `Task` already has `owner`/`clientId`/`projectId` FKs; `AuditLog` captures every write; `Partner` is the Auth.js user table; the sidebar already has disabled "Agents/Settings" slots).
 
-- [x] **B1 — Activity feed wiring** *(done 2026-05-28).* `writeActivity()` in `lib/audit.ts` + `Activity.link` column (migration `activity_link_field`), wired into every feed-worthy mutation; dashboard feed rows click through.
-- [x] **B2 — Tasks surface** *(done 2026-05-28).* `Task.context` + `Task.assignedById` (migration `task_context_and_assignment`); new `/tasks` route + interactive view with inline create/assign; removed task list from the dashboard. *Deferred:* AI-suggested context (lands with A1/A4), task reassignment.
-- [ ] **B3 — Pipeline drag-and-drop + next-task pop-up** — dnd-kit board; on drop → `updateDealStage()` (+ audit + activity) → next-task modal (suggested action + context textarea).
-- [ ] **B4 — Messaging** — `Channel` / `ChannelMember` / `Message` models; channels + DMs; short-interval polling (3–5s); task cards = system `Message` with `taskId` rendered inline.
-- [ ] **B5 — Firm Agents tab** — `AgentPlan` model (collaboration, deploys nothing) + a read-only "live agents" view rendering each running `SKILL.md` so anyone sees how an agent thinks. Bridges to Phases 4/5.
-- [ ] **B6 — Data wipe** — on hold; guarded `prisma/wipe.ts` (preserves `Partner` rows), run deliberately when going live.
+#### Core idea — one firm timeline, three lanes
+
+Not "chat plus a separate log." One timeline of timestamped events, rendered in three lanes. A deal moving to "negotiation" is structurally the same as a partner posting a message — both are timestamped events. The activity feed is a read-only system author posting into the timeline. Render them in the same scroll, styled differently. That's the live pulse.
+
+| Lane | What | Backing model | Written by |
+|---|---|---|---|
+| **Channels** | Firm rooms (`#general`, `#pipeline`, `#deals`) | `Message` (channel-scoped) | Partners |
+| **Direct messages** | 1:1 between partners | `Message` (DM-scoped) | Partners + system (task cards) |
+| **Activity feed** | Auto "what happened" — deal moved, task done, action ran | `Activity` (exists) | The app, from mutations |
+
+#### B1 — Activity feed wiring — ✅ done 2026-05-28
+- `writeActivity()` helper alongside `writeAudit()`, called in the **same transaction** for feed-worthy events only (deal stage change · task assigned/completed · Quick Action ran · client created).
+- `Activity` extended with a single nullable `link` column (relative URL like `/pipeline/<id>`) so feed rows click through. Chose **one free-text `link`** over three FK columns to match the codebase's loose-coupling convention for log models (`Interaction.loggedBy`, `HoursEntry.loggedBy`, `Activity.actor` are all free-text) and to avoid back-relations + migration delete-ordering on three models.
+- Migration `activity_link_field`; wired into `toggleTaskDone` (completions only), `convertDeal`, `logHours`, `logInteraction`, `saveEmailDraft`, `sendEmail`, `markInvoiceSent`, `markInvoicePaid`. Dashboard feed rows click through when `link` is set. `lib/types.ts` kept in sync.
+- `AuditLog` stays the complete ledger (every write, due-diligence grade); `Activity` is the curated human feed. Same transaction → never drift.
+
+#### B2 — Tasks surface — ✅ done 2026-05-28
+- Schema: `Task.context`, `Task.assignedById` (+ named `TaskOwner`/`TaskAssignedBy` relations on `Partner`); migration `task_context_and_assignment`. Owner *is* the assignee.
+- New `/tasks` route ([app/(app)/tasks/page.tsx](../app/(app)/tasks/page.tsx)) + interactive client view ([components/tasks-views.tsx](../components/tasks-views.tsx)) with optimistic toggle + inline create/assign form (assignee dropdown, priority, due, related-to, context textarea with an "insert template" starter). `createTask` writes Task + AuditLog + Activity. Sidebar gains a **Tasks** item. Task list removed from the dashboard "Today" tab; `toggleTaskDone` revalidates `/tasks` too.
+- **Rule established: no task is a single button.** Every task gets a `context` field; every task form and (later) every Quick Action modal grows a context textarea. Forward-looking — when agents wire in via MCP (Phase 4), `Task.context` is the payload they read.
+- *Deferred:* AI-suggested context auto-pulled from related Client interactions (lands with Track A's `generate()` wiring); reassignment of an existing task (create-with-assignee covers the case for now).
+
+#### B3 — Pipeline drag-and-drop + next-task pop-up
+- Today `app/(app)/pipeline/page.tsx` renders stage columns as static `<Link>` cards (no DnD). Extract the board into a client component using **dnd-kit** (React 19 / Next 15-safe; `react-beautiful-dnd` is unmaintained).
+- On drop → `updateDealStage(dealId, newStage)` server action → `writeAudit` + `writeActivity` (feeds the activity lane).
+- On successful drop → **next-task modal**: "Acme moved to Negotiation. Action the next task?" with (a) a stage-suggested next action, (b) a context textarea. Confirming creates a `Task` (with context) or kicks off the matching Quick Action.
+
+#### B4 — Messaging (channels + DMs + polling)
+- New models:
+
+```prisma
+model Channel {
+  id        String   @id @default(cuid())
+  kind      ChannelKind        // channel | dm
+  name      String?            // null for DMs (derived from members)
+  members   ChannelMember[]
+  messages  Message[]
+  createdAt DateTime @default(now())
+}
+
+model ChannelMember {
+  channelId   String
+  partnerId   String
+  lastReadAt  DateTime?         // unread badges
+  @@id([channelId, partnerId])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  channelId  String
+  authorId   String?            // Partner FK; null = system message
+  body       String
+  taskId     String?            // if set → render as inline task card
+  createdAt  DateTime @default(now())
+  @@index([channelId, createdAt])
+}
+```
+
+- Clickable links = linkify at render time, not schema.
+- **Real-time = short-interval polling (3–5s)** — matches "semi-real-time" exactly. No new infra, no anon key on the client, no RLS. A `getMessagesSince(channelId, cursor)` server action on a `setInterval`. Supabase Realtime is the documented upgrade path the day polling feels laggy — it won't at three partners.
+- **Task assignment integration:** on assignment, post a **system `Message` with `taskId` set** into the DM channel between assigner and assignee → renders as an interactive task card ("task appears in the chat with that person" falls out for free). Toggling done anywhere (chat card or Tasks tab) flips the same row and posts a completion event to the feed. **One `Task` row, surfaced in three places** (chat card, Tasks tab, activity feed) — no duplication. (`Task.assignedById` shipped in B2.)
+
+#### B5 — Firm Agents tab
+- **Agent plans** (collaboration, deploys nothing): new `AgentPlan` model — `name`, `goal`, `keyTasks` (string[]), `notes`, `status`, `createdById`. Simple CRUD. Start with a notes field; add a per-plan channel only if threaded discussion is wanted.
+- **Live agents:** read-only view rendering the actual `SKILL.md` for each running skill/agent (server-side file read from `skills/<name>/`), so anyone sees how the agent thinks. Bridges to Phases 4/5 — scheduled-agent runs post into the activity feed too.
+
+#### B6 — Data wipe — on hold
+- Don't touch data yet. When ready, a guarded `prisma/wipe.ts` that truncates business tables but **preserves `Partner` rows** (SSO keeps working), with a typed confirmation. Run deliberately, not as part of feature work.
+
+**Build sequence** (each ships independently; later steps lean on earlier): B1 ✅ → B2 ✅ → B3 (needs B1+B2) → B4 (task cards need B2) → B5 (standalone) → B6 (on hold, run at go-live). ~4 shippable PRs remain.
 
 > Tracks A and B are independent and can interleave. B is mostly wiring on schema that already exists; A introduces the AI dependency.
 

@@ -24,6 +24,12 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-05-28",
+    tag: "improved",
+    title: "Draft email now writes the email for you",
+    detail: "The Draft email action reads the contact's record and recent history and writes the draft in the firm's voice. It never invents a price, date, or name — anything it's missing comes back flagged for you to fill, and a draft can't save or send until you do. Edit it however you like, then save or send.",
+  },
+  {
+    date: "2026-05-28",
     tag: "new",
     title: "Drag deals across the pipeline",
     detail: "Move a deal between stages by dragging its card. When you drop it, the tool offers to set up the next task with a head start on the details.",
