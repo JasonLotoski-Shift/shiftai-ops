@@ -25,6 +25,18 @@ export const updates: Update[] = [
   {
     date: "2026-05-29",
     tag: "new",
+    title: "Three new Quick Actions",
+    detail: "Alongside Draft email and Draft proposal, you can now Draft a client survey, Draft a discussion doc for an upcoming conversation, and Upload client files — drop in meeting notes (e.g. Fireflies) and they're filed to the client and logged.",
+  },
+  {
+    date: "2026-05-29",
+    tag: "improved",
+    title: "Invoices bill a single fixed fee",
+    detail: "Log hours is gone, and invoices now show one fixed-fee line item instead of hours and a rate — matching how the firm actually prices work.",
+  },
+  {
+    date: "2026-05-29",
+    tag: "new",
     title: "Pipeline cards show their age",
     detail: "A deal's card turns from green to orange to red the longer it sits in one stage — stepping about every two weeks. Drag it forward and it resets to green. The board now shows at a glance which deals have stalled.",
   },
