@@ -9,6 +9,7 @@
     "start": "next start -p 3030",
     "lint": "next lint",
     "mcp": "tsx mcp/server.ts",
+    "wipe": "tsx prisma/wipe.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
