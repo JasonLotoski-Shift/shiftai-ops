@@ -2,7 +2,7 @@
   "name": "shiftai-ops",
   "version": "1.0.0",
   "private": true,
-  "description": "Shift AI Partners — internal ops tool prototype (UI/UX, fake data)",
+  "description": "Shift AI Partners — internal ops tool (pipeline, clients, projects, hours, invoices + AI Quick Actions)",
   "scripts": {
     "dev": "next dev -p 3030",
     "build": "next build",

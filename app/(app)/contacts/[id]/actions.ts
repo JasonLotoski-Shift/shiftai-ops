@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, folderIdFromUrl } from "@/lib/drive";
-import { writeAudit, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import type { InteractionType } from "@/lib/generated/prisma/enums";
 
@@ -39,7 +39,7 @@ export async function logInteraction(
 
   const contact = await prisma.contact.findUnique({
     where: { id: contactId },
-    select: { id: true, lastTouchAt: true },
+    select: { id: true, name: true, lastTouchAt: true },
   });
   if (!contact) throw new Error("Contact not found");
 
@@ -81,6 +81,14 @@ export async function logInteraction(
         summaryLength: summary.length,
         advancedLastTouch: advanceTouch,
       },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "touch",
+      target: contact.name,
+      detail: summary.length > 120 ? summary.slice(0, 117) + "…" : summary,
+      link: `/contacts/${contactId}`,
     });
 
     return created;
@@ -251,6 +259,14 @@ export async function saveEmailDraft(
       },
     });
 
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: contact.name,
+      detail: "Drafted email — awaiting review",
+      link: `/contacts/${contactId}`,
+    });
+
     return created;
   });
 
@@ -330,6 +346,14 @@ export async function sendEmail(
         interactionId: interaction.id,
         advancedLastTouch: sentAt > contact.lastTouchAt,
       },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "touch",
+      target: contact.name,
+      detail: `Sent email — ${summary}`,
+      link: `/contacts/${contactId}`,
     });
 
     return { artifactId: artifact.id, interactionId: interaction.id };

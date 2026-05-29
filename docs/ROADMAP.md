@@ -1,166 +1,272 @@
 # Ops Tool — Roadmap
 
-> **Status:** Phase 1–2 shipped (prototype UI + working v1 on `https://ops.shiftai.partners`). Phase 3 (MCP + agents) is next.
+> **Status (2026-05-28):** Phases 1–3 shipped — live at `https://ops.shiftai.partners` with Google SSO, Prisma/Supabase persistence, all mutations, the tracking round-trip, the activity feed, and the Tasks surface. **The AI generation layer is not built yet** (see the reality check below). Two tracks run next: **Track A — the AI layer** (the generative spine → firm brain → skills → Quick Actions) and **Track B — the Firm Hub** (messaging, pipeline drag-and-drop, agents tab). They converge at **Phase 4 (MCP)** and **Phase 5 (agents)**.
 > **Parent:** [../../shiftai-firm/WorkspacePlan.md](../../shiftai-firm/WorkspacePlan.md) — firm-level operating architecture; the ops tool is Surface 1 (the spine).
-> **Stack & conventions:** [../CLAUDE.md](../CLAUDE.md) — current production stack, gotchas, and repo layout live there; this file does not duplicate.
-> **Companions in this folder:** [userstories.md](userstories.md), [features.md](features.md), [mcp-contract.md](mcp-contract.md), [agent-flow-design.md](agent-flow-design.md).
+> **Stack & conventions:** [../CLAUDE.md](../CLAUDE.md) — production stack, gotchas, repo layout. Not duplicated here.
+> **Companions:** [update.md](../update.md) (active Firm-Hub build plan, Track B), [mcp-contract.md](mcp-contract.md) (Phase 4 interface), [agent-flow-design.md](agent-flow-design.md) (Phase 5 build queue).
 
 ---
 
 ## Mission
 
-Shift AI's internal operating tool — the system of record for pipeline, clients, contracts, and projects. Not generic CRM or PM. Custom, AI-native, owned by the firm. Per the parent plan, the tool itself is the firm's first major piece of compounding IP and an acquirer-valued asset alongside the engagement book.
+Shift AI's internal operating tool — the system of record for pipeline, clients, contracts, and projects. Not a generic CRM or PM stack. Custom, AI-native, owned by the firm. Per the parent plan, the tool itself is the firm's first piece of compounding IP and an acquirer-valued asset alongside the engagement book.
+
+**Three pillars + the AI layer:**
+1. **Pipeline / CRM** — contacts, deals, stages, fill-the-pipeline workflows
+2. **Client management** — invoicing, contracts, scoping, documents
+3. **Project management** — engagement tracking, hours, tasks, deliverables
+4. **The AI layer** *(the differentiator)* — every record readable and writable by Claude, both inside the app (Quick Actions) and from outside it (Claude Code + scheduled agents via MCP). AI is first-class, not a plugin.
 
 ---
 
-## What it does (three pillars + the AI layer)
+## The AI architecture — the part that makes this not a CRM
 
-1. **Pipeline / CRM** — contacts, prospects, deal stages, fill-the-pipeline workflows
-2. **Client management** — invoicing, contract creation, scoping, document handling
-3. **Project management** — engagement tracking, hours, task assignment, deliverable status
-4. **MCP integration** *(what makes this different from a Notion/Pipedrive/Harvest stack)* — every record reachable by Claude Code and scheduled agents through an MCP server; AI is first-class, not a plugin
+This is the most important section in the document. Four pieces do four different jobs. Conflating them is the easiest way to build the wrong thing.
+
+### The four pieces
+
+| Piece | One-line job | Analogy | Who calls it | Knows the DB? | Generates text? |
+|---|---|---|---|---|---|
+| **Anthropic API** | Turn a prompt into generated text | the **brain** | *our code* (a server action) | No — only sees what we put in the prompt | **Yes** |
+| **SKILL.md** | Instruction sheet for one task ("how to draft an email") | the **recipe** | loaded by our code as the system prompt | No | No (it shapes the API call) |
+| **Firm brain** | The distilled "who Shift is / how Shift sounds" injected into every call | the **house style** | loaded by our code, prepended to every system prompt | No | No |
+| **MCP server** | Let a Claude running *outside* the app read/write our DB | the **hands** | *a Claude* (Claude Code, an agent) | **Yes — that's its whole point** | No — it's data plumbing |
+
+The mental model: **API generates. MCP connects. SKILL.md instructs. The firm brain sets the voice.**
+
+- A **Quick Action** runs *inside* the app, so it reaches the DB directly with Prisma and uses the **API** to think — no MCP needed. This is why Quick Actions ship before MCP.
+- **MCP** only matters when a Claude is *outside* the app (your laptop in a client folder, a 6am scheduled agent) and needs a door into the same database. It doesn't generate anything; the thinking still comes from a Claude.
+
+### How a Quick Action composes a call
+
+Every Quick Action (and every agent) builds the same shape:
+
+```
+system prompt = [ skills/_firm/context.md ]      ← the firm brain   (shared by ALL actions)
+              + [ skills/<action>/SKILL.md ]      ← how to do THIS task
+user message  = [ live Prisma query: this client + recent interactions + relevant history ]
+              + [ the partner's intake / Task.context ]
+        │
+        ▼  @anthropic-ai/sdk  ──►  Anthropic API (cloud, runs on Vercel's side, not anyone's laptop)
+        ▼
+response = the drafted deliverable
+        │
+        ▼  persist (see "The persistence recipe"): Artifact [+ Interaction] + AuditLog, one transaction
+```
+
+Change `skills/_firm/context.md` once → every Quick Action's voice changes. Change a `SKILL.md` → only that one task changes. Voice is never copy-pasted into individual skills.
+
+### The three-layer brain — and where each layer lives
+
+"The company brain" is really three things with different change-rates and different homes. Keeping them separate is what stops the whole thing from going stale.
+
+| Layer | Examples | Change-rate | Where it lives | Why there |
+|---|---|---|---|---|
+| **Strategy brain** (human + Claude Code) | brand guide, positioning, partner bios, economics | slow, narrative | **`shiftai-firm/`** — already exists, rich ([brand/brand-guide.md](../../shiftai-firm/brand/brand-guide.md), [context/positioning.md](../../shiftai-firm/context/positioning.md), partner bios) | For humans and Jason's Claude Code sessions. Deep, discursive. Stays put. |
+| **Live firm state** | pipeline, clients, hours, last-contact dates | fast, factual | **Postgres** — queried live every call | It's *data*, not prose. Queried fresh each time, so it can never be stale. |
+| **Runtime firm context** (the Quick Actions' brain) | firm one-liner, voice/tone rules, the jargon ban-list, partner roster | slow, distilled | **`skills/_firm/context.md` in the ops repo** *(to build — does not exist yet)* | Vercel must read it at runtime, and `shiftai-firm/` is on a laptop, **not deployed**. A committed file is reachable, versioned, and diffable. |
+
+The runtime context is a **lean, distilled subset** of the strategy brain — not a copy of it. The strategy brain is the source; `skills/_firm/context.md` is the deploy-time extract.
+
+### Governance — fresh without letting it rewrite itself
+
+Jason's explicit concern: the brain gets old fast, but we also don't want it silently rewriting itself. Three structural answers (not discipline — structure):
+
+1. **Split by change-rate so it rarely needs touching.** The reason brains rot is people put *changing facts* in them. Don't. Slow-changing identity → the committed file. Fast-changing facts (current clients, this quarter's numbers, who's on what) → live Prisma queries, never baked into prose. The split *is* the anti-staleness mechanism.
+2. **Git is the guardrail against self-rewriting.** Because the runtime context is a committed file, an agent physically cannot mutate it silently — any change is a commit with a reviewable diff and a one-click undo. This is *why* a repo file beats a DB row or a Drive doc for this specific thing.
+3. **Propose, never auto-write — the firm's existing pattern.** `/harvest-engagement` (Phase 5) *proposes* IP lifts into firm templates **for partner review**; it never auto-commits. Same rule for the brain and for every deliverable: an agent may **propose** a diff (a PR, or a row with `reviewStatus: "draft"` — that field already exists on `Artifact`), a human approves the merge. **No agent gets write access to the canonical file.** Propose → human approves → commit.
+
+---
+
+## Reality check — what "the first Quick Action" actually shipped
+
+The earlier roadmap implied 3d shipped `draft-email` as a full AI feature. The code says otherwise, and the plan below depends on being honest about it:
+
+- **`@anthropic-ai/sdk` is not installed.** There is zero Claude generation anywhere in the repo today.
+- The shipped `saveEmailDraft` / `sendEmail` in [contacts/[id]/actions.ts](../app/(app)/contacts/[id]/actions.ts) take a **human-typed body**, upload it to Drive, and write `Artifact` + `Interaction` + `AuditLog`. Note `generatedFromSkill: null`.
+- There is **no `skills/` folder in the ops repo** yet. The only skills that exist are Jason's *personal* Claude Code skills at `~/.claude/skills/` (all `-jason`-suffixed, e.g. `html-brief-jason`).
+
+**So what 3d actually proved is the persistence round-trip — the hard, valuable plumbing — not the generation.** The generative half is Track A below, and the SKILL.md is its centerpiece, not an add-on.
 
 ---
 
 ## Phase status
 
-### Phase 1 — UI/UX prototype — ✅ done
-Pipeline board, contact + client + project + invoice detail views, dashboard, time logging, convert-deal flow — all shipped with seed data ([../lib/data/seed.ts](../lib/data/seed.ts)).
+### Phases 1–3 — ✅ shipped
 
-### Phase 2 — Working v1 — ✅ done
-- Postgres on Supabase, Prisma 7 schema ([../prisma/schema.prisma](../prisma/schema.prisma)) with 15 models + 11 enums + AuditLog
-- Auth.js v5 with Google SSO restricted to `shiftai.partners` (alias `shiftcg.ai` accepted during sunset)
-- Auto-deploys to Vercel from `main`; live at `https://ops.shiftai.partners`
-- Audit log table in place, not yet exercised by AI writes
+| Phase | What landed |
+|---|---|
+| **1 — UI/UX prototype** | Pipeline board, contact/client/project/invoice detail, dashboard, time logging, convert-deal flow |
+| **2 — Working v1** | Supabase Postgres + Prisma 7 (15 models, 11 enums, AuditLog); Auth.js v5 Google SSO restricted to `shiftai.partners`; auto-deploy to Vercel; all read routes on Prisma |
+| **3a — Mutations** | task done-toggle, log-interaction (+ `lastTouchAt`), log-hours, invoice status, convert-deal → Client + Project + Drive folder |
+| **3b — Tracking architecture** | `Artifact` model, `clientId`/`projectId` FKs on `Task`, `writeAudit()` helper, server-side `[NEEDS INPUT]` gate |
+| **3c — Three-surface handshake** | "Open Drive folder" / "Copy workspace path" buttons on Client detail; Deliverables tab on Client + Project; server-side scoped Drive API client |
+| **3d — Email persistence round-trip** | `draft-email` **persistence** end-to-end (Drive upload → `Artifact` + `Interaction` + `AuditLog` in one transaction). Body is human-typed today; the AI generation step is Track A. |
 
-### Phase 3 — Mutations + tracking round-trip + first Quick Actions — next
+> Detail lives in git history and [../../shiftai-firm/planning/launch-build-log.md](../../shiftai-firm/planning/launch-build-log.md).
 
-The substrate phase. Today the tool *reads* from the DB across every route but barely *writes*. This phase makes every channel where work happens round-trip back into the ops tool, so deliverables / tasks / interactions / hours all have a single source of truth.
+---
 
-**3a. Mutations pass** — wire the existing forms (convert-deal → client, log-hours, log-interaction, task done-toggle, "+ New" forms, invoice status, non-destructive enrichment merge).
+### Track A — the AI layer (Phase 3e) — ⏳ next
 
-**3b. Tracking architecture** — see "Tracking architecture" section below. Lands in the same migration:
-- [ ] Add `Artifact` model — first-class deliverables tracking
-- [ ] Add `clientId` + `projectId` FKs to `Task` (currently free-text `relatedTo`)
-- [ ] Build `writeAudit()` helper — every mutation writes one `AuditLog` row
-- [ ] Server-side no-hallucination gate (`[NEEDS INPUT]` markers block commit at the API layer, not just in the UI)
+The generative layer. **The order matters:** the spine and the brain come before any individual Quick Action, because every action depends on them.
 
-**3c. Three-surface handshake — make Drive feel connected**
-- [ ] "Open Drive folder" + "Copy workspace path" buttons on Client detail (uses `driveFolderUrl` + `workspacePath` already on the schema)
-- [ ] "Deliverables" tab on Client + Project detail pages (lists `Artifact` rows)
-- [ ] Server-side Drive API client — scoped fetch of specific files for Quick Action context (not "read the whole folder")
+#### A1 — The generative spine *(one-time foundation)*
+- [ ] Add `@anthropic-ai/sdk` to `package.json`.
+- [ ] Set `ANTHROPIC_API_KEY` in Vercel env (prod) and local `.env` (dev) — same split discipline as `DATABASE_URL` (see [../CLAUDE.md](../CLAUDE.md) gotcha #1; never paste the prod key into chat per gotcha #7).
+- [ ] Write a shared `generate()` helper (`lib/ai.ts`): loads `skills/_firm/context.md`, takes a skill name + context + intake, calls the API, streams back. One place every Quick Action and agent calls — adding an action becomes "write a SKILL.md + call `generate()`."
+- [ ] Decide streaming transport (server action + RSC streaming vs. route handler) and standardize it once.
 
-**3d. First Quick Action — Draft email** (recommended; narrowest scope, ride-along test of the full persistence recipe)
-- [ ] Server-action recipe per [../CLAUDE.md](../CLAUDE.md): load skill → pull DB context → call Claude API → stream result → write `Artifact` + (if outreach) `Interaction` + `AuditLog` rows in one transaction
-- [ ] First skill repo-versioned at `shiftai-ops/skills/draft-email/SKILL.md`
-- [ ] Then clone the recipe for **Draft proposal** (wraps `/scope`), **Build presentation** (wraps `/html-brief`), **Run an action**, **Add contact**, **Re-engage stale**
+#### A2 — The firm brain *(runtime context)*
+- [ ] Create `skills/_firm/context.md` — the lean runtime brain, **distilled from** [../../shiftai-firm/brand/brand-guide.md](../../shiftai-firm/brand/brand-guide.md), [context/positioning.md](../../shiftai-firm/context/positioning.md), partner roster, and the firm-wide voice invariants (incl. the jargon ban-list — never "locked," "leverage AI," etc.).
+- [ ] Establish the distill-and-review loop: changes to the firm brain are PRs (human-approved), never agent-written. Document the propose→approve rule inline.
+
+#### A3 — Skills folder + promotion path
+- [ ] Create `skills/` in the ops repo (canonical firm copies the tool reads server-side at runtime).
+- [ ] **Promote, don't copy.** Personal skills (`html-brief-jason`, etc.) get de-personalized into firm-generic skills: strip the `-jason`, write for *any partner clicking the button*, point voice at `skills/_firm/context.md`.
+
+#### A4 — The Quick Actions *(one at a time, each the full round-trip)*
+Clone the `draft-email` persistence recipe, now with real generation wired through `generate()`:
+- [ ] **Draft email** — retrofit the shipped persistence action to generate the body via `generate()` (sets `generatedFromSkill: "draft-email"`).
+- [ ] **Draft proposal** — wraps a new `scope` skill (written fresh; no personal equivalent exists).
+- [ ] **Build presentation** — wraps the promoted `html-brief` skill.
+- [ ] **Re-engage stale** — outreach → `Interaction` + `Artifact`.
+- [ ] **Add contact**, **Run an action** — the lighter mutations.
+
+---
+
+### Track B — the Firm Hub (between 3e and Phase 4) — ⏳ in progress
+
+Make the tool *come alive* for the three partners: one firm timeline, real tasks, a live pipeline, and a window into the agents. Full build plan and schema in **[update.md](../update.md)** (decisions of 2026-05-28: real-time = short-interval polling; data wipe on hold). Summary of the sequence and status:
+
+- [x] **B1 — Activity feed wiring** *(done 2026-05-28).* `writeActivity()` in `lib/audit.ts` + `Activity.link` column (migration `activity_link_field`), wired into every feed-worthy mutation; dashboard feed rows click through.
+- [x] **B2 — Tasks surface** *(done 2026-05-28).* `Task.context` + `Task.assignedById` (migration `task_context_and_assignment`); new `/tasks` route + interactive view with inline create/assign; removed task list from the dashboard. *Deferred:* AI-suggested context (lands with A1/A4), task reassignment.
+- [ ] **B3 — Pipeline drag-and-drop + next-task pop-up** — dnd-kit board; on drop → `updateDealStage()` (+ audit + activity) → next-task modal (suggested action + context textarea).
+- [ ] **B4 — Messaging** — `Channel` / `ChannelMember` / `Message` models; channels + DMs; short-interval polling (3–5s); task cards = system `Message` with `taskId` rendered inline.
+- [ ] **B5 — Firm Agents tab** — `AgentPlan` model (collaboration, deploys nothing) + a read-only "live agents" view rendering each running `SKILL.md` so anyone sees how an agent thinks. Bridges to Phases 4/5.
+- [ ] **B6 — Data wipe** — on hold; guarded `prisma/wipe.ts` (preserves `Partner` rows), run deliberately when going live.
+
+> Tracks A and B are independent and can interleave. B is mostly wiring on schema that already exists; A introduces the AI dependency.
+
+---
 
 ### Phase 4 — MCP server + `/onboard-client`
-- [ ] Build MCP server alongside the web app (same Prisma client, different surface). Contract: [mcp-contract.md](mcp-contract.md).
-- [ ] `/onboard-client` skill — fires on `engagement.created` (deal flips to signed); scaffolds the Shared Drive folder + local workspace + per-client `CLAUDE.md`, writes `driveFolderUrl` + `workspacePath` back to the Client record via MCP. Closes the three-surface handshake automatically instead of manually.
-- [ ] First scheduled agent: weekly pipeline review (Reporting agent in [agent-flow-design.md](agent-flow-design.md))
-- [ ] Wire Claude Code workspaces to the MCP server
+- [ ] MCP server alongside the web app (same Prisma client, different surface). Contract: [mcp-contract.md](mcp-contract.md). This is the **door for Claudes outside the app** — Claude Code in a client folder, scheduled agents.
+- [ ] `/onboard-client` skill — fires on `engagement.created`; scaffolds Shared Drive folder + local workspace + per-client `CLAUDE.md`, writes `driveFolderUrl` + `workspacePath` back to the Client record. Closes the three-surface handshake automatically.
+- [ ] First scheduled agent: weekly pipeline review (Reporting agent — see [agent-flow-design.md](agent-flow-design.md)).
+- [ ] Wire Claude Code workspaces to the MCP server; surface scheduled-agent runs in the activity feed and the Agents tab (B5).
 
-### Phase 5 — Pipeline-mutating agents + `/harvest-engagement`
-Once Reporting proves the rails, layer in Pipeline Steward (flag stale → draft touch), then Client Onboarding on signed deals. See [agent-flow-design.md](agent-flow-design.md) for the agent set, build order, and rationale. Also `/harvest-engagement` on `engagement.closed` — walks the closed client workspace, proposes sanitized IP lifts into firm templates (formal "skills get smarter" loop).
+### Phase 5 — Agents
+Build **one agent at a time** off the MCP rails. Each agent = a SKILL.md + `generate()` for thinking + MCP tools for reading/writing state, following the same persistence recipe as a Quick Action (no agent is exempt). Order, specs, and discipline in [agent-flow-design.md](agent-flow-design.md). Includes `/harvest-engagement` on `engagement.closed` — *proposes* sanitized IP lifts into firm templates for partner review (the skill-learning loop; propose-not-write, per governance above).
 
 ---
 
 ## Tracking architecture
 
-> **Principle:** every channel where work happens — partner typing in the UI, Quick Action running, Claude Code session in a client folder, scheduled agent — must round-trip a row into the ops tool. Nothing happens silently. The ops tool is the system of record; if it isn't tracked here, it didn't happen.
+> **Principle:** every channel where work happens — partner typing in the UI, a Quick Action running, a Claude Code session in a client folder, a scheduled agent — must round-trip a row into the ops tool. Nothing happens silently. The ops tool is the system of record; if it isn't tracked here, it didn't happen.
 
-**Four tracking models + the audit ledger underneath:**
+**Four tracking models + the audit ledger underneath** (all shipped in Phase 3):
 
 | Dimension | Model | What writes to it |
 |---|---|---|
-| Calls / meetings / emails | [`Interaction`](../prisma/schema.prisma#L159) — `loggedBy` is free-text so agents log too | Manual UI form · Quick Action drafting outreach (tags `AGENT · CLAUDE`) · Gmail/Calendar ingest (V1) |
-| Tasks | [`Task`](../prisma/schema.prisma#L362) — needs `clientId` + `projectId` FKs added | Manual UI form · convert-deal (creates kickoff tasks) · AI Quick Action suggestions |
-| Hours | [`HoursEntry`](../prisma/schema.prisma#L302) | Manual UI form · Claude Code session-end hook in client workspaces (V1) |
-| Deliverables | **`Artifact` — to add** | Quick Action persistence recipe · manual file upload · Drive change watcher (V1) |
-| Audit trail | [`AuditLog`](../prisma/schema.prisma#L416) — table exists, writer = `writeAudit()` helper | **Every** mutation, no exceptions |
+| Calls / meetings / emails | [`Interaction`](../prisma/schema.prisma) — `loggedBy` free-text so agents log too | Manual UI form · Quick Action drafting outreach (tags `AGENT · CLAUDE`) · Gmail/Calendar ingest (backlog) |
+| Tasks | [`Task`](../prisma/schema.prisma) — has `clientId` + `projectId` FKs, plus `context` + `assignedById` (B2) | Manual UI form · convert-deal (kickoff tasks) · AI suggestions |
+| Hours | [`HoursEntry`](../prisma/schema.prisma) | Manual UI form · Claude Code session-end hook (backlog) |
+| Deliverables | [`Artifact`](../prisma/schema.prisma) | Quick Action recipe · manual upload · Drive change watcher (backlog) |
+| Audit trail | [`AuditLog`](../prisma/schema.prisma) — writer = `writeAudit()` | **Every** mutation, no exceptions |
 
-**The `Artifact` model spec** (lands in the Phase 3b migration):
-```
-Artifact {
-  id, type (proposal | deck | email | sow | invoice | report | other),
-  title, driveUrl, fileName,
-  createdBy            // free-text — partner name or "AGENT · CLAUDE"
-  generatedFromSkill?  // optional — "scope", "html-brief", "draft-email", null for manual
-  reviewStatus         // draft | approved | sent | archived
-  clientId? | projectId? | dealId?  // one of, FK
-  createdAt, updatedAt
-}
-```
+The human-facing **activity feed** ([`Activity`](../prisma/schema.prisma), writer = `writeActivity()`) is the curated pulse over the same transactions; `AuditLog` stays the complete due-diligence ledger. Same transaction → never drift (B1).
 
-**The persistence recipe — every Quick Action and every agent follows this exact pattern:**
-1. Save the artifact to Drive via Drive API
-2. Write an `Artifact` row pointing to it
-3. If it's an outreach draft (email / re-engage), also write an `Interaction` row with `loggedBy: "AGENT · CLAUDE"`
-4. Write one `AuditLog` row via `writeAudit(actor, action, target, changes)`
+**The persistence recipe — every Quick Action and every agent follows this exact pattern** (canonical version in [../CLAUDE.md](../CLAUDE.md) "Wire a Quick Action end-to-end"):
+1. *(generative actions)* compose the call — firm brain + SKILL.md as system prompt, live Prisma data + intake as the message — and call `generate()`.
+2. Save the artifact to Drive via Drive API (if it's a document).
+3. Write an `Artifact` row pointing to it (`generatedFromSkill` set, `reviewStatus: "draft"`).
+4. If it's an outreach draft (email / re-engage), also write an `Interaction` row tagged `loggedBy: "AGENT · CLAUDE"`.
+5. Write one `AuditLog` row via `writeAudit(actor, action, target, changes)` — and `writeActivity()` if it's feed-worthy.
 
-All three writes in one server-action transaction; partial failures roll back. No agent is exempt.
+All writes in one server-action transaction; partial failures roll back. No agent is exempt.
 
-**External-surface ingest (V1 — not Phase 3):**
-- Gmail integration scans recent threads, *proposes* `Interaction` entries for partner approval
-- Calendar integration scans meetings, proposes `Interaction` entries
-- Drive change watcher proposes `Artifact` entries when new files appear in client folders
-- Claude Code session-end hook logs hours + registers files via MCP
-
-All of these write into the same four models. No schema churn for any of them.
+**External-surface ingest (backlog — feeds the same models, no schema churn):** Gmail/Calendar scan and *propose* `Interaction` rows for partner approval; Drive change watcher proposes `Artifact` rows; Claude Code session-end hook logs hours + registers files via MCP. All propose-not-write, per governance.
 
 ---
 
 ## Client-file access patterns
 
-How the ops tool reaches files in client Drive folders (and why the per-client isolation rule still holds):
+How the ops tool reaches files in client Drive folders (per-client isolation holds throughout):
 
-| Pattern | Use for | Access model |
-|---|---|---|
-| **Click-out buttons** (Phase 3c) | Cheap, ship today — partner clicks "Open Drive folder" from the Client page, jumps to Drive in context | UI uses `driveFolderUrl` field; no server-side file access |
-| **Server-side Drive fetch** (Phase 3d Quick Actions) | Quick Actions that need specific files for context (e.g. "Draft proposal" pulls last SOW) | Server-side Drive API call, scoped to the Client FK on the action — pulls only the referenced file, not the folder tree |
-| **Embedded file listing** (V1) | "Files" tab on Client/Project detail page — lists folder contents, click → opens in Drive | Server-side Drive API list call, scoped to `driveFolderUrl` |
-| **Claude Code in the client folder** (heavy lifts) | Multi-file work: building proposals, decks, build artifacts | Local filesystem read/write via Drive for Desktop sync; isolation rule = launch Claude at the *client folder*, never at the drive root |
+| Pattern | Use for | Access model | Status |
+|---|---|---|---|
+| **Click-out buttons** | Partner clicks "Open Drive folder" from the Client page | UI uses `driveFolderUrl`; no server-side access | ✅ shipped |
+| **Server-side scoped fetch** | Quick Actions needing specific files for context (e.g. last SOW for style) | Drive API call scoped to the action's Client FK — the referenced file only, not the tree | ✅ shipped |
+| **Embedded file listing** | "Files" tab listing folder contents | Server-side Drive API list, scoped to `driveFolderUrl` | backlog |
+| **Claude Code in the client folder** | Multi-file heavy lifts (proposals, decks) | Local filesystem via Drive for Desktop; launch Claude at the *client folder*, never the drive root | available now |
 
-**Isolation rule, refined:** the per-client boundary is "one client at a time, not no client access." When you're working on Acme — whether in Claude Code or via an Acme Quick Action — Claude has full read/write on Acme. The boundary prevents *cross-client* bleed (can't see Beta while working on Acme), not Claude-to-client access. See [../../shiftai-firm/planning/file-system-platform-decision.md](../../shiftai-firm/planning/file-system-platform-decision.md) for the architecture.
+**Isolation rule:** the boundary is "one client at a time, not no client access." Working on Acme — in Claude Code or via an Acme Quick Action — Claude has full read/write on Acme; it cannot see Beta. Prevents *cross-client* bleed, not Claude-to-client access. Architecture: [../../shiftai-firm/planning/file-system-platform-decision.md](../../shiftai-firm/planning/file-system-platform-decision.md).
 
 ---
 
 ## Architecture (target end-state)
 
 ```
-┌──────────────────────────────────────────┐
-│  OPS TOOL                                │
-│  ┌────────────────┐    ┌──────────────┐  │
-│  │  Web UI        │    │  MCP Server  │  │
-│  │  (Next.js)     │    │  (same DB)   │  │
-│  └────────┬───────┘    └──────┬───────┘  │
-│           │                   │          │
-│           └─────────┬─────────┘          │
-│                     ▼                    │
-│            ┌────────────────┐            │
-│            │  Postgres      │            │
-│            │  (Supabase)    │            │
-│            │  - clients     │            │
-│            │  - projects    │            │
-│            │  - contacts    │            │
-│            │  - deals       │            │
-│            │  - hours       │            │
-│            │  - invoices    │            │
-│            │  - artifacts   │            │
-│            │  - audit_log   │            │
-│            └────────────────┘            │
-└──────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  OPS TOOL                                                      │
+│                                                                │
+│  ┌────────────────┐                    ┌──────────────┐       │
+│  │  Web UI        │                    │  MCP Server  │       │
+│  │  (Next.js)     │                    │  (same DB)   │       │
+│  │  • Quick       │                    └──────┬───────┘       │
+│  │    Actions ────┼──► generate() ──┐         │               │
+│  │  • Firm Hub    │                 │         │               │
+│  └────────┬───────┘                 │         │               │
+│           │                         │         │               │
+│           │   ┌─────────────────────▼──┐      │               │
+│           │   │ skills/_firm/context.md │      │  (Claude Code │
+│           │   │ skills/<action>/SKILL.md│      │   + scheduled │
+│           │   └────────────┬────────────┘      │   agents      │
+│           │                ▼                    │   call in)    │
+│           │        Anthropic API (cloud)        │              │
+│           │                                     │               │
+│           └─────────────┬───────────────────────┘               │
+│                         ▼                                       │
+│                ┌────────────────┐                              │
+│                │  Postgres      │  ← live firm state           │
+│                │  (Supabase)    │                              │
+│                └────────────────┘                              │
+└──────────────────────────────────────────────────────────────┘
+        ▲                                              ▲
+   humans (web UI)                    Claude Code / scheduled agents (MCP)
 ```
 
-Web UI and MCP server share the same Postgres. Two interfaces over one state — humans use the web UI, Claude Code and scheduled agents use MCP, both write through the same Prisma client.
+Two interfaces over one state. Humans use the web UI; Claude Code and scheduled agents use MCP; both write through the same Prisma client. The **API** is the brain both surfaces borrow to generate; the **firm brain + skills** shape what it produces; the **DB** is the single source of truth.
+
+---
+
+## Backlog (post-Phase-3, pulled in by partner pull, not date)
+
+Known wants scoped out of the shipped phases. Promote into a phase when something forces it.
+
+| Item | Trigger to build |
+|---|---|
+| Tax handling (HST/GST, US sales tax) | Before sending the first real invoice |
+| Bulk import contacts (CSV) | Migrating an existing contact list in |
+| Gmail / Calendar ingest (propose Interactions) | When manual logging gets missed |
+| Files browser on Client/Project (Drive list) | When click-out isn't enough |
+| Global search wiring (Cmd+K is decorative today) | When the data set outgrows nav |
+| E-signature (DocuSign / HelloSign) | First contract that needs e-sign |
+| Stripe / Plaid (auto-mark paid, aging) | When manual invoice status gets tedious |
+| Resource capacity planning · profitability per project | At 3+ concurrent engagements |
+| Task notifications (email/in-app) | When tasks get dropped |
+| Per-engagement permissioning | First sensitive (M&A) engagement |
+| Mobile-responsive (pipeline, time log, status) | When partners work off-desktop |
+| **Later, probably never at this scale:** lead scoring · weighted forecast · Gantt · recurring retainer billing · multi-currency · time-approval workflow · client portal · multi-tenant | revisit only if justified |
 
 ---
 
 ## Open questions
 
-- **Tenancy.** Single-tenant (Shift AI only) forever, or design for multi-tenant in case the tool becomes acquirer IP that's sold/licensed? Single-tenant for v1; revisit when first acquisition conversation starts.
-- **Client portal.** Should clients ever see project status / deliverable acceptance / invoices in the tool? Out of scope; flag for later.
-- **Document storage.** Pointers to Drive for now (cheap, simple). Move to file blobs in DB only if a real workflow demands it.
-- **MCP transport / hosting.** stdio (local-only, simple) vs HTTP (remote-accessible, needed if scheduled agents run off-machine). See [mcp-contract.md](mcp-contract.md) open questions.
-- **Stripe / Calendar / Slack integrations.** Pick zero for MVP; add one at a time based on partner pull.
+- **Firm-brain scope.** What goes in `skills/_firm/context.md` vs. what's pulled live from Prisma per call? Start narrow (voice + positioning + jargon ban + roster); expand only when an action visibly needs it.
+- **Skill de-personalization.** How much of each `-jason` personal skill survives the firm-generic rewrite? Decide per skill at promotion time.
+- **Tenancy.** Single-tenant forever, or design for multi-tenant if the tool becomes sellable acquirer IP? Single-tenant for now; revisit at first acquisition conversation.
+- **MCP transport / hosting.** stdio (local, simple) vs HTTP (remote, needed if agents run off-machine). See [mcp-contract.md](mcp-contract.md) open questions.
+- **Document storage.** Drive pointers for now; move to DB blobs only if a real workflow demands it.
+- **Integrations (Stripe / Calendar / Slack).** Zero for now; add one at a time on partner pull.

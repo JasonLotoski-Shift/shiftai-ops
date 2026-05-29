@@ -9,7 +9,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { writeAudit, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 
 async function getActor() {
   const session = await auth();
@@ -27,7 +27,7 @@ export async function markInvoiceSent(invoiceId: string) {
 
   const before = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    select: { status: true },
+    select: { status: true, number: true },
   });
   if (!before) throw new Error("Invoice not found");
   if (before.status !== "draft") {
@@ -46,6 +46,13 @@ export async function markInvoiceSent(invoiceId: string) {
       targetId: invoiceId,
       changes: { status: { before: "draft", after: "sent" } },
     });
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: `Invoice ${before.number}`,
+      detail: "Marked sent",
+      link: `/invoices/${invoiceId}`,
+    });
   });
 
   revalidatePath(`/invoices/${invoiceId}`);
@@ -59,7 +66,7 @@ export async function markInvoicePaid(invoiceId: string) {
 
   const before = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    select: { status: true, paidAt: true },
+    select: { status: true, paidAt: true, number: true },
   });
   if (!before) throw new Error("Invoice not found");
   if (before.status !== "sent" && before.status !== "overdue") {
@@ -82,6 +89,13 @@ export async function markInvoicePaid(invoiceId: string) {
         status: { before: before.status, after: "paid" },
         paidAt: paidAt.toISOString(),
       },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: `Invoice ${before.number}`,
+      detail: "Marked paid",
+      link: `/invoices/${invoiceId}`,
     });
   });
 

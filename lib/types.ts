@@ -157,6 +157,7 @@ export type Activity = {
   type: "touch" | "status" | "hours" | "doc" | "ai";
   target: string; // contact name, project name, etc
   detail: string;
+  link?: string; // optional relative URL to click through to the record
 };
 
 /* Dashboard — view A (do) */
@@ -166,8 +167,10 @@ export type Task = {
   title: string;
   due: string; // ISO date
   priority: "high" | "medium" | "low";
-  ownerId: string; // partner.id
+  ownerId: string; // partner.id — the owner IS the assignee
+  assignedById?: string; // partner.id who assigned it (null = self/firm task)
   relatedTo?: string; // contact / client / project name (legacy free-text)
+  context?: string; // manual + suggested context; the payload agents read
   // Scope FKs — nullable; firm-wide tasks have neither.
   clientId?: string;
   projectId?: string;

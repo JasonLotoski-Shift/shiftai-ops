@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
 
 export default async function DashboardPage() {
-  const [activeProjects, openDeals, openInvoices, activities, tasks, teamUpdates, news] = await Promise.all([
+  const [activeProjects, openDeals, openInvoices, activities, teamUpdates, news] = await Promise.all([
     prisma.project.findMany({
       where: { status: { not: "closed" } },
       include: { client: true },
@@ -20,10 +20,6 @@ export default async function DashboardPage() {
     prisma.activity.findMany({
       orderBy: { ts: "desc" },
       take: 8,
-    }),
-    prisma.task.findMany({
-      include: { owner: true },
-      orderBy: { due: "asc" },
     }),
     prisma.teamUpdate.findMany({
       orderBy: { ts: "desc" },
@@ -76,7 +72,6 @@ export default async function DashboardPage() {
         <DashboardViews
           activeProjects={activeProjects}
           activities={activities}
-          tasks={tasks}
           teamUpdates={teamUpdates}
           news={news}
         />

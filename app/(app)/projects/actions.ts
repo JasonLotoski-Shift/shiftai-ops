@@ -8,7 +8,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { writeAudit, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 
 /**
  * Lightweight project list for the TimeLogModal dropdown — excludes
@@ -60,7 +60,13 @@ export async function logHours(input: {
 
   const project = await prisma.project.findUnique({
     where: { id: input.projectId },
-    select: { id: true, hoursLogged: true, status: true },
+    select: {
+      id: true,
+      name: true,
+      hoursLogged: true,
+      status: true,
+      client: { select: { company: true } },
+    },
   });
   if (!project) throw new Error("Project not found");
   if (project.status === "closed") {
@@ -95,6 +101,14 @@ export async function logHours(input: {
         date: date.toISOString(),
         projectHoursAfter: project.hoursLogged + hours,
       },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "hours",
+      target: `${project.client.company} · ${project.name}`,
+      detail: `Logged ${hours}h — ${description}`,
+      link: `/projects/${input.projectId}`,
     });
 
     return created;

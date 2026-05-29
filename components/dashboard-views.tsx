@@ -1,17 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Card, Label, Badge, Tabs } from "@/components/ui";
 import { formatDate } from "@/lib/format";
-import { toggleTaskDone } from "@/app/(app)/dashboard/actions";
 import type {
   ActivityModel as Activity,
   ClientModel as Client,
   NewsItemModel as NewsItem,
-  PartnerModel as Partner,
   ProjectModel as Project,
-  TaskModel as Task,
   TeamUpdateModel as TeamUpdate,
 } from "@/lib/generated/prisma/models";
 import {
@@ -23,7 +20,6 @@ import {
   RefreshCw,
   Bot,
   Newspaper,
-  Check,
 } from "lucide-react";
 
 const quickActions = [
@@ -36,12 +32,10 @@ const quickActions = [
 ] as const;
 
 type ProjectWithClient = Project & { client: Client };
-type TaskWithOwner = Task & { owner: Partner };
 
 interface DashboardViewsProps {
   activeProjects: ProjectWithClient[];
   activities: Activity[];
-  tasks: TaskWithOwner[];
   teamUpdates: TeamUpdate[];
   news: NewsItem[];
 }
@@ -49,38 +43,17 @@ interface DashboardViewsProps {
 export function DashboardViews({
   activeProjects,
   activities,
-  tasks: initialTasks,
   teamUpdates,
   news,
 }: DashboardViewsProps) {
   const [tab, setTab] = useState("today");
   const [launched, setLaunched] = useState<string | null>(null);
-  const [tasks, setTasks] = useState(initialTasks);
-  const [, startTransition] = useTransition();
-
-  const openTasks = tasks.filter((t) => !t.done);
-
-  // Optimistic flip — server action persists via toggleTaskDone, which
-  // updates Task.done + writes one AuditLog row in a transaction. On
-  // failure, revert local state and log; toast UX comes later.
-  function toggleTask(id: string) {
-    const previous = tasks;
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
-    startTransition(async () => {
-      try {
-        await toggleTaskDone(id);
-      } catch (err) {
-        console.error("toggleTaskDone failed:", err);
-        setTasks(previous);
-      }
-    });
-  }
 
   return (
     <div className="flex flex-col gap-6">
       <Tabs
         tabs={[
-          { key: "today", label: "Today", count: openTasks.length },
+          { key: "today", label: "Today" },
           { key: "firm", label: "The firm" },
         ]}
         active={tab}
@@ -116,47 +89,6 @@ export function DashboardViews({
                 );
               })}
             </div>
-          </section>
-
-          {/* Task list */}
-          <section className="flex flex-col gap-4">
-            <div className="flex items-end justify-between">
-              <Label>— Your tasks</Label>
-              <span className="label">{openTasks.length} open</span>
-            </div>
-            <Card>
-              {tasks.map((t, i) => (
-                <div
-                  key={t.id}
-                  className={`grid grid-cols-[24px_1fr_120px_110px] gap-4 items-center px-5 py-3 ${i < tasks.length - 1 ? "border-b border-graphite" : ""}`}
-                >
-                  <button
-                    onClick={() => toggleTask(t.id)}
-                    aria-label={t.done ? "Mark task open" : "Mark task done"}
-                    className={`w-5 h-5 border flex items-center justify-center transition-colors ${t.done ? "bg-diagnostic-steel/20 border-diagnostic-steel/50 text-diagnostic-steel" : "border-graphite-2 text-transparent hover:border-bone-mute"}`}
-                  >
-                    <Check size={12} strokeWidth={2.5} />
-                  </button>
-                  <div className="min-w-0">
-                    <div className={`text-[14px] truncate ${t.done ? "text-bone-mute line-through" : "text-bone"}`}>
-                      {t.title}
-                    </div>
-                    {t.relatedTo && <div className="text-[11px] text-bone-mute truncate">{t.relatedTo}</div>}
-                  </div>
-                  <div>
-                    <Badge tone={t.priority === "high" ? "red" : t.priority === "medium" ? "gold" : "neutral"}>
-                      {t.priority}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-end gap-2">
-                    <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
-                    <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">
-                      {t.owner.initials}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </Card>
           </section>
         </div>
       ) : (
@@ -261,18 +193,30 @@ export function DashboardViews({
             <section className="flex flex-col gap-4">
               <Label>— Activity · 48h</Label>
               <Card>
-                {activities.map((a, i) => (
-                  <div key={a.id} className={`px-5 py-3 ${i < activities.length - 1 ? "border-b border-graphite" : ""}`}>
-                    <div className="flex items-baseline justify-between gap-3 mb-1">
-                      <span className={`label ${a.type === "ai" ? "label-gold" : ""}`}>{a.actor}</span>
-                      <span className="label text-[9px]">
-                        {new Date(a.ts).toLocaleString("en-CA", { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" })}
-                      </span>
+                {activities.map((a, i) => {
+                  const rowClass = `block px-5 py-3 ${i < activities.length - 1 ? "border-b border-graphite" : ""}`;
+                  const inner = (
+                    <>
+                      <div className="flex items-baseline justify-between gap-3 mb-1">
+                        <span className={`label ${a.type === "ai" ? "label-gold" : ""}`}>{a.actor}</span>
+                        <span className="label text-[9px]">
+                          {new Date(a.ts).toLocaleString("en-CA", { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" })}
+                        </span>
+                      </div>
+                      <p className="text-[13px] text-bone leading-snug">{a.detail}</p>
+                      <p className="text-[11px] text-bone-mute mt-1">{a.target}</p>
+                    </>
+                  );
+                  return a.link ? (
+                    <Link key={a.id} href={a.link} className={`${rowClass} hover:bg-graphite/40 transition-colors`}>
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div key={a.id} className={rowClass}>
+                      {inner}
                     </div>
-                    <p className="text-[13px] text-bone leading-snug">{a.detail}</p>
-                    <p className="text-[11px] text-bone-mute mt-1">{a.target}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </Card>
             </section>
           </div>

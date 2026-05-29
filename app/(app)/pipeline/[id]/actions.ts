@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive } from "@/lib/drive";
-import { writeAudit, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 
 /**
@@ -133,6 +133,14 @@ export async function convertDeal(
         createdProjectId: project.id,
         driveFolderId: folderId,
       },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: deal.company,
+      detail: "Signed — engagement opened",
+      link: `/clients/${client.id}`,
     });
 
     return { clientId: client.id, projectId: project.id };

@@ -126,7 +126,8 @@ model Partner {
   clientsLed      Client[]  @relation("PartnerClientLead")
   projectsLed     Project[] @relation("PartnerProjectLead")
   projectsConsult Project[] @relation("ProjectConsultants")
-  tasksOwned      Task[]
+  tasksOwned      Task[]    @relation("TaskOwner")
+  tasksAssigned   Task[]    @relation("TaskAssignedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -372,6 +373,11 @@ model Activity {
   type   ActivityType
   target String
   detail String
+  // Optional deep-link (relative URL like "/pipeline/<id>") so a feed row
+  // clicks through to the record it describes. Free-text, not an FK —
+  // matches the loose-coupling convention of the other log models
+  // (Interaction.loggedBy, HoursEntry.loggedBy, Activity.actor).
+  link   String?
 
   createdAt DateTime @default(now())
 
@@ -389,9 +395,17 @@ model Task {
   priority  TaskPriority
   relatedTo String?
   done      Boolean      @default(false)
+  // Free-text context for the task — manual notes and/or suggested context.
+  // No task is a bare button: this is the payload API agents will read (Phase 4+).
+  context   String?
 
-  owner   Partner @relation(fields: [ownerId], references: [id])
-  ownerId String
+  // The owner IS the assignee. assignedBy records who handed it over
+  // (null = self-created / firm task). Two relations to Partner, so both
+  // must be named.
+  owner        Partner  @relation("TaskOwner", fields: [ownerId], references: [id])
+  ownerId      String
+  assignedBy   Partner? @relation("TaskAssignedBy", fields: [assignedById], references: [id])
+  assignedById String?
 
   // Scoping FKs (nullable — firm-wide tasks have neither).
   // Enables "what's open on Acme" queries without parsing relatedTo.

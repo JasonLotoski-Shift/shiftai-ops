@@ -12,7 +12,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { writeAudit, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 
 export async function toggleTaskDone(taskId: string) {
   const session = await auth();
@@ -26,7 +26,7 @@ export async function toggleTaskDone(taskId: string) {
 
   const before = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { done: true },
+    select: { done: true, title: true },
   });
   if (!before) throw new Error("Task not found");
   const nextDone = !before.done;
@@ -43,8 +43,19 @@ export async function toggleTaskDone(taskId: string) {
       targetId: taskId,
       changes: { done: { before: before.done, after: nextDone } },
     });
+    // Completions are feed-worthy; reopening a task is noise, so skip it.
+    if (nextDone) {
+      await writeActivity(tx, {
+        actor,
+        type: "status",
+        target: before.title,
+        detail: "Completed task",
+        link: "/tasks",
+      });
+    }
   });
 
   revalidatePath("/dashboard");
+  revalidatePath("/tasks");
   return { done: nextDone };
 }
