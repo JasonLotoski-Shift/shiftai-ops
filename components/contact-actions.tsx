@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   X,
   Mail,
@@ -29,6 +30,13 @@ export function ContactActions({
   partnerName?: string;
 }) {
   const [open, setOpen] = useState<ActionKey | null>(null);
+
+  // Auto-open the email draft when launched from the dashboard Quick Action
+  // (which routes here with ?qa=email after the contact is picked).
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("qa") === "email") setOpen("email");
+  }, [searchParams]);
 
   return (
     <>

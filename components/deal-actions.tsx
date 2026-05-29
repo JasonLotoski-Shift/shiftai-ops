@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Mail, Calendar, FileText } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
@@ -22,6 +23,13 @@ export function DealActions({
 }) {
   const [convertOpen, setConvertOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
+
+  // Auto-open from the dashboard Quick Action (routes here with ?qa=proposal).
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("qa") === "proposal") setProposalOpen(true);
+  }, [searchParams]);
+
   return (
     <>
       <Button variant="ghost" size="sm">

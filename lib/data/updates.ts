@@ -24,6 +24,12 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-05-29",
+    tag: "improved",
+    title: "Quick Actions launch from the dashboard",
+    detail: "The dashboard Quick Actions now work end-to-end — click one, pick the contact, deal, or client, and the real action opens on that record. No more placeholder.",
+  },
+  {
+    date: "2026-05-29",
     tag: "new",
     title: "Three new Quick Actions",
     detail: "Alongside Draft email and Draft proposal, you can now Draft a client survey, Draft a discussion doc for an upcoming conversation, and Upload client files — drop in meeting notes (e.g. Fireflies) and they're filed to the client and logged.",

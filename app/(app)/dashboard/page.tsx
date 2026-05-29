@@ -5,29 +5,39 @@ import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
 
 export default async function DashboardPage() {
-  const [activeProjects, openDeals, openInvoices, activities, teamUpdates, news] = await Promise.all([
-    prisma.project.findMany({
-      where: { status: { not: "closed" } },
-      include: { client: true },
-      orderBy: { startDate: "desc" },
-    }),
-    prisma.deal.findMany({
-      where: { stage: { not: "signed" } },
-    }),
-    prisma.invoice.findMany({
-      where: { status: { in: ["sent", "overdue"] } },
-    }),
-    prisma.activity.findMany({
-      orderBy: { ts: "desc" },
-      take: 8,
-    }),
-    prisma.teamUpdate.findMany({
-      orderBy: { ts: "desc" },
-    }),
-    prisma.newsItem.findMany({
-      orderBy: { ts: "desc" },
-    }),
-  ]);
+  const [activeProjects, openDeals, openInvoices, activities, teamUpdates, news, contacts, clients] =
+    await Promise.all([
+      prisma.project.findMany({
+        where: { status: { not: "closed" } },
+        include: { client: true },
+        orderBy: { startDate: "desc" },
+      }),
+      prisma.deal.findMany({
+        where: { stage: { not: "signed" } },
+      }),
+      prisma.invoice.findMany({
+        where: { status: { in: ["sent", "overdue"] } },
+      }),
+      prisma.activity.findMany({
+        orderBy: { ts: "desc" },
+        take: 8,
+      }),
+      prisma.teamUpdate.findMany({
+        orderBy: { ts: "desc" },
+      }),
+      prisma.newsItem.findMany({
+        orderBy: { ts: "desc" },
+      }),
+      // Lightweight lists powering the Quick Action record pickers.
+      prisma.contact.findMany({
+        select: { id: true, name: true, company: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.client.findMany({
+        select: { id: true, company: true },
+        orderBy: { company: "asc" },
+      }),
+    ]);
 
   const atRiskCount = activeProjects.filter((p) => p.status === "at_risk" || p.status === "blocked").length;
   const openPipelineValue = openDeals.reduce((sum, d) => sum + d.valueEstimate, 0);
@@ -70,6 +80,9 @@ export default async function DashboardPage() {
           activities={activities}
           teamUpdates={teamUpdates}
           news={news}
+          contacts={contacts}
+          deals={openDeals.map((d) => ({ id: d.id, company: d.company }))}
+          clients={clients}
         />
       </div>
     </>

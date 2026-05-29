@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type ComponentType } from "react";
 import Link from "next/link";
-import { Card, Label, Badge, Tabs } from "@/components/ui";
+import { useRouter } from "next/navigation";
+import { Card, Label, Badge, Tabs, Input } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import type {
   ActivityModel as Activity,
@@ -21,25 +22,43 @@ import {
   Upload,
   Bot,
   Newspaper,
+  Search,
+  X,
 } from "lucide-react";
 
-const quickActions = [
-  { icon: Mail, label: "Draft email", hint: "Claude drafts to a contact — confirms any missing facts first" },
-  { icon: FileText, label: "Draft proposal", hint: "Scope → SOW draft for partner review" },
-  { icon: ClipboardList, label: "Draft client survey", hint: "A tailored survey built from the engagement context" },
-  { icon: NotebookPen, label: "Draft discussion doc", hint: "Agenda / discussion doc for an upcoming client conversation" },
-  { icon: UserPlus, label: "Add contact", hint: "Capture an intro in under 30 seconds" },
-  { icon: Upload, label: "Upload client files", hint: "Drop in meeting notes (e.g. Fireflies) — filed to the client and logged" },
-  { icon: Sparkles, label: "Run an action", hint: "Enrich a contact, generate a brief, run a health check" },
-] as const;
+// Each tile picks a target record, then opens the real action on that record's
+// page via a ?qa=<action> param the detail page auto-opens. `soon` = not built
+// yet (Add contact, Run an action).
+type QAType = "contact" | "deal" | "client" | "soon";
+type QuickAction = {
+  icon: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  label: string;
+  hint: string;
+  type: QAType;
+  qa?: string; // query param the detail page reads to auto-open the modal
+};
+
+const quickActions: QuickAction[] = [
+  { icon: Mail, label: "Draft email", hint: "Pick a contact — Claude drafts the email, confirms missing facts first", type: "contact", qa: "email" },
+  { icon: FileText, label: "Draft proposal", hint: "Pick a deal — scope → proposal draft for review", type: "deal", qa: "proposal" },
+  { icon: ClipboardList, label: "Draft client survey", hint: "Pick a client — a tailored survey from the engagement context", type: "client", qa: "survey" },
+  { icon: NotebookPen, label: "Draft discussion doc", hint: "Pick a client — agenda for an upcoming conversation", type: "client", qa: "discussion" },
+  { icon: UserPlus, label: "Add contact", hint: "Capture an intro in under 30 seconds", type: "soon" },
+  { icon: Upload, label: "Upload client files", hint: "Pick a client — drop in meeting notes (e.g. Fireflies), filed and logged", type: "client", qa: "upload" },
+  { icon: Sparkles, label: "Run an action", hint: "Enrich a contact, generate a brief, run a health check", type: "soon" },
+];
 
 type ProjectWithClient = Project & { client: Client };
+type PickRecord = { id: string; label: string; sub?: string };
 
 interface DashboardViewsProps {
   activeProjects: ProjectWithClient[];
   activities: Activity[];
   teamUpdates: TeamUpdate[];
   news: NewsItem[];
+  contacts: { id: string; name: string; company: string }[];
+  deals: { id: string; company: string }[];
+  clients: { id: string; company: string }[];
 }
 
 export function DashboardViews({
@@ -47,9 +66,46 @@ export function DashboardViews({
   activities,
   teamUpdates,
   news,
+  contacts,
+  deals,
+  clients,
 }: DashboardViewsProps) {
+  const router = useRouter();
   const [tab, setTab] = useState("today");
-  const [launched, setLaunched] = useState<string | null>(null);
+  const [pick, setPick] = useState<QuickAction | null>(null);
+  const [soon, setSoon] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  // Records to pick from, by the active tile's type.
+  const pickRecords: PickRecord[] = useMemo(() => {
+    if (pick?.type === "contact") return contacts.map((c) => ({ id: c.id, label: c.name, sub: c.company }));
+    if (pick?.type === "deal") return deals.map((d) => ({ id: d.id, label: d.company }));
+    if (pick?.type === "client") return clients.map((c) => ({ id: c.id, label: c.company }));
+    return [];
+  }, [pick, contacts, deals, clients]);
+
+  const filtered = pickRecords.filter((r) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return r.label.toLowerCase().includes(q) || (r.sub?.toLowerCase().includes(q) ?? false);
+  });
+
+  function openPicker(a: QuickAction) {
+    if (a.type === "soon") {
+      setSoon(a.label);
+      return;
+    }
+    setSoon(null);
+    setQuery("");
+    setPick(a);
+  }
+
+  function choose(id: string) {
+    if (!pick) return;
+    const base = pick.type === "contact" ? "/contacts" : pick.type === "deal" ? "/pipeline" : "/clients";
+    setPick(null);
+    router.push(`${base}/${id}?qa=${pick.qa}`);
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -67,12 +123,15 @@ export function DashboardViews({
           {/* Quick actions */}
           <section className="flex flex-col gap-4">
             <Label>— Quick actions</Label>
-            {launched && (
+            {soon && (
               <div className="flex items-center gap-3 px-4 py-2 border border-track-gold/40 bg-track-gold-dim/10">
                 <Sparkles size={13} strokeWidth={1.5} className="text-track-gold" />
                 <span className="text-[13px] text-bone">
-                  Prototype — <span className="text-track-gold">{launched}</span> would open here.
+                  <span className="text-track-gold">{soon}</span> is coming soon — not wired up yet.
                 </span>
+                <button onClick={() => setSoon(null)} className="ml-auto text-bone-mute hover:text-bone">
+                  <X size={13} strokeWidth={1.5} />
+                </button>
               </div>
             )}
             <div className="grid grid-cols-3 gap-px bg-graphite border border-graphite">
@@ -81,7 +140,7 @@ export function DashboardViews({
                 return (
                   <button
                     key={a.label}
-                    onClick={() => setLaunched(a.label)}
+                    onClick={() => openPicker(a)}
                     className="bg-asphalt p-5 text-left flex flex-col gap-2 hover:bg-graphite/40 transition-colors group"
                   >
                     <Icon size={16} strokeWidth={1.5} className="text-track-gold" />
@@ -92,6 +151,45 @@ export function DashboardViews({
               })}
             </div>
           </section>
+
+          {/* Record picker — choose the target, then land on its page with the action open */}
+          {pick && (
+            <div
+              className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
+              onClick={() => setPick(null)}
+            >
+              <div className="w-full max-w-[480px] bg-asphalt border border-graphite mb-20" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+                  <Label gold>— {pick.label} · pick a {pick.type}</Label>
+                  <button onClick={() => setPick(null)} className="text-bone-mute hover:text-bone">
+                    <X size={16} strokeWidth={1.5} />
+                  </button>
+                </div>
+                <div className="px-5 py-3 border-b border-graphite flex items-center gap-2">
+                  <Search size={13} strokeWidth={1.5} className="text-bone-mute" />
+                  <Input autoFocus placeholder={`Search ${pick.type}s…`} value={query} onChange={(e) => setQuery(e.target.value)} className="border-0 px-0 h-7" />
+                </div>
+                <div className="max-h-[50vh] overflow-y-auto">
+                  {filtered.length === 0 ? (
+                    <div className="px-5 py-8 text-center">
+                      <span className="label text-bone-mute">— No {pick.type}s match</span>
+                    </div>
+                  ) : (
+                    filtered.map((r, i) => (
+                      <button
+                        key={r.id}
+                        onClick={() => choose(r.id)}
+                        className={`w-full text-left px-5 py-3 flex items-center justify-between gap-3 hover:bg-graphite/40 transition-colors ${i < filtered.length - 1 ? "border-b border-graphite" : ""}`}
+                      >
+                        <span className="text-[14px] text-bone">{r.label}</span>
+                        {r.sub && <span className="text-[12px] text-bone-mute">{r.sub}</span>}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-6">

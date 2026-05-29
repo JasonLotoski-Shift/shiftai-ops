@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { FolderOpen, Terminal, Check, ClipboardList, NotebookPen, Upload } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ClientDocModal } from "@/components/client-doc-modal";
@@ -19,6 +20,13 @@ export function ClientHeaderActions({
 }) {
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState<"survey" | "discussion" | "upload" | null>(null);
+
+  // Auto-open from the dashboard Quick Action (routes here with ?qa=survey|discussion|upload).
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const qa = searchParams.get("qa");
+    if (qa === "survey" || qa === "discussion" || qa === "upload") setOpen(qa);
+  }, [searchParams]);
 
   async function copyWorkspacePath() {
     try {
