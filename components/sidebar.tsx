@@ -15,6 +15,7 @@ import {
   BookOpen,
   CheckSquare,
   MessageSquare,
+  FileInput,
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -28,6 +29,7 @@ const nav = [
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/messages", label: "Messages", icon: MessageSquare },
+  { href: "/ingest", label: "Meeting ingest", icon: FileInput },
   { href: "/invoices", label: "Invoices", icon: Receipt },
 ];
 
