@@ -145,7 +145,7 @@ The lineup (reset 2026-05-28). Generative actions clone the `draft-email` recipe
 
 ---
 
-### Track B — the Firm Hub (between 3e and Phase 4) — ✅ complete except B6 (2026-05-29)
+### Track B — the Firm Hub (between 3e and Phase 4) — ✅ complete (2026-05-29)
 
 Make the tool *come alive* for the three partners: one firm timeline, real tasks, a live pipeline, and a window into the agents. **Decisions (Jason, 2026-05-28): real-time = short-interval polling; data wipe on hold.** Mostly *wiring*, not new foundations — the schema is most of the way there (`Activity` model exists but only the seed writes it; `Task` already has `owner`/`clientId`/`projectId` FKs; `AuditLog` captures every write; `Partner` is the Auth.js user table; the sidebar already has disabled "Agents/Settings" slots).
 
@@ -223,10 +223,10 @@ model Message {
 - **Agent plans** ✅ — `AgentPlan` model (`name`/`goal`/`keyTasks[]`/`notes`/`status`/`createdById`) + `AgentPlanStatus` enum (idea/active/paused/done), migration `agent_plan`. Full CRUD on `/agents` (create/edit/delete + status chips); each mutation writes `AuditLog` (+ `Activity` on create/status).
 - **Live skills** ✅ — read-only view renders the actual `SKILL.md` for every shipped skill + the `_firm/context.md` brain (server-side disk read via `lib/skills.ts`), so anyone sees exactly how each agent/Quick Action thinks. Sidebar **Agents** now active. _Future: scheduled-agent runs post into the feed (Phase 4/5)._
 
-#### B6 — Data wipe — on hold
-- Don't touch data yet. When ready, a guarded `prisma/wipe.ts` that truncates business tables but **preserves `Partner` rows** (SSO keeps working), with a typed confirmation. Run deliberately, not as part of feature work.
+#### B6 — Data wipe — ✅ done 2026-05-29
+- Built + **executed** the guarded `prisma/wipe.ts`: dry-run by default; the destructive run requires the live DB host as a typed `--confirm` token. Wipes all 18 business tables (child→parent order). `--set-team` reconciled the `Partner` table to the 4 real partners (Jason Lotoski / Jay Giraud / Steve Devries — Managing Partners; Jack Nyrose — Jr Consultant) and removed the 5 fictional seed partners. **Ran at go-live:** 117 fictional business rows cleared, roster set, SSO intact. Firm channels regenerate on next `/messages` load. `npm run wipe` = safe dry-run preview.
 
-**Build sequence** (each ships independently; later steps lean on earlier): B1 ✅ → B2 ✅ → B3 ✅ → B3b ✅ → B4 ✅ → B5 ✅ → B6 (on hold, run at go-live). **Track B is complete except B6.**
+**Build sequence** (each ships independently; later steps lean on earlier): B1 ✅ → B2 ✅ → B3 ✅ → B3b ✅ → B4 ✅ → B5 ✅ → B6 ✅ (wiped at go-live 2026-05-29). **Track B is complete.**
 
 > Tracks A and B are independent and can interleave. B is mostly wiring on schema that already exists; A introduces the AI dependency.
 
