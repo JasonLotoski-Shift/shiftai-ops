@@ -17,9 +17,11 @@ import {
   MessageSquare,
   FileInput,
   Sparkles,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sigil } from "@/components/wordmark";
+import { logout } from "@/app/(app)/account.actions";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -44,7 +46,9 @@ const secondary = [
   { href: "/settings", label: "Settings", icon: Settings, disabled: true },
 ];
 
-export function Sidebar() {
+type SidebarUser = { name: string; initials: string; role: string };
+
+export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
 
   return (
@@ -159,17 +163,26 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* User chip */}
-      <div className="px-5 py-4 border-t border-graphite">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[11px] text-track-gold">
-            JL
+      {/* User chip + sign out */}
+      <div className="px-5 py-4 border-t border-graphite flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-7 h-7 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[11px] text-track-gold shrink-0">
+            {user.initials}
           </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-[12px] text-bone">Jason Lotoski</span>
-            <span className="label text-[9px]">Managing Partner</span>
+          <div className="flex flex-col leading-tight min-w-0">
+            <span className="text-[12px] text-bone truncate">{user.name}</span>
+            <span className="label text-[9px] truncate">{user.role}</span>
           </div>
         </div>
+        <form action={logout}>
+          <button
+            type="submit"
+            title="Sign out"
+            className="text-bone-mute hover:text-bone transition-colors shrink-0"
+          >
+            <LogOut size={15} strokeWidth={1.5} />
+          </button>
+        </form>
       </div>
     </aside>
   );

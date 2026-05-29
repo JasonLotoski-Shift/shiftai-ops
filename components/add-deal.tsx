@@ -64,7 +64,14 @@ function AddDealModal({
     d.setDate(d.getDate() + 30);
     return d.toISOString().slice(0, 10);
   });
-  const [partnerLeadId, setPartnerLeadId] = useState(defaultPartnerId ?? partners[0]?.id ?? "");
+  // Default to the signed-in partner, but only if they're actually in the
+  // roster — a stale session (e.g. after a data wipe) must not select a
+  // non-existent partner, which would make the server reject the deal.
+  const [partnerLeadId, setPartnerLeadId] = useState(
+    defaultPartnerId && partners.some((p) => p.id === defaultPartnerId)
+      ? defaultPartnerId
+      : partners[0]?.id ?? "",
+  );
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
