@@ -1,6 +1,7 @@
 # Ops Tool — Roadmap
 
-> **Status (2026-05-28):** Phases 1–3 shipped — live at `https://ops.shiftai.partners` with Google SSO, Prisma/Supabase persistence, all mutations, the tracking round-trip, the activity feed, and the Tasks surface. **The AI generation layer is not built yet** (see the reality check below). Two tracks run next: **Track A — the AI layer** (the generative spine → firm brain → skills → Quick Actions) and **Track B — the Firm Hub** (messaging, pipeline drag-and-drop, agents tab). They converge at **Phase 4 (MCP)** and **Phase 5 (agents)**.
+> **Status (2026-05-29):** Phases 1–3 shipped. **Track A (AI layer) and Track B (Firm Hub) are now essentially complete**, and Phases 4–4b have their first builds in. Shipped 2026-05-29 (overnight): the generative spine + firm brain + 7 skills + the Quick Actions (incl. Add contact, real log-grounded AI enrich, Run an action); **B4 messaging** (channels + DMs + polling + task cards); **B5 Agents tab** (agent plans + live SKILL.md viewer); **Phase 4b meeting ingest** (review queue + `ingest-meeting` skill + entity matching, paste path live; Fireflies webhook scaffolded, needs config); **Phase 4 MCP server** (functional stdio, `npm run mcp`) + `/onboard-client` + `/harvest-engagement` skills. **Remaining is mostly infra/manual:** register the MCP server in Claude Code, set Fireflies env + webhook, build scheduled agents on the MCP rails, B6 data wipe (on hold). See the per-phase checkboxes below.
+> _Earlier status (2026-05-28): Two tracks run next — Track A (generative spine → firm brain → skills → Quick Actions) and Track B (messaging, pipeline drag-and-drop, agents tab). They converge at Phase 4 (MCP) and Phase 5 (agents)._
 > **Parent:** [../../shiftai-firm/WorkspacePlan.md](../../shiftai-firm/WorkspacePlan.md) — firm-level operating architecture; the ops tool is Surface 1 (the spine).
 > **Stack & conventions:** [../CLAUDE.md](../CLAUDE.md) — production stack, gotchas, repo layout. Not duplicated here.
 > **Companions:** [mcp-contract.md](mcp-contract.md) (Phase 4 interface), [agent-flow-design.md](agent-flow-design.md) (Phase 5 build queue).
@@ -80,6 +81,8 @@ Jason's explicit concern: the brain gets old fast, but we also don't want it sil
 
 ## Reality check — what "the first Quick Action" actually shipped
 
+> _Superseded 2026-05-29: the generative layer is now built — `@anthropic-ai/sdk` is installed, `lib/ai.ts` (`generate`/`generateStream`) is live, `skills/_firm/context.md` + 7 skills exist, and the Quick Actions generate for real. This section is kept as the honest record of where 3d actually stood._
+
 The earlier roadmap implied 3d shipped `draft-email` as a full AI feature. The code says otherwise, and the plan below depends on being honest about it:
 
 - **`@anthropic-ai/sdk` is not installed.** There is zero Claude generation anywhere in the repo today.
@@ -107,7 +110,7 @@ The earlier roadmap implied 3d shipped `draft-email` as a full AI feature. The c
 
 ---
 
-### Track A — the AI layer (Phase 3e) — ⏳ next
+### Track A — the AI layer (Phase 3e) — ✅ complete (2026-05-29)
 
 The generative layer. **The order matters:** the spine and the brain come before any individual Quick Action, because every action depends on them.
 
@@ -132,8 +135,8 @@ The lineup (reset 2026-05-28). Generative actions clone the `draft-email` recipe
 - [x] **Draft client survey** — ✅ shipped 2026-05-29. `client-survey` skill via shared `generateClientDoc()`/`saveClientDoc()` → `Artifact` (report) + `AuditLog` + `Activity`. *(Client page.)*
 - [x] **Draft discussion doc** — ✅ shipped 2026-05-29. `discussion-doc` skill, same shared client-doc pair. *(Client page.)*
 - [x] **Upload client files** — ✅ shipped 2026-05-29. *Ingest, not generation.* `uploadClientFile()` — file/paste → client Drive → `Artifact` (+ `Interaction` when logged as a meeting) + `AuditLog` + `Activity`. *(Client page.)* Optional Fireflies API pull later.
-- [ ] **Add contact** — fast capture. `Contact` + `AuditLog`. (Mutation, not generative.)
-- [ ] **Run an action** — generic launcher (enrich a contact, generate a brief, run a health check).
+- [x] **Add contact** — ✅ shipped 2026-05-29. `createContact` + `AddContactModal` (header button on /contacts, dashboard `?qa=add`). `Contact` + `AuditLog` + `Activity`. (Mutation, not generative.)
+- [x] **Run an action / AI enrich** — ✅ shipped 2026-05-29. `enrich-contact` skill → `generateEnrichment()` proposes log-grounded additions (strict JSON), partner approves, `applyEnrichment()` merges **append-only** (never overwrites a set scalar). Replaces the old fabricated-facts mock. *Web search enrich left honestly "not wired" (no server-side web access).* Dashboard "Run an action" routes to contact picker → `?qa=enrich`. (Brief / health-check launchers are future skills.)
 
 > **Dropped from the lineup (2026-05-28):**
 > - **Build presentation** → moves to the Claude Code **workspace**. Heavy multi-file decks belong at the client folder, not the ops tool.
@@ -142,7 +145,7 @@ The lineup (reset 2026-05-28). Generative actions clone the `draft-email` recipe
 
 ---
 
-### Track B — the Firm Hub (between 3e and Phase 4) — ⏳ in progress
+### Track B — the Firm Hub (between 3e and Phase 4) — ✅ complete except B6 (2026-05-29)
 
 Make the tool *come alive* for the three partners: one firm timeline, real tasks, a live pipeline, and a window into the agents. **Decisions (Jason, 2026-05-28): real-time = short-interval polling; data wipe on hold.** Mostly *wiring*, not new foundations — the schema is most of the way there (`Activity` model exists but only the seed writes it; `Task` already has `owner`/`clientId`/`projectId` FKs; `AuditLog` captures every write; `Partner` is the Auth.js user table; the sidebar already has disabled "Agents/Settings" slots).
 
@@ -179,8 +182,10 @@ Each deal card carries a left-accent color by **time in its current stage**: gre
 - `stageAgeTier()` + `STAGE_AGE_STEP_DAYS` (14) in `lib/format` — thresholds as named constants. Cards/`text-signal-*` colors via two theme tokens (`signal-fresh`/`signal-warming`, dark+light) + `flag-red`. Optimistic move flips a card to green instantly.
 - Pipeline "Stale" summary stat now counts stale-in-stage (28d+).
 
-#### B4 — Messaging (channels + DMs + polling)
-- New models:
+#### B4 — Messaging (channels + DMs + polling) — ✅ done 2026-05-29
+Shipped: `Channel` / `ChannelMember` / `Message` models + `ChannelKind` enum (migration `messaging`). `/messages` route — conversation rail (channels then DMs, unread badges) + message pane on short-interval polling (`getMessagesSince` every 4s) + composer + new-DM picker. `ensureFirmChannels()` idempotently provisions `#general`/`#pipeline`/`#deals` + membership on load (no seed run needed in prod). Task-assignment integration: `createTask` posts a system `Message` (`taskId` set) into the assigner↔assignee DM → renders as an interactive task card; toggling done from the chat flips the same row. Chat is its own system of record (no per-line `AuditLog` noise). Sidebar gained **Messages**. _Original spec below for reference._
+
+- Models:
 
 ```prisma
 model Channel {
@@ -214,27 +219,59 @@ model Message {
 - **Real-time = short-interval polling (3–5s)** — matches "semi-real-time" exactly. No new infra, no anon key on the client, no RLS. A `getMessagesSince(channelId, cursor)` server action on a `setInterval`. Supabase Realtime is the documented upgrade path the day polling feels laggy — it won't at three partners.
 - **Task assignment integration:** on assignment, post a **system `Message` with `taskId` set** into the DM channel between assigner and assignee → renders as an interactive task card ("task appears in the chat with that person" falls out for free). Toggling done anywhere (chat card or Tasks tab) flips the same row and posts a completion event to the feed. **One `Task` row, surfaced in three places** (chat card, Tasks tab, activity feed) — no duplication. (`Task.assignedById` shipped in B2.)
 
-#### B5 — Firm Agents tab
-- **Agent plans** (collaboration, deploys nothing): new `AgentPlan` model — `name`, `goal`, `keyTasks` (string[]), `notes`, `status`, `createdById`. Simple CRUD. Start with a notes field; add a per-plan channel only if threaded discussion is wanted.
-- **Live agents:** read-only view rendering the actual `SKILL.md` for each running skill/agent (server-side file read from `skills/<name>/`), so anyone sees how the agent thinks. Bridges to Phases 4/5 — scheduled-agent runs post into the activity feed too.
+#### B5 — Firm Agents tab — ✅ done 2026-05-29
+- **Agent plans** ✅ — `AgentPlan` model (`name`/`goal`/`keyTasks[]`/`notes`/`status`/`createdById`) + `AgentPlanStatus` enum (idea/active/paused/done), migration `agent_plan`. Full CRUD on `/agents` (create/edit/delete + status chips); each mutation writes `AuditLog` (+ `Activity` on create/status).
+- **Live skills** ✅ — read-only view renders the actual `SKILL.md` for every shipped skill + the `_firm/context.md` brain (server-side disk read via `lib/skills.ts`), so anyone sees exactly how each agent/Quick Action thinks. Sidebar **Agents** now active. _Future: scheduled-agent runs post into the feed (Phase 4/5)._
 
 #### B6 — Data wipe — on hold
 - Don't touch data yet. When ready, a guarded `prisma/wipe.ts` that truncates business tables but **preserves `Partner` rows** (SSO keeps working), with a typed confirmation. Run deliberately, not as part of feature work.
 
-**Build sequence** (each ships independently; later steps lean on earlier): B1 ✅ → B2 ✅ → B3 (needs B1+B2) → B4 (task cards need B2) → B5 (standalone) → B6 (on hold, run at go-live). ~4 shippable PRs remain.
+**Build sequence** (each ships independently; later steps lean on earlier): B1 ✅ → B2 ✅ → B3 ✅ → B3b ✅ → B4 ✅ → B5 ✅ → B6 (on hold, run at go-live). **Track B is complete except B6.**
 
 > Tracks A and B are independent and can interleave. B is mostly wiring on schema that already exists; A introduces the AI dependency.
 
 ---
 
 ### Phase 4 — MCP server + `/onboard-client`
-- [ ] MCP server alongside the web app (same Prisma client, different surface). Contract: [mcp-contract.md](mcp-contract.md). This is the **door for Claudes outside the app** — Claude Code in a client folder, scheduled agents.
-- [ ] `/onboard-client` skill — fires on `engagement.created`; scaffolds Shared Drive folder + local workspace + per-client `CLAUDE.md`, writes `driveFolderUrl` + `workspacePath` back to the Client record. Closes the three-surface handshake automatically.
-- [ ] First scheduled agent: weekly pipeline review (Reporting agent — see [agent-flow-design.md](agent-flow-design.md)).
-- [ ] Wire Claude Code workspaces to the MCP server; surface scheduled-agent runs in the activity feed and the Agents tab (B5).
+- [x] **MCP server** — ✅ built 2026-05-29 (`mcp/server.ts`, `npm run mcp`). stdio transport (resolves the contract's open transport question for the local Claude-Code case; HTTP is the upgrade path for off-machine agents). 7 read tools + 4 write tools (`create_artifact`, `update_project_status`, `create_task`, `log_interaction`) over the same Prisma client; every write does `writeAudit` + `writeActivity` tagged `AGENT · MCP`. Smoke-tested (boots, answers `tools/list`). Hours tools from the contract omitted — model removed. See [../mcp/README.md](../mcp/README.md).
+- [x] **`/onboard-client` skill** — ✅ written 2026-05-29 (`skills/onboard-client/SKILL.md`). Scaffolds Drive folder + local workspace + per-client `CLAUDE.md` on `engagement.created`, writes `driveFolderUrl`/`workspacePath` back via MCP. Idempotent, isolation-strict, propose-not-write. *(Runs from Claude Code; not yet auto-triggered.)*
+- [ ] **First scheduled agent: weekly pipeline review** — not built. Needs the MCP rails registered + a scheduler (cron/host). See [agent-flow-design.md](agent-flow-design.md).
+- [ ] **Register Claude Code workspaces** with the MCP server (`.claude/settings.json` snippet in the MCP README) + surface scheduled-agent runs in the feed/Agents tab. **← manual / infra step.**
+
+> **Manual to finish Phase 4 (Jason):** register the MCP server in your client workspaces; decide HTTP transport + auth before any *remote* scheduled agent; stand up the scheduler for the weekly pipeline review.
+
+### Phase 4b — Meeting ingest (Fireflies → client records)
+
+Turn a recorded discovery/engagement call into ops-tool records automatically — the auto version of the **Upload client files** Quick Action (which is the manual path, already shipped). A meeting becomes records through a **propose → review → write** pipeline. Nothing a transcript *says* is written as fact silently — discovery calls are full of soft claims (budget, timeline, commitments), so Claude **extracts and proposes**, a partner **approves**, then it writes through the canonical recipe. Same propose-not-write governance as `/harvest-engagement` and the non-destructive "AI enrich" merge.
+
+**The pipeline:**
+```
+Fireflies call ends → webhook "transcript ready"
+  → /api/ingest/fireflies: pull transcript + summary + action items + participants
+  → MATCH to a record (participant emails → Contact → Client/Deal; no match → unassigned in queue)
+  → EXTRACT via generate() + an `ingest-meeting` skill:
+       • Interaction (meeting, date, summary, key points)
+       • enrichment facts (append-only — persona / key facts)
+       • action items → proposed Tasks (owner + context)
+       • a stage / next-step signal (never auto-moves the deal — suggests)
+  → REVIEW QUEUE (proposed, not written) — partner approves / edits / rejects per item
+  → PERSIST one transaction, tagged "AGENT · CLAUDE": Artifact (transcript → Drive)
+    + Interaction (advances lastTouchAt) + Task(s) + append-only enrichment + AuditLog
+```
+The persist block is the existing recipe — `uploadClientFile` already does the Artifact + Interaction half.
+
+**Staged build (highest-value first):**
+- [x] **Review queue + `ingest-meeting` skill** — ✅ shipped 2026-05-29. `IngestProposal` model (Json proposal + `pending`/`approved`/`rejected` status) + migration. Paste a transcript → extract via the `ingest-meeting` skill (strict JSON: summary, key points, action items, append-only enrichment, stage signal) → **pending** proposal on `/ingest`. Per-item approve (edit summary, keep/drop tasks with owner+due, keep/drop enrichment, attach contact/client) → persists the canonical recipe in one transaction (Artifact transcript→Drive + Interaction + Tasks + enrichment + AuditLog + Activity), tagged `AGENT · CLAUDE`. Stage signal is suggestion-only; reject writes nothing.
+- [x] **Entity matching** — ✅ shipped 2026-05-29. Participant emails (explicit field or scraped) → `Contact` → `Client`/`Deal`. >1 known participant or no match → **unassigned**, partner attaches in the review (don't guess the client).
+- [~] **Fireflies webhook + API** — **scaffolded** 2026-05-29 (`/api/ingest/fireflies`): pull → match → extract → pending proposal, idempotent on the meeting id (`externalId` UNIQUE). **GUARDED — returns 501 until `FIREFLIES_API_KEY` + `FIREFLIES_WEBHOOK_SECRET` are set.** Ships inert; untested end-to-end (no Fireflies account wired). **← needs config + a real-payload test (Jason).**
+- [ ] *(Optional)* run extraction as a scheduled agent over MCP instead of a webhook, once Phase 4 rails exist.
+
+> **Non-negotiables:** propose-never-auto-write (the partner is the gate); don't guess the client (unassigned beats wrong); idempotency on the meeting ID.
 
 ### Phase 5 — Agents
-Build **one agent at a time** off the MCP rails. Each agent = a SKILL.md + `generate()` for thinking + MCP tools for reading/writing state, following the same persistence recipe as a Quick Action (no agent is exempt). Order, specs, and discipline in [agent-flow-design.md](agent-flow-design.md). Includes `/harvest-engagement` on `engagement.closed` — *proposes* sanitized IP lifts into firm templates for partner review (the skill-learning loop; propose-not-write, per governance above).
+Build **one agent at a time** off the MCP rails. Each agent = a SKILL.md + `generate()` for thinking + MCP tools for reading/writing state, following the same persistence recipe as a Quick Action (no agent is exempt). Order, specs, and discipline in [agent-flow-design.md](agent-flow-design.md).
+- [x] **`/harvest-engagement` skill** — ✅ written 2026-05-29 (`skills/harvest-engagement/SKILL.md`). On `engagement.closed`, walks the closed workspace and *proposes* sanitized IP lifts into `00-Firm/_Templates/` for partner review (skill-learning loop; propose-not-write). *(Runs from Claude Code; not yet auto-triggered.)*
+- [ ] **Remaining agents** — build one at a time off the MCP rails once a scheduler is in place (reporting / weekly pipeline review, etc., per [agent-flow-design.md](agent-flow-design.md)). **← needs scheduling infra.**
 
 ---
 
@@ -263,7 +300,7 @@ The human-facing **activity feed** ([`Activity`](../prisma/schema.prisma), write
 
 All writes in one server-action transaction; partial failures roll back. No agent is exempt.
 
-**External-surface ingest (backlog — feeds the same models, no schema churn):** Gmail/Calendar scan and *propose* `Interaction` rows for partner approval; Drive change watcher proposes `Artifact` rows; Claude Code session-end hook logs hours + registers files via MCP. All propose-not-write, per governance.
+**External-surface ingest (feeds the same models, no schema churn):** **meeting ingest (Fireflies → records) is specced as [Phase 4b](#phase-4b--meeting-ingest-fireflies--client-records)**; same pattern still on the backlog for Gmail/Calendar scan (*propose* `Interaction` rows for approval) and a Drive change watcher (proposes `Artifact` rows). All propose-not-write, per governance.
 
 ---
 
