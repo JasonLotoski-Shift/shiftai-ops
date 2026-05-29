@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   FileText,
@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Sparkles,
   CircleAlert,
+  Upload,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -53,20 +54,21 @@ export function IngestView({
     <div className="px-8 py-8 flex flex-col gap-6">
       <div className="flex items-start justify-between gap-6">
         <p className="text-[13px] text-bone-mute max-w-[680px] leading-relaxed">
-          Paste a meeting transcript — Claude extracts a summary, action items, enrichment facts, and a stage signal,
-          then holds them here as a <span className="text-bone">proposal</span>. Nothing is written until you approve it,
-          item by item. Discovery calls are full of soft claims; the partner is the gate.
+          Drop in a notes file or paste a transcript — Claude extracts a summary, action items, enrichment facts, and a
+          stage signal, then holds them here as a <span className="text-bone">proposal</span>. Nothing is written until you
+          approve it, item by item. Discovery calls are full of soft claims; the partner is the gate. (Fireflies auto-ingest
+          plugs into this same queue once it&apos;s wired.)
         </p>
         <Button variant="primary" size="sm" onClick={() => setPasteOpen(true)}>
           <Plus size={13} strokeWidth={1.5} />
-          Paste transcript
+          Add meeting notes
         </Button>
       </div>
 
       {proposals.length === 0 ? (
         <Card className="px-5 py-12 text-center">
           <FileText size={22} strokeWidth={1.5} className="text-bone-mute mx-auto mb-3" />
-          <p className="text-[13px] text-bone-dim">No pending meetings. Paste a transcript to start.</p>
+          <p className="text-[13px] text-bone-dim">No pending meetings. Drop in notes or paste a transcript to start.</p>
         </Card>
       ) : (
         <div className="flex flex-col gap-3">
@@ -90,15 +92,44 @@ export function IngestView({
   );
 }
 
+// Plain-text formats we can read in the browser straight into the transcript.
+// Binary formats (.docx/.pdf) need server-side parsing — not wired; paste instead.
+const TEXT_EXTS = [".txt", ".md", ".markdown", ".vtt", ".srt", ".text", ".log", ".rtf", ".csv"];
+
 function PasteModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [emails, setEmails] = useState("");
   const [transcript, setTranscript] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  function loadFile(file: File) {
+    const lower = file.name.toLowerCase();
+    const okExt = TEXT_EXTS.some((e) => lower.endsWith(e));
+    const okType = file.type.startsWith("text/") || file.type === "";
+    if (!okExt && !okType) {
+      setError(`"${file.name}" looks like a binary file (e.g. .docx / .pdf). Export it to text/markdown, or paste the notes below.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      setTranscript(text);
+      setFileName(file.name);
+      setError(null);
+      if (!title.trim()) {
+        setTitle(file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim());
+      }
+    };
+    reader.onerror = () => setError("Couldn't read that file.");
+    reader.readAsText(file);
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -124,7 +155,7 @@ function PasteModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
           <div className="flex items-center gap-3">
             <FileText size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— Paste meeting transcript</Label>
+            <Label gold>— Add meeting notes</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -145,9 +176,36 @@ function PasteModal({ onClose }: { onClose: () => void }) {
             <Label>Participant emails (optional)</Label>
             <Input value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="comma-separated — used to match a contact" disabled={isPending} />
           </div>
+          {/* Drop-in a notes/transcript file (no Fireflies needed) */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); }}
+            onClick={() => !isPending && fileInputRef.current?.click()}
+            className={cn(
+              "border border-dashed px-4 py-5 flex flex-col items-center gap-1.5 text-center cursor-pointer transition-colors",
+              dragging ? "border-track-gold bg-track-gold-dim/10" : "border-graphite hover:border-bone-mute",
+              isPending && "opacity-50 pointer-events-none",
+            )}
+          >
+            <Upload size={16} strokeWidth={1.5} className="text-track-gold" />
+            {fileName ? (
+              <span className="text-[12px] text-bone">Loaded <span className="text-track-gold">{fileName}</span> — edit below or drop another</span>
+            ) : (
+              <span className="text-[12px] text-bone-dim">Drop a notes file or <span className="text-track-gold">click to browse</span> · .txt .md .vtt .srt</span>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".txt,.md,.markdown,.vtt,.srt,.text,.log,.rtf,.csv,text/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ""; }}
+            />
+          </div>
+
           <div className="flex flex-col gap-2">
-            <Label>Transcript <span className="text-flag-red">*</span></Label>
-            <Textarea rows={10} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Paste the full transcript…" required disabled={isPending} />
+            <Label>Transcript / notes <span className="text-flag-red">*</span></Label>
+            <Textarea rows={10} value={transcript} onChange={(e) => { setTranscript(e.target.value); if (fileName) setFileName(null); }} placeholder="Paste the notes or transcript here — or drop a file above…" required disabled={isPending} />
           </div>
           <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
