@@ -139,6 +139,25 @@ export type Invoice = {
   status: "draft" | "sent" | "paid" | "overdue";
 };
 
+/* Billing schedule — the project's invoicing structure.
+ * Each installment is one planned slice of the fee; "Send invoice" reads
+ * these as presets and links the produced Invoice back here. */
+
+export type InstallmentTrigger = "on-signing" | "milestone" | "date" | "manual";
+export type InstallmentStatus = "planned" | "invoiced" | "paid";
+
+export type BillingInstallment = {
+  id: string;
+  projectId: string;
+  label: string;
+  amount: number;
+  trigger: InstallmentTrigger;
+  dueDate?: string; // ISO date
+  sortOrder: number;
+  status: InstallmentStatus;
+  invoiceId?: string; // set once billed
+};
+
 export type Activity = {
   id: string;
   ts: string; // ISO datetime
@@ -163,6 +182,7 @@ export type Task = {
   // Scope FKs — nullable; firm-wide tasks have neither.
   clientId?: string;
   projectId?: string;
+  artifactId?: string; // deliverable this task hangs off, if any
   done: boolean;
 };
 

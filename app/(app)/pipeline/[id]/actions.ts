@@ -99,6 +99,9 @@ export async function convertDeal(
         contractValue: deal.valueEstimate,
         contractSignedAt: new Date(),
         status: "on_track",
+        // Seed the engagement with the deal's context — by now the note has
+        // been structured by the structure-deal-notes pass on create.
+        notes: deal.notes?.trim() || null,
         partnerLeadId: deal.partnerLeadId,
         primaryContactId: deal.contactId,
       },

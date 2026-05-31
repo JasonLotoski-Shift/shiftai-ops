@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Send, Check, ShieldAlert } from "lucide-react";
+import { Send, Check, ShieldAlert, FileOutput } from "lucide-react";
 import { Button } from "@/components/ui";
 import { markInvoiceSent, markInvoicePaid } from "@/app/(app)/invoices/[id]/actions";
+import { generateInvoice } from "@/app/(app)/projects/[id]/billing-actions";
 
 type Status = "draft" | "sent" | "paid" | "overdue";
 
@@ -31,15 +32,26 @@ export function InvoiceStatusActions({
   return (
     <>
       {status === "draft" && (
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={isPending}
-          onClick={() => run(() => markInvoiceSent(invoiceId))}
-        >
-          <Send size={13} strokeWidth={1.5} />
-          {isPending ? "Sending…" : "Send invoice"}
-        </Button>
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isPending}
+            onClick={() => run(() => markInvoiceSent(invoiceId))}
+          >
+            <Send size={13} strokeWidth={1.5} />
+            {isPending ? "Sending…" : "Send as-is"}
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={isPending}
+            onClick={() => run(() => generateInvoice(invoiceId))}
+          >
+            <FileOutput size={13} strokeWidth={1.5} />
+            {isPending ? "Generating…" : "Generate invoice"}
+          </Button>
+        </>
       )}
       {(status === "sent" || status === "overdue") && (
         <Button

@@ -9,7 +9,8 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
+import { generate } from "@/lib/ai";
 import type { DealStage, Industry } from "@/lib/generated/prisma/enums";
 
 const STAGE_LABELS: Record<DealStage, string> = {
@@ -168,7 +169,181 @@ export async function createDeal(input: {
     return created;
   });
 
+  // ── AI pass: structure the note + lift durable contact facts ──────────
+  // Best-effort enrichment AFTER the deal is safely persisted. If the model
+  // call, the JSON parse, or the follow-up writes fail, we swallow it and
+  // keep the raw note — the deal must still exist. The raw note already saved
+  // above, so a failure here is a no-op, not a rollback.
+  const rawNote = input.notes?.trim();
+  if (rawNote) {
+    try {
+      await structureDealNotes({
+        dealId: deal.id,
+        contactId: contact.id,
+        contactName: contact.name,
+        company,
+        rawNote,
+      });
+    } catch (err) {
+      // Non-fatal — the deal is already saved with the raw note.
+      console.error("structure-deal-notes failed (kept raw note):", err);
+    }
+  }
+
   revalidatePath("/pipeline");
   revalidatePath("/dashboard");
+  revalidatePath(`/contacts/${contact.id}`);
+  revalidatePath("/contacts");
   return { id: deal.id };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// structureDealNotes — the structure-deal-notes skill, applied to a deal's
+// raw note right after creation.
+//
+// Two outputs from one call:
+//   1. structuredNote → replaces Deal.notes (tidy, skimmable)
+//   2. contactKeyFacts → APPEND-ONLY merge into the linked Contact.keyFacts
+//      (case-insensitive dedupe — never overwrites; mirrors the merge in
+//      contacts/[id]/actions.ts applyEnrichment).
+//
+// Attributed to agentActor("structure-deal-notes"). Resilient by contract:
+// the caller wraps this in try/catch so any failure keeps the raw note.
+// ──────────────────────────────────────────────────────────────────────
+
+function parseStructuredNotes(raw: string): {
+  structuredNote: string | null;
+  contactKeyFacts: string[];
+} {
+  let text = raw.trim();
+  // Strip a ```json fence if the model added one despite instructions.
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  // Otherwise slice to the outermost braces.
+  if (!text.startsWith("{")) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end !== -1) text = text.slice(start, end + 1);
+  }
+
+  const obj = JSON.parse(text) as { structuredNote?: unknown; contactKeyFacts?: unknown };
+
+  const structuredNote =
+    typeof obj.structuredNote === "string" && obj.structuredNote.trim()
+      ? obj.structuredNote.trim()
+      : null;
+
+  const contactKeyFacts = Array.isArray(obj.contactKeyFacts)
+    ? obj.contactKeyFacts
+        .filter((f): f is string => typeof f === "string" && f.trim().length > 0)
+        .map((f) => f.trim())
+    : [];
+
+  return { structuredNote, contactKeyFacts };
+}
+
+async function structureDealNotes(args: {
+  dealId: string;
+  contactId: string;
+  contactName: string;
+  company: string;
+  rawNote: string;
+}) {
+  const { dealId, contactId, contactName, company, rawNote } = args;
+
+  // Context: a short summary of the linked contact so the model knows who the
+  // durable facts attach to and avoids duplicating what's already on record.
+  const contact = await prisma.contact.findUnique({
+    where: { id: contactId },
+    select: {
+      name: true,
+      title: true,
+      company: true,
+      industry: true,
+      persona: true,
+      keyFacts: true,
+    },
+  });
+  if (!contact) return; // contact vanished between writes — nothing to do
+
+  const ctx: string[] = [
+    "## Linked contact (the deal's primary person)",
+    `Name: ${contact.name}`,
+    `Title: ${contact.title}`,
+    `Company: ${contact.company}`,
+    `Industry: ${contact.industry}`,
+  ];
+  if (contact.persona) ctx.push(`Persona: ${contact.persona}`);
+  ctx.push(
+    `Existing key facts: ${contact.keyFacts.length ? contact.keyFacts.join("; ") : "(none)"}`,
+  );
+
+  const intake = [
+    "## Raw deal note (the partner's words)",
+    rawNote,
+    "",
+    `(This deal is for ${company}.)`,
+  ].join("\n");
+
+  const raw = await generate({
+    skill: "structure-deal-notes",
+    context: ctx.join("\n"),
+    intake,
+    maxTokens: 800,
+  });
+
+  const { structuredNote, contactKeyFacts } = parseStructuredNotes(raw);
+
+  // Append-only merge of new durable facts into Contact.keyFacts (never
+  // overwrite; case-insensitive dedupe against what's already there).
+  const merged = [...contact.keyFacts];
+  const newFacts: string[] = [];
+  for (const fact of contactKeyFacts) {
+    if (!merged.some((v) => v.toLowerCase() === fact.toLowerCase())) {
+      merged.push(fact);
+      newFacts.push(fact);
+    }
+  }
+
+  const noteChanged = !!structuredNote && structuredNote !== rawNote;
+  if (!noteChanged && newFacts.length === 0) return; // nothing worth writing
+
+  const aiActor = agentActor("structure-deal-notes");
+
+  await prisma.$transaction(async (tx) => {
+    if (noteChanged) {
+      await tx.deal.update({
+        where: { id: dealId },
+        data: { notes: structuredNote },
+      });
+    }
+    if (newFacts.length > 0) {
+      await tx.contact.update({
+        where: { id: contactId },
+        data: { keyFacts: merged, enrichedAt: new Date() },
+      });
+    }
+
+    await writeAudit(tx, {
+      actor: aiActor,
+      action: "update.deal.structure-notes",
+      targetType: "Deal",
+      targetId: dealId,
+      changes: {
+        contactId,
+        structuredNote: noteChanged,
+        keyFactsAdded: newFacts,
+      },
+    });
+
+    if (newFacts.length > 0) {
+      await writeActivity(tx, {
+        actor: aiActor,
+        type: "ai",
+        target: contactName,
+        detail: `Lifted ${newFacts.length} durable fact(s) from a deal note — ${company}`,
+        link: `/contacts/${contactId}`,
+      });
+    }
+  });
 }

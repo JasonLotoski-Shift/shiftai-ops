@@ -1,26 +1,47 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { auth } from "@/auth";
 import { Header } from "@/components/header";
 import { Card, CardBody, CardHeader, Label, Badge, Button, Avatar, EmptyState } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate } from "@/lib/format";
+import { DeliveryTimeline, type TimelineMilestone } from "@/components/delivery-timeline";
+import { ManualMilestoneForm } from "@/components/manual-milestone-form";
+import { ManualDeliverableForm } from "@/components/manual-deliverable-form";
+import { DeliverableTasks } from "@/components/deliverable-tasks";
+import { BillingScheduleEditor } from "@/components/billing-schedule-editor";
+import { SendInvoiceModal } from "@/components/send-invoice-modal";
+import { ProjectDropPanel } from "@/components/project-drop-panel";
 import { ArrowLeft, Bot, Check, Circle, AlertTriangle, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink } from "lucide-react";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const project = await prisma.project.findUnique({
-    where: { id },
-    include: {
-      client: true,
-      partnerLead: true,
-      consultants: true,
-      milestones: { orderBy: { dueDate: "asc" } },
-      invoices: true,
-      artifacts: { orderBy: { createdAt: "desc" } },
-    },
-  });
+  const [project, partners, session] = await Promise.all([
+    prisma.project.findUnique({
+      where: { id },
+      include: {
+        client: true,
+        partnerLead: true,
+        consultants: true,
+        milestones: { orderBy: { dueDate: "asc" } },
+        invoices: true,
+        installments: { orderBy: { sortOrder: "asc" } },
+        artifacts: {
+          orderBy: { createdAt: "desc" },
+          include: { tasks: { include: { owner: true } } },
+        },
+      },
+    }),
+    prisma.partner.findMany({
+      select: { id: true, name: true, initials: true },
+      orderBy: { name: "asc" },
+    }),
+    auth(),
+  ]);
   if (!project) notFound();
+
+  const currentPartnerId = session?.user?.partnerId ?? "";
 
   const client = project.client;
   const partner = project.partnerLead;
@@ -28,12 +49,22 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const projectMilestones = project.milestones;
   const projectInvoices = project.invoices;
   const projectArtifacts = project.artifacts;
+  const projectInstallments = project.installments;
 
   const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, invoice: FileText, report: FileText, other: FileText } as const;
   const reviewTone = { draft: "neutral", approved: "steel", sent: "gold", archived: "bone" } as const;
 
   const milestonesComplete = projectMilestones.filter((m) => m.status === "complete").length;
-  const feeBurn = project.budgetFee > 0 ? (projectInvoices.reduce((s, i) => s + i.amount, 0) / project.budgetFee) * 100 : 0;
+  const invoicedTotal = projectInvoices.reduce((s, i) => s + i.amount, 0);
+  const feeBurn = project.budgetFee > 0 ? (invoicedTotal / project.budgetFee) * 100 : 0;
+  const remainingFee = project.budgetFee - invoicedTotal;
+
+  const timelineMilestones: TimelineMilestone[] = projectMilestones.map((m) => ({
+    id: m.id,
+    title: m.title,
+    dueDate: m.dueDate,
+    status: m.status,
+  }));
 
   return (
     <>
@@ -42,6 +73,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         title={project.name.split("·")[1]?.trim() ?? project.name}
         actions={
           <>
+            <SendInvoiceModal
+              projectId={project.id}
+              installments={projectInstallments}
+              remainingFee={remainingFee}
+            />
             <Button variant="ghost" size="sm">
               <FolderOpen size={13} strokeWidth={1.5} />
               Drive
@@ -66,7 +102,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <Card>
             <CardBody>
               <h2 className="title-md">Scope</h2>
-              <p className="text-[14px] text-bone-dim mt-2 leading-relaxed">{project.description}</p>
+              <p className="text-[14px] text-bone-dim mt-2 leading-relaxed whitespace-pre-line">{project.description}</p>
             </CardBody>
           </Card>
 
@@ -101,13 +137,26 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
           <Card>
             <CardHeader>
+              <h2 className="title-md">Delivery timeline</h2>
+            </CardHeader>
+            <CardBody>
+              <DeliveryTimeline
+                startDate={project.startDate}
+                targetEndDate={project.targetEndDate}
+                milestones={timelineMilestones}
+              />
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <h2 className="title-md">Milestones</h2>
             </CardHeader>
             {projectMilestones.length === 0 ? (
               <EmptyState icon={<Check size={22} strokeWidth={1.5} />} title="No milestones yet" hint="Milestones added to this project will appear here." compact />
             ) : (
             <div className="flex flex-col">
-              {projectMilestones.map((m, i) => (
+              {projectMilestones.map((m) => (
                 <div
                   key={m.id}
                   className="flex items-center gap-4 px-5 py-4"
@@ -148,6 +197,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               ))}
             </div>
             )}
+            <ManualMilestoneForm projectId={project.id} />
           </Card>
 
           <Card>
@@ -159,46 +209,66 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <EmptyState icon={<FileText size={22} strokeWidth={1.5} />} title="No deliverables yet" hint="AI-generated drafts and partner uploads appear here." compact />
             ) : (
               <div className="flex flex-col">
-                {projectArtifacts.map((ar, i) => {
+                {projectArtifacts.map((ar) => {
                   const Icon = artifactIcon[ar.type] ?? FileText;
                   const isAgent = ar.createdBy.startsWith("AGENT");
                   return (
-                    <a
-                      href={ar.driveUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      key={ar.id}
-                      className="grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors group"
-                    >
-                      <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
-                        <Icon size={16} strokeWidth={1.5} />
-                      </div>
-                      <div className="min-w-0 flex flex-col gap-1 self-center">
-                        <div className="text-[14px] text-bone truncate">{ar.title}</div>
-                        <div className="flex items-center gap-2 text-[11px] text-bone-mute">
-                          <span className="mono uppercase tracking-[0.08em]">{ar.type}</span>
-                          {ar.fileName && (<><span>·</span><span className="truncate">{ar.fileName}</span></>)}
-                          {ar.generatedFromSkill && (<><span>·</span><span className="mono text-track-gold">/{ar.generatedFromSkill}</span></>)}
+                    <div key={ar.id} className="flex flex-col">
+                      <a
+                        href={ar.driveUrl || "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors group"
+                      >
+                        <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
+                          <Icon size={16} strokeWidth={1.5} />
                         </div>
-                      </div>
-                      <div className="self-center flex flex-col gap-0.5 min-w-0">
-                        <div className={`text-[12px] truncate flex items-center gap-1.5 ${isAgent ? "text-track-gold" : "text-bone"}`}>
-                          {isAgent && <Bot size={11} strokeWidth={1.5} />}
-                          <span className="truncate">{ar.createdBy}</span>
+                        <div className="min-w-0 flex flex-col gap-1 self-center">
+                          <div className="text-[14px] text-bone truncate">{ar.title}</div>
+                          <div className="flex items-center gap-2 text-[11px] text-bone-mute">
+                            <span className="mono uppercase tracking-[0.08em]">{ar.type}</span>
+                            {ar.fileName && (<><span>·</span><span className="truncate">{ar.fileName}</span></>)}
+                            {ar.generatedFromSkill && (<><span>·</span><span className="mono text-track-gold">/{ar.generatedFromSkill}</span></>)}
+                          </div>
                         </div>
-                        <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(ar.createdAt)}</span>
+                        <div className="self-center flex flex-col gap-0.5 min-w-0">
+                          <div className={`text-[12px] truncate flex items-center gap-1.5 ${isAgent ? "text-track-gold" : "text-bone"}`}>
+                            {isAgent && <Bot size={11} strokeWidth={1.5} />}
+                            <span className="truncate">{ar.createdBy}</span>
+                          </div>
+                          <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(ar.createdAt)}</span>
+                        </div>
+                        <div className="self-center flex justify-end">
+                          <Badge tone={reviewTone[ar.reviewStatus]}>{ar.reviewStatus}</Badge>
+                        </div>
+                        <div className="self-center text-bone-mute opacity-50 group-hover:opacity-100 transition-opacity">
+                          <ExternalLink size={12} strokeWidth={1.5} />
+                        </div>
+                      </a>
+                      {/* Tasks hang off the deliverable — rendered OUTSIDE the anchor (interactive buttons can't nest in <a>). */}
+                      <div className="px-5 pb-4 pl-[60px]">
+                        <DeliverableTasks
+                          artifactId={ar.id}
+                          projectId={project.id}
+                          tasks={ar.tasks}
+                          partners={partners}
+                          currentPartnerId={currentPartnerId}
+                        />
                       </div>
-                      <div className="self-center flex justify-end">
-                        <Badge tone={reviewTone[ar.reviewStatus]}>{ar.reviewStatus}</Badge>
-                      </div>
-                      <div className="self-center text-bone-mute opacity-50 group-hover:opacity-100 transition-opacity">
-                        <ExternalLink size={12} strokeWidth={1.5} />
-                      </div>
-                    </a>
+                    </div>
                   );
                 })}
               </div>
             )}
+            <ManualDeliverableForm projectId={project.id} />
+          </Card>
+
+          <Card>
+            <BillingScheduleEditor
+              projectId={project.id}
+              installments={projectInstallments}
+              budgetFee={project.budgetFee}
+            />
           </Card>
         </div>
 
@@ -240,6 +310,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               ))}
             </CardBody>
           </Card>
+
+          <ProjectDropPanel projectId={project.id} />
 
           <Card className="border border-track-gold/40 bg-track-gold-dim/5">
             <CardHeader className="flex items-center gap-2">

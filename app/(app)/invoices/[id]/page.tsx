@@ -5,7 +5,7 @@ import { Card, CardBody, Label, Badge, Button, Hairline, Avatar } from "@/compon
 import { InvoiceStatusActions } from "@/components/invoice-status-actions";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, Download, FileOutput } from "lucide-react";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -49,6 +49,20 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <ArrowLeft size={12} strokeWidth={1.5} />
           Back to invoices
         </Link>
+
+        {invoice.status === "draft" && (
+          <div className="flex items-start gap-3 px-4 py-3 border border-track-gold/30 bg-track-gold-dim/10 rounded-[var(--radius-lg)]">
+            <FileOutput size={15} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[13px] text-bone">This invoice is a draft.</span>
+              <span className="text-[12px] text-bone-dim leading-relaxed">
+                Use <span className="text-bone">Generate invoice</span> above to produce the
+                formatted document and send it, or <span className="text-bone">Send as-is</span> to
+                mark it sent without generating a file.
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 flex flex-col gap-6">

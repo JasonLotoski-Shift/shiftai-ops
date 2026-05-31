@@ -13,6 +13,7 @@ import {
   Sparkles,
   CircleAlert,
   Upload,
+  FolderOpen,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -23,14 +24,22 @@ import {
   type ExtractedProposal,
   type ExtractedEnrich,
 } from "@/app/(app)/ingest/actions";
+import {
+  approveProjectProposal,
+  rejectProjectProposal,
+  type ProjectExtractedProposal,
+} from "@/app/(app)/projects/[id]/drop-actions";
 
 export type ProposalProp = {
   id: string;
+  source: string; // "paste" | "fireflies" | "drop"
   title: string;
   meetingDate: string;
   createdBy: string;
   matchedContactId: string | null;
   matchedClientId: string | null;
+  matchedProjectId: string | null;
+  projectLabel: string | null;
   proposal: ExtractedProposal;
 };
 
@@ -75,18 +84,27 @@ export function IngestView({
         </Card>
       ) : (
         <div className="flex flex-col gap-3">
-          {proposals.map((p) => (
-            <ProposalCard
-              key={p.id}
-              p={p}
-              open={expanded === p.id}
-              onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
-              partners={partners}
-              contacts={contacts}
-              clients={clients}
-              currentPartnerId={currentPartnerId}
-            />
-          ))}
+          {proposals.map((p) =>
+            p.source === "drop" && p.matchedProjectId ? (
+              <ProjectProposalCard
+                key={p.id}
+                p={p}
+                open={expanded === p.id}
+                onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
+              />
+            ) : (
+              <ProposalCard
+                key={p.id}
+                p={p}
+                open={expanded === p.id}
+                onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
+                partners={partners}
+                contacts={contacts}
+                clients={clients}
+                currentPartnerId={currentPartnerId}
+              />
+            ),
+          )}
         </div>
       )}
 
@@ -486,5 +504,233 @@ function EnrichGroup({
         ))}
       </div>
     </div>
+  );
+}
+
+// ── Project-drop proposal card — milestones / tasks / contact facts / notes ──
+const PRIORITY_OPTS = ["high", "medium", "low"] as const;
+const M_STATUS_OPTS = ["pending", "in-progress", "complete", "at-risk"] as const;
+
+function ProjectProposalCard({
+  p,
+  open,
+  onToggle,
+}: {
+  p: ProposalProp;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const router = useRouter();
+  const prop = p.proposal as unknown as ProjectExtractedProposal;
+
+  const [summary, setSummary] = useState(prop.summary ?? "");
+  const [projectNotes, setProjectNotes] = useState(prop.projectNotes ?? "");
+
+  const [milestones, setMilestones] = useState(
+    (prop.milestones ?? []).map((m) => ({
+      keep: true,
+      title: m.title,
+      dueDate: m.dueDate ?? "",
+      status: m.status || "pending",
+    })),
+  );
+  const [tasks, setTasks] = useState(
+    (prop.tasks ?? []).map((t) => ({
+      keep: true,
+      title: t.title,
+      priority: t.priority || "medium",
+      due: t.due ?? "",
+      context: t.context ?? "",
+    })),
+  );
+  const [facts, setFacts] = useState(
+    (prop.contactKeyFacts ?? []).map((f) => ({ keep: true, value: f })),
+  );
+  const [interactions, setInteractions] = useState(
+    (prop.interactions ?? []).map((it) => ({ keep: true, summary: it.summary, type: it.type || "other" })),
+  );
+
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const totalItems =
+    (prop.milestones?.length ?? 0) +
+    (prop.tasks?.length ?? 0) +
+    (prop.contactKeyFacts?.length ?? 0) +
+    (prop.interactions?.length ?? 0);
+
+  function approve() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await approveProjectProposal(p.id, {
+          summary,
+          projectNotes: projectNotes.trim() || null,
+          contactKeyFacts: facts.filter((f) => f.keep && f.value.trim()).map((f) => f.value.trim()),
+          milestones: milestones
+            .filter((m) => m.keep && m.title.trim())
+            .map((m) => ({ title: m.title, dueDate: m.dueDate || null, status: m.status })),
+          tasks: tasks
+            .filter((t) => t.keep && t.title.trim())
+            .map((t) => ({ title: t.title, priority: t.priority, due: t.due || null, context: t.context })),
+          interactions: interactions
+            .filter((it) => it.keep && it.summary.trim())
+            .map((it) => ({ summary: it.summary, type: it.type })),
+        });
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to approve");
+      }
+    });
+  }
+
+  function reject() {
+    if (!confirm("Reject this proposal? Nothing will be written.")) return;
+    startTransition(async () => {
+      try {
+        await rejectProjectProposal(p.id);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to reject");
+      }
+    });
+  }
+
+  const noContact = !p.matchedContactId;
+
+  return (
+    <Card className={cn(isPending && "opacity-60")}>
+      <button onClick={onToggle} className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-[var(--color-row-hover)] transition-colors">
+        <div className="flex items-center gap-3 min-w-0">
+          {open ? <ChevronDown size={15} strokeWidth={1.5} className="text-track-gold shrink-0" /> : <ChevronRight size={15} strokeWidth={1.5} className="text-bone-mute shrink-0" />}
+          <FolderOpen size={14} strokeWidth={1.5} className="text-track-gold shrink-0" />
+          <div className="min-w-0">
+            <span className="text-[14px] text-bone truncate">{p.title}</span>
+            <p className="text-[11px] text-bone-mute truncate">
+              {p.projectLabel ?? "Project"} · {prop.milestones?.length ?? 0} milestone(s) · {prop.tasks?.length ?? 0} task(s) · {prop.contactKeyFacts?.length ?? 0} fact(s)
+            </p>
+          </div>
+        </div>
+        <Badge tone="gold">project drop</Badge>
+      </button>
+
+      {open && (
+        <div className="px-5 py-5 flex flex-col gap-5">
+          {/* Summary */}
+          <div className="flex flex-col gap-2">
+            <Label gold>Summary</Label>
+            <Textarea rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} disabled={isPending} />
+          </div>
+
+          {/* Project notes (append-only to the project) */}
+          <div className="flex flex-col gap-2">
+            <Label>Project notes (appended to the project — leave blank to skip)</Label>
+            <Textarea rows={2} value={projectNotes} onChange={(e) => setProjectNotes(e.target.value)} placeholder="Durable notes to append to this project…" disabled={isPending} />
+          </div>
+
+          {/* Milestones */}
+          {milestones.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label gold>Milestones ({milestones.filter((m) => m.keep).length} kept)</Label>
+              <div className="flex flex-col gap-2">
+                {milestones.map((m, i) => (
+                  <div key={i} className={cn("bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2", !m.keep && "opacity-50")}>
+                    <div className="flex items-center gap-3">
+                      <input type="checkbox" checked={m.keep} onChange={() => setMilestones((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="accent-track-gold" />
+                      <Input value={m.title} onChange={(e) => setMilestones((prev) => prev.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} className="flex-1 h-8" disabled={isPending} />
+                    </div>
+                    <div className="grid grid-cols-[160px_1fr] gap-3 pl-7">
+                      <Input type="date" value={m.dueDate} onChange={(e) => setMilestones((prev) => prev.map((x, j) => j === i ? { ...x, dueDate: e.target.value } : x))} className="h-8 text-[11px]" disabled={isPending} />
+                      <Select value={m.status} onChange={(e) => setMilestones((prev) => prev.map((x, j) => j === i ? { ...x, status: e.target.value } : x))} disabled={isPending} className="h-8 text-[12px]">
+                        {M_STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </Select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tasks */}
+          {tasks.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label gold>Tasks ({tasks.filter((t) => t.keep).length} kept · owned by you)</Label>
+              <div className="flex flex-col gap-2">
+                {tasks.map((it, i) => (
+                  <div key={i} className={cn("bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2", !it.keep && "opacity-50")}>
+                    <div className="flex items-center gap-3">
+                      <input type="checkbox" checked={it.keep} onChange={() => setTasks((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="accent-track-gold" />
+                      <Input value={it.title} onChange={(e) => setTasks((prev) => prev.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} className="flex-1 h-8" disabled={isPending} />
+                    </div>
+                    <div className="grid grid-cols-[1fr_120px_120px] gap-3 pl-7">
+                      <Input value={it.context} onChange={(e) => setTasks((prev) => prev.map((x, j) => j === i ? { ...x, context: e.target.value } : x))} placeholder="context" className="h-8 text-[12px]" disabled={isPending} />
+                      <Select value={it.priority} onChange={(e) => setTasks((prev) => prev.map((x, j) => j === i ? { ...x, priority: e.target.value } : x))} disabled={isPending} className="h-8 text-[12px]">
+                        {PRIORITY_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </Select>
+                      <Input type="date" value={it.due} onChange={(e) => setTasks((prev) => prev.map((x, j) => j === i ? { ...x, due: e.target.value } : x))} className="h-8 text-[11px]" disabled={isPending} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Contact key facts (append-only) */}
+          {facts.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Label>Contact key facts (append-only)</Label>
+                {noContact && <span className="text-[11px] text-flag-red">No primary contact on file — facts will be skipped</span>}
+              </div>
+              <div className="bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
+                {facts.map((f, i) => (
+                  <label key={i} className={cn("flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--color-row-hover)] transition-colors", (noContact || !f.keep) && "opacity-50")}>
+                    <input type="checkbox" checked={!noContact && f.keep} disabled={noContact} onChange={() => setFacts((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="mt-1 accent-track-gold" />
+                    <span className="text-[13px] text-bone leading-snug">{f.value}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Interactions */}
+          {interactions.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Label>Interactions → logged on the contact</Label>
+                {noContact && <span className="text-[11px] text-flag-red">No primary contact on file — interactions will be skipped</span>}
+              </div>
+              <div className="flex flex-col gap-2">
+                {interactions.map((it, i) => (
+                  <div key={i} className={cn("bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex items-start gap-3", (noContact || !it.keep) && "opacity-50")}>
+                    <input type="checkbox" checked={!noContact && it.keep} disabled={noContact} onChange={() => setInteractions((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="mt-1 accent-track-gold" />
+                    <span className="text-[13px] text-bone leading-snug">{it.summary} <span className="text-bone-mute">· {it.type}</span></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {totalItems === 0 && (
+            <p className="text-[12px] text-bone-mute">Nothing concrete was extractable from this drop. Approve to file it, or reject.</p>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+              <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+              <span className="text-[12px] text-bone-dim">{error}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between items-center pt-1">
+            <Button variant="ghost" size="sm" onClick={reject} disabled={isPending}>Reject</Button>
+            <Button variant="primary" size="sm" onClick={approve} disabled={isPending}>
+              <Check size={13} strokeWidth={1.5} />
+              {isPending ? "Writing…" : "Approve & write"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

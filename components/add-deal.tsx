@@ -4,8 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, ShieldAlert, UserPlus } from "lucide-react";
 import { Button, Label, Input, Textarea, Select, SearchInput } from "@/components/ui";
-import { cn } from "@/lib/cn";
 import { createDeal } from "@/app/(app)/pipeline/actions";
+import { createContact } from "@/app/(app)/contacts/actions";
 import { industryLabels, stageLabels, stageOrder } from "@/lib/data/seed";
 
 type ContactOption = { id: string; name: string; company: string; industry: string };
@@ -55,6 +55,12 @@ function AddDealModal({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [contactId, setContactId] = useState("");
+  // Contacts created inline within this modal aren't in the server-supplied
+  // `contacts` prop, so we hold them locally and merge for display/selection.
+  const [adHocContacts, setAdHocContacts] = useState<ContactOption[]>([]);
+  // When true, the inline "add a new contact" mini-form is shown instead of
+  // the search results.
+  const [addingContact, setAddingContact] = useState(false);
   const [company, setCompany] = useState("");
   const [stage, setStage] = useState("lead");
   const [value, setValue] = useState("");
@@ -76,15 +82,28 @@ function AddDealModal({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const selected = contacts.find((c) => c.id === contactId) ?? null;
+  // Inline-created contacts take precedence in the lookup pool.
+  const pool = useMemo(() => [...adHocContacts, ...contacts], [adHocContacts, contacts]);
+  const selected = pool.find((c) => c.id === contactId) ?? null;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return contacts.slice(0, 50);
-    return contacts.filter((c) => c.name.toLowerCase().includes(q) || c.company.toLowerCase().includes(q)).slice(0, 50);
-  }, [query, contacts]);
+    if (!q) return pool.slice(0, 50);
+    return pool.filter((c) => c.name.toLowerCase().includes(q) || c.company.toLowerCase().includes(q)).slice(0, 50);
+  }, [query, pool]);
 
   function pickContact(c: ContactOption) {
+    setContactId(c.id);
+    if (!company.trim()) setCompany(c.company);
+    setIndustry(c.industry);
+    setError(null);
+  }
+
+  // A contact just created inline: stash it locally, then auto-select it into
+  // the deal (populating company + industry from it) and collapse the form.
+  function onContactCreated(c: ContactOption) {
+    setAdHocContacts((prev) => [c, ...prev]);
+    setAddingContact(false);
     setContactId(c.id);
     if (!company.trim()) setCompany(c.company);
     setIndustry(c.industry);
@@ -141,6 +160,13 @@ function AddDealModal({
                   <X size={14} strokeWidth={1.5} />
                 </button>
               </div>
+            ) : addingContact ? (
+              <InlineAddContact
+                partners={partners}
+                defaultPartnerId={partnerLeadId || defaultPartnerId}
+                onCreated={onContactCreated}
+                onCancel={() => setAddingContact(false)}
+              />
             ) : (
               <>
                 <SearchInput
@@ -150,14 +176,20 @@ function AddDealModal({
                   placeholder="Search contacts by name or company…"
                 />
                 <div className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden max-h-[180px] overflow-y-auto">
-                  {contacts.length === 0 ? (
-                    <a href="/contacts?qa=add" className="flex items-center gap-2 px-4 py-3 text-[13px] text-track-gold hover:bg-[var(--color-row-hover)]">
-                      <UserPlus size={13} strokeWidth={1.5} /> No contacts yet, add one first
-                    </a>
-                  ) : filtered.length === 0 ? (
-                    <div className="px-4 py-3 text-[12px] text-bone-mute">No match. <a href="/contacts?qa=add" className="text-track-gold hover:underline">Add a contact</a> first.</div>
+                  {/* Always-available "create new" entry, pinned to the top. */}
+                  <button
+                    type="button"
+                    onClick={() => setAddingContact(true)}
+                    className="w-full text-left px-4 py-2.5 flex items-center gap-2 text-[13px] text-track-gold hover:bg-[var(--color-row-hover)]"
+                  >
+                    <UserPlus size={13} strokeWidth={1.5} /> Add a new contact
+                  </button>
+                  {filtered.length === 0 ? (
+                    <div className="px-4 py-3 text-[12px] text-bone-mute">
+                      {pool.length === 0 ? "No contacts yet — add one above." : "No match — add a new contact above."}
+                    </div>
                   ) : (
-                    filtered.map((c, i) => (
+                    filtered.map((c) => (
                       <button
                         type="button"
                         key={c.id}
@@ -174,6 +206,10 @@ function AddDealModal({
             )}
           </div>
 
+          {/* Deal detail + submit hide while the inline contact form is open,
+              so the only active submit is the contact mini-form's. */}
+          {!addingContact && (
+            <>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label>Company</Label>
@@ -231,7 +267,137 @@ function AddDealModal({
               {isPending ? "Adding…" : "Add to pipeline"}
             </Button>
           </div>
+            </>
+          )}
         </form>
+      </div>
+    </div>
+  );
+}
+
+// InlineAddContact — the "add a new contact" mini-form shown inside the new-deal
+// modal. Same fields as the standalone Add contact form; on submit it calls the
+// existing createContact server action, then hands the created contact back up
+// so the deal form auto-selects it. Nested inside the deal <form>, so its submit
+// is its own button (type="button" → calls create directly), never the deal's.
+function InlineAddContact({
+  partners,
+  defaultPartnerId,
+  onCreated,
+  onCancel,
+}: {
+  partners: PartnerOption[];
+  defaultPartnerId?: string;
+  onCreated: (c: ContactOption) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [title, setTitle] = useState("");
+  const [company, setCompany] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [industry, setIndustry] = useState("automotive");
+  const [source, setSource] = useState("");
+  const [partnerLeadId, setPartnerLeadId] = useState(
+    defaultPartnerId && partners.some((p) => p.id === defaultPartnerId)
+      ? defaultPartnerId
+      : partners[0]?.id ?? "",
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function create() {
+    setError(null);
+    if (!name.trim() || !company.trim() || !email.trim()) {
+      setError("Name, company, and email are required");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        const { id } = await createContact({
+          name,
+          title,
+          company,
+          email,
+          phone,
+          industry,
+          source,
+          partnerLeadId,
+        });
+        onCreated({ id, name: name.trim(), company: company.trim(), industry });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add contact");
+      }
+    });
+  }
+
+  return (
+    <div className="bg-bitumen rounded-[var(--radius-lg)] p-4 flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <UserPlus size={13} strokeWidth={1.5} className="text-track-gold" />
+        <Label gold>New contact</Label>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label>Name <span className="text-flag-red">*</span></Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoFocus disabled={isPending} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Title</Label>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. COO" disabled={isPending} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Company <span className="text-flag-red">*</span></Label>
+          <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" disabled={isPending} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Email <span className="text-flag-red">*</span></Label>
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" disabled={isPending} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Phone</Label>
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" disabled={isPending} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Industry</Label>
+          <Select value={industry} onChange={(e) => setIndustry(e.target.value)} disabled={isPending}>
+            {Object.entries(industryLabels).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Source</Label>
+          <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g. Referral, LinkedIn, event" disabled={isPending} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Partner lead</Label>
+          <Select value={partnerLeadId} onChange={(e) => setPartnerLeadId(e.target.value)} disabled={isPending}>
+            {partners.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
+          <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+          <span className="text-[12px] text-bone-dim">{error}</span>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" type="button" onClick={onCancel} disabled={isPending}>Cancel</Button>
+        <Button
+          variant="primary"
+          size="sm"
+          type="button"
+          onClick={create}
+          disabled={isPending || !name.trim() || !company.trim() || !email.trim()}
+        >
+          {isPending ? "Saving…" : "Save & use contact"}
+        </Button>
       </div>
     </div>
   );

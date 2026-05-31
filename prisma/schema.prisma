@@ -122,6 +122,20 @@ enum ChannelKind {
 enum IngestSource {
   paste
   fireflies
+  drop
+}
+
+enum InstallmentTrigger {
+  on_signing @map("on-signing")
+  milestone
+  date
+  manual
+}
+
+enum InstallmentStatus {
+  planned
+  invoiced
+  paid
 }
 
 enum IngestStatus {
@@ -321,9 +335,40 @@ model Project {
   invoices     Invoice[]
   tasks        Task[]
   artifacts    Artifact[]
+  installments BillingInstallment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// BillingInstallment — the project's invoicing structure. Each row is one
+// planned slice of the contract fee (label + amount + trigger). The
+// "Send invoice" button reads these as presets; on bill it links to the
+// Invoice it produced and flips status planned → invoiced. Lives on Project
+// (not Client) to match Invoice's project FK.
+// ──────────────────────────────────────────────────────────────────────
+
+model BillingInstallment {
+  id        String             @id @default(cuid())
+  label     String
+  amount    Int
+  trigger   InstallmentTrigger @default(manual)
+  dueDate   DateTime?
+  sortOrder Int                @default(0)
+  status    InstallmentStatus  @default(planned)
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  // Once billed, the invoice this installment produced (1:1).
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  invoiceId String?  @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, sortOrder])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -361,6 +406,9 @@ model Invoice {
 
   project   Project @relation(fields: [projectId], references: [id])
   projectId String
+
+  // The billing installment this invoice was generated from (if any).
+  installment BillingInstallment?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -417,6 +465,9 @@ model Task {
   clientId  String?
   project   Project? @relation(fields: [projectId], references: [id])
   projectId String?
+  // The deliverable this task hangs off, if any (deliverable card → add task).
+  artifact   Artifact? @relation(fields: [artifactId], references: [id])
+  artifactId String?
 
   // Messages that reference this task render as inline task cards in chat.
   // One Task row, surfaced in three places (chat card, Tasks tab, feed).
@@ -427,6 +478,7 @@ model Task {
 
   @@index([clientId])
   @@index([projectId])
+  @@index([artifactId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -487,6 +539,9 @@ model Artifact {
   projectId String?
   deal      Deal?    @relation(fields: [dealId], references: [id])
   dealId    String?
+
+  // Tasks scoped to this deliverable (deliverable card → add task → assign).
+  tasks     Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -597,6 +652,7 @@ model IngestProposal {
   matchedContactId String?
   matchedClientId  String?
   matchedDealId    String?
+  matchedProjectId String?
 
   createdBy  String // partner label or "AGENT · CLAUDE"
   reviewedBy String?
