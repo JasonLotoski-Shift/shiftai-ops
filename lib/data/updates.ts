@@ -24,6 +24,54 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-05-31",
+    tag: "new",
+    title: "Plan how a project bills",
+    detail: "Each project now has an invoicing structure — a list of installments with a label, an amount, and when each one is due (on signing, at a milestone, or a set date). The running total shows against the project fee so you can see the whole contract is accounted for.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "Raise an invoice straight from a project",
+    detail: "A Raise invoice button on the project picks one of your planned installments — or you type the amount you actually billed — and drops a draft into Invoices. Open it and hit Generate to send it and file the invoice to the client.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "See a project's timeline at a glance",
+    detail: "Every project shows a timeline bar from start to target end, with a marker for today and each milestone plotted along it — so you can see how far along delivery is at a glance.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "Add milestones and deliverables by hand",
+    detail: "You can now add a milestone or a deliverable to a project directly — type it in and it's there.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "Hang tasks off a deliverable",
+    detail: "Pick a deliverable on a project, add a task to it, and assign it to a partner. It lands in their tasks — and your chat with them — like any other handed-off task.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "Drop a document onto a project",
+    detail: "Drop a file, an email thread, or pasted notes onto a project. Claude reads it and proposes updates — new milestones, tasks, facts about the people — and holds them for your review. Nothing is added until you approve it, item by item.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "improved",
+    title: "New deals tidy their own notes",
+    detail: "The note you jot down when adding a deal gets cleaned into a short summary, and any lasting facts about the contact are added to their record — never overwriting what's already there. When the deal converts to a client, that context carries over.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "improved",
+    title: "Add a contact without leaving the new-deal form",
+    detail: "Adding a deal for someone who isn't in the tool yet? Choose Add a new contact right in the deal form, fill in their details, and they're created and selected on the spot — no trip to Contacts and back.",
+  },
+  {
+    date: "2026-05-31",
     tag: "improved",
     title: "A cleaner, calmer look across the tool",
     detail: "The whole tool got a visual refresh. Cards now lift gently off the page, the hard gridlines between sections are gone, and every screen reads calmer and less boxy. The pipeline board is tidier, buttons and labels are easier to read, and there's a light mode and a dark mode — switch with the toggle at the top right.",
