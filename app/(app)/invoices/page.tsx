@@ -22,29 +22,29 @@ export default async function InvoicesPage() {
     <>
       <Header eyebrow="Finance · AR" title="Invoices." />
 
-      <div className="px-8 py-6 border-b border-graphite grid grid-cols-4 gap-px bg-graphite">
-        <div className="bg-bitumen p-5 flex flex-col gap-2">
+      <div className="px-8 py-6 border-b border-graphite grid grid-cols-4 gap-3">
+        <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
           <Label>— Outstanding</Label>
           <span className="mono text-[26px] text-bone tabular-nums">
             {formatCAD(outstandingTotal).replace("CA$", "$")}
           </span>
           <span className="label text-[10px]">{outstanding.length} invoices</span>
         </div>
-        <div className="bg-bitumen p-5 flex flex-col gap-2">
+        <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
           <Label>— Overdue</Label>
           <span className="mono text-[26px] text-flag-red tabular-nums">
             {formatCAD(overdueTotal).replace("CA$", "$")}
           </span>
           <span className="label text-[10px]">{overdue.length} invoices</span>
         </div>
-        <div className="bg-bitumen p-5 flex flex-col gap-2">
+        <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
           <Label>— Collected · this year</Label>
           <span className="mono text-[26px] text-track-gold tabular-nums">
             {formatCAD(paidTotal).replace("CA$", "$")}
           </span>
           <span className="label text-[10px]">{paid.length} invoices paid</span>
         </div>
-        <div className="bg-bitumen p-5 flex flex-col gap-2">
+        <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
           <Label>— Avg DSO</Label>
           <span className="mono text-[26px] text-bone tabular-nums">22d</span>
           <span className="label text-[10px]">vs. NET 30 terms</span>

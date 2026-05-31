@@ -63,7 +63,7 @@ export function ConvertDealModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[680px] bg-asphalt border border-graphite mb-16"
+        className="w-full max-w-[680px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-16"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-graphite">
@@ -89,21 +89,21 @@ export function ConvertDealModal({
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-bitumen border border-graphite p-4">
+                <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
                   <Label>— Client</Label>
                   <div className="text-[14px] text-bone mt-2">{deal.company}</div>
                 </div>
-                <div className="bg-bitumen border border-graphite p-4">
+                <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
                   <Label>— Contract value</Label>
                   <div className="mono text-[18px] text-track-gold mt-2 tabular-nums">
                     {formatCAD(deal.valueEstimate).replace("CA$", "$")}
                   </div>
                 </div>
-                <div className="bg-bitumen border border-graphite p-4">
+                <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
                   <Label>— Partner lead</Label>
                   <div className="text-[14px] text-bone mt-2">{partner?.name ?? "—"}</div>
                 </div>
-                <div className="bg-bitumen border border-graphite p-4">
+                <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
                   <Label>— Primary contact</Label>
                   <div className="text-[14px] text-bone mt-2">{contact?.name ?? "—"}</div>
                 </div>
@@ -118,7 +118,7 @@ export function ConvertDealModal({
                 />
               </div>
 
-              <div className="bg-bitumen border border-graphite p-4 flex flex-col gap-3">
+              <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 flex flex-col gap-3">
                 <Label gold>— On convert, the system will:</Label>
                 <ul className="flex flex-col gap-1.5 text-[13px] text-bone-dim">
                   <li className="flex gap-2"><span className="text-track-gold">01</span>Create client + project records in this ops tool</li>
@@ -133,7 +133,7 @@ export function ConvertDealModal({
               </div>
 
               {error && (
-                <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+                <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
                   <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
                   <span className="text-[12px] text-bone-dim">{error}</span>
                 </div>

@@ -98,7 +98,7 @@ export function ClientDetailTabs({
           <Card>
             <div className="px-5 py-4 border-b border-graphite"><Label>— Partner lead</Label></div>
             <CardBody className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold">
+              <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold rounded-[var(--radius-pill)]">
                 {partner?.initials}
               </div>
               <div>
@@ -170,7 +170,7 @@ function CompanyProfile({ client }: { client: Client }) {
       <Card>
         <div className="p-6 flex items-start gap-5">
           <div
-            className="w-16 h-16 border border-graphite flex items-center justify-center mono text-[15px] tracking-[0.1em] text-bone shrink-0"
+            className="w-16 h-16 border border-graphite flex items-center justify-center mono text-[15px] tracking-[0.1em] text-bone shrink-0 rounded-[var(--radius-sm)]"
             style={{ background: client.brandColors?.[0] ? `${client.brandColors[0]}22` : undefined }}
           >
             {client.logoMonogram ?? client.company.split(" ").map((w) => w[0]).join("").slice(0, 3)}
@@ -189,7 +189,7 @@ function CompanyProfile({ client }: { client: Client }) {
                 <Label>Brand</Label>
                 {client.brandColors.map((c) => (
                   <span key={c} className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 border border-graphite-2" style={{ background: c }} />
+                    <span className="w-4 h-4 border border-graphite-2 rounded-[var(--radius-sm)]" style={{ background: c }} />
                     <span className="mono text-[11px] text-bone-mute">{c}</span>
                   </span>
                 ))}
@@ -244,7 +244,7 @@ function CompanyProfile({ client }: { client: Client }) {
           </p>
 
           {enrich === "results" && (
-            <div className="border border-graphite">
+            <div className="border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
               {proposed.map((p, i) => (
                 <div key={i} className={`flex items-start gap-3 px-4 py-3 ${i < proposed.length - 1 ? "border-b border-graphite" : ""}`}>
                   <Plus size={13} strokeWidth={2} className="text-diagnostic-steel shrink-0 mt-0.5" />
@@ -258,7 +258,7 @@ function CompanyProfile({ client }: { client: Client }) {
           )}
 
           {enrich === "applied" && (
-            <div className="flex items-center gap-2 px-3 py-2 border border-diagnostic-steel/40 bg-diagnostic-steel/10">
+            <div className="flex items-center gap-2 px-3 py-2 border border-diagnostic-steel/40 bg-diagnostic-steel/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
               <Check size={14} strokeWidth={2} className="text-diagnostic-steel" />
               <span className="text-[13px] text-bone">Additions merged. Existing facts kept.</span>
             </div>

@@ -88,7 +88,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
           <Card className="border-track-gold/40 bg-track-gold-dim/5">
             <CardBody className="flex items-start gap-4">
-              <div className="w-8 h-8 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center shrink-0 rounded-[var(--radius-sm)]">
                 <Sparkles size={14} strokeWidth={1.5} className="text-track-gold" />
               </div>
               <div className="flex-1 flex flex-col gap-2">
@@ -164,7 +164,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               <Label>— Partner lead</Label>
             </div>
             <CardBody className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold">
+              <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold rounded-[var(--radius-pill)]">
                 {partner.initials}
               </div>
               <div>

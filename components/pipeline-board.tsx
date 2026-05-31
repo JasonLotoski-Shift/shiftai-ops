@@ -167,7 +167,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
       <div className="flex-1 overflow-x-auto">
         {/* Columns flex to fill the width; each has a min so on narrow screens
             they floor out and the container scrolls instead of clipping. */}
-        <div className="flex gap-px bg-graphite h-full">
+        <div className="flex gap-3 h-full">
           {DROP_STAGES.map((stage) => {
             const stageDeals = deals.filter((d) => d.stage === stage);
             const stageValue = stageDeals.reduce((s, d) => s + d.valueEstimate, 0);
@@ -188,7 +188,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                 }}
                 onDrop={(e) => onDrop(e, stage)}
                 className={cn(
-                  "bg-bitumen flex-1 basis-0 min-w-[172px] flex flex-col transition-colors",
+                  "bg-bitumen flex-1 basis-0 min-w-[172px] flex flex-col transition-colors border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden",
                   isOver && "bg-asphalt ring-1 ring-inset ring-track-gold/50",
                 )}
               >
@@ -215,7 +215,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         onDragEnd={onDragEnd}
                         onClick={() => router.push(`/pipeline/${deal.id}`)}
                         className={cn(
-                          "block bg-asphalt border border-graphite border-l-2 p-3 transition-colors cursor-grab active:cursor-grabbing hover:bg-graphite/40",
+                          "block bg-asphalt border border-graphite border-l-2 rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-colors cursor-grab active:cursor-grabbing hover:bg-graphite/40",
                           AGE_ACCENT[tier],
                           dragging && "opacity-40",
                         )}
@@ -242,7 +242,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         </div>
                         <div className="flex justify-between items-center pt-2 border-t border-graphite">
                           <span className="text-[11px] text-bone-mute">{deal.contact.name}</span>
-                          <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">
+                          <div className="w-5 h-5 bg-graphite-2 rounded-[var(--radius-sm)] flex items-center justify-center mono text-[9px] text-bone-dim">
                             {deal.partnerLead.initials}
                           </div>
                         </div>
@@ -259,7 +259,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
             );
           })}
 
-          <div className="bg-bitumen flex-1 basis-0 min-w-[180px] flex flex-col border-l-2 border-track-gold">
+          <div className="bg-bitumen flex-1 basis-0 min-w-[180px] flex flex-col border border-graphite border-l-2 border-l-track-gold rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
             <div className="px-4 py-4 border-b border-graphite">
               <Label gold>— Signed → Convert</Label>
               <span className="block label mt-2 text-[10px] text-bone-mute">

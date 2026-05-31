@@ -98,7 +98,7 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className={cn("w-full bg-asphalt border border-graphite mb-20", wide ? "max-w-[680px]" : "max-w-[520px]")}
+        className={cn("w-full bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20", wide ? "max-w-[680px]" : "max-w-[520px]")}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
@@ -212,7 +212,7 @@ function DraftEmailModal({
           </p>
 
           {genErr && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-sm)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{genErr}</span>
             </div>
@@ -239,7 +239,7 @@ function DraftEmailModal({
             disabled={isPersisting}
           />
           {needsInputCount > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-center gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-sm)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red" />
               <span className="text-[12px] text-bone-dim">
                 Claude flagged {needsInputCount} item(s) it would not guess. Fill these in before this can save or send.
@@ -247,7 +247,7 @@ function DraftEmailModal({
             </div>
           )}
           {persistErr && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-sm)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{persistErr}</span>
             </div>
@@ -361,7 +361,7 @@ function LogInteractionModal({ contact, onClose }: { contact: Contact; onClose: 
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value)}
-                className="h-9 px-3 bg-bitumen border border-graphite text-bone text-[14px] focus:border-track-gold focus:outline-none"
+                className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
               >
                 {Object.entries(interactionLabels).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
@@ -378,7 +378,7 @@ function LogInteractionModal({ contact, onClose }: { contact: Contact; onClose: 
             <Textarea rows={4} placeholder="Short summary of the interaction…" value={summary} onChange={(e) => setSummary(e.target.value)} required />
           </div>
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-sm)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>
@@ -475,7 +475,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
             Web-search enrichment isn&apos;t wired up yet — the ops tool has no server-side web access today, and
             inventing facts about {contact.company} would break the no-hallucination rule.
           </p>
-          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen">
+          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen rounded-[var(--radius-sm)]">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
             <span className="text-[12px] text-bone-dim">
               When connected, it will use the same <span className="text-bone">propose → approve → merge</span> flow as AI enrich —
@@ -499,7 +499,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
             Reads {contact.name.split(" ")[0]}&apos;s record and logged interactions, then proposes additions — persona,
             communication style, key facts, background. Grounded only in what&apos;s logged; nothing invented.
           </p>
-          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen">
+          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen rounded-[var(--radius-sm)]">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
             <span className="text-[12px] text-bone-dim">
               Non-destructive: results are <span className="text-bone">proposed</span>. You approve what gets added — existing facts are
@@ -507,7 +507,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
             </span>
           </div>
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-sm)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>
@@ -533,7 +533,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
               {additions.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Label gold>— Proposed additions ({additions.length}) · check what to keep</Label>
-                  <div className="border border-graphite">
+                  <div className="border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
                     {additions.map((a, i) => (
                       <label
                         key={i}
@@ -559,7 +559,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
                 <div className="flex flex-col gap-2">
                   <Label>— Conflicts · review ({conflicts.length})</Label>
                   {conflicts.map((c, i) => (
-                    <div key={i} className="border border-flag-red/40 bg-flag-red/5 px-4 py-3 flex flex-col gap-2">
+                    <div key={i} className="border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2">
                       <Label>{ENRICH_FIELD_LABELS[c.field] ?? c.field}</Label>
                       <div className="grid grid-cols-2 gap-3 text-[13px]">
                         <div className="flex flex-col gap-1">
@@ -581,7 +581,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
           )}
 
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-sm)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>

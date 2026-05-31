@@ -96,7 +96,7 @@ function AddContactModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[600px] bg-asphalt border border-graphite mb-20"
+        className="w-full max-w-[600px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
@@ -137,7 +137,7 @@ function AddContactModal({
                 value={industry}
                 onChange={(e) => setIndustry(e.target.value)}
                 disabled={isPending}
-                className="h-9 px-3 bg-bitumen border border-graphite text-bone text-[14px] focus:border-track-gold focus:outline-none"
+                className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
               >
                 {Object.entries(industryLabels).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
@@ -154,7 +154,7 @@ function AddContactModal({
                 value={partnerLeadId}
                 onChange={(e) => setPartnerLeadId(e.target.value)}
                 disabled={isPending}
-                className="h-9 px-3 bg-bitumen border border-graphite text-bone text-[14px] focus:border-track-gold focus:outline-none"
+                className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
               >
                 {partners.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
@@ -168,7 +168,7 @@ function AddContactModal({
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>

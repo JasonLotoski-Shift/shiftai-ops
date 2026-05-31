@@ -135,7 +135,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
               <select
                 value={ownerId}
                 onChange={(e) => setOwnerId(e.target.value)}
-                className="w-full h-9 px-3 bg-bitumen border border-graphite text-bone text-[14px] focus:border-track-gold focus:outline-none"
+                className="w-full h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
               >
                 {partners.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -150,7 +150,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as (typeof PRIORITIES)[number])}
-                className="w-full h-9 px-3 bg-bitumen border border-graphite text-bone text-[14px] focus:border-track-gold focus:outline-none capitalize"
+                className="w-full h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none capitalize"
               >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
@@ -219,7 +219,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
               <button
                 onClick={() => toggleTask(t.id)}
                 aria-label={t.done ? "Mark task open" : "Mark task done"}
-                className={`mt-0.5 w-5 h-5 border flex items-center justify-center transition-colors ${t.done ? "bg-diagnostic-steel/20 border-diagnostic-steel/50 text-diagnostic-steel" : "border-graphite-2 text-transparent hover:border-bone-mute"}`}
+                className={`mt-0.5 w-5 h-5 border rounded-[var(--radius-sm)] flex items-center justify-center transition-colors ${t.done ? "bg-diagnostic-steel/20 border-diagnostic-steel/50 text-diagnostic-steel" : "border-graphite-2 text-transparent hover:border-bone-mute"}`}
               >
                 <Check size={12} strokeWidth={2.5} />
               </button>
@@ -246,7 +246,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
               </div>
               <div className="flex items-center justify-end gap-2 pt-0.5">
                 <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
-                <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim" title={t.owner.name}>
+                <div className="w-5 h-5 bg-graphite-2 rounded-[var(--radius-sm)] flex items-center justify-center mono text-[9px] text-bone-dim" title={t.owner.name}>
                   {t.owner.initials}
                 </div>
               </div>

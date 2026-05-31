@@ -50,6 +50,18 @@
 
   --tracking-mono-label: 0.15em;
   --tracking-display-tight: -0.04em;
+
+  /* Radius + elevation — modern pass 2026-05-30. Replaces the old square-corner
+     brand lock. Reference via Tailwind arbitrary values, e.g.
+     rounded-[var(--radius)] / shadow-[var(--shadow)]. Light-mode shadow
+     overrides live in the html[data-theme="light"] block below. */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.30);
+  --shadow: 0 2px 8px -1px rgb(0 0 0 / 0.35), 0 1px 2px 0 rgb(0 0 0 / 0.40);
+  --shadow-lg: 0 12px 32px -4px rgb(0 0 0 / 0.50);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -89,6 +101,11 @@
     --color-signal-fresh: #46734c;
     --color-signal-warming: #9a6526;
     /* --color-ink stays #0a0a0b — text on gold must remain dark */
+
+    /* Shadows — softer, gray-tinted (not black) so elevation reads on light */
+    --shadow-sm: 0 1px 2px 0 rgb(20 18 15 / 0.06);
+    --shadow: 0 2px 8px -1px rgb(20 18 15 / 0.08), 0 1px 2px 0 rgb(20 18 15 / 0.06);
+    --shadow-lg: 0 12px 32px -4px rgb(20 18 15 / 0.14);
   }
 
   html,
@@ -111,10 +128,8 @@
     color: var(--color-ink);
   }
 
-  /* Sharp corners everywhere — brand discipline */
-  * {
-    border-radius: 0 !important;
-  }
+  /* Rounded corners + subtle elevation — modern pass 2026-05-30. Radius and
+     shadow tokens below; applied via primitives in components/ui.tsx. */
 
   /* Hairline default for borders */
   hr {

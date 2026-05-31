@@ -49,7 +49,7 @@ export function DraftProposalModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[760px] bg-asphalt border border-graphite mb-20"
+        className="w-full max-w-[760px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">

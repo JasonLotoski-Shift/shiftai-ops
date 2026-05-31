@@ -50,8 +50,8 @@ export default async function DashboardPage() {
 
       <div className="px-8 py-8 flex flex-col gap-10">
         {/* Top-line stats */}
-        <section className="grid grid-cols-3 gap-px bg-graphite border border-graphite">
-          <div className="bg-bitumen p-6">
+        <section className="grid grid-cols-3 gap-3">
+          <div className="bg-bitumen p-6 border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
             <Stat
               label="— Active engagements"
               value={activeProjects.length}
@@ -59,14 +59,14 @@ export default async function DashboardPage() {
               gold={atRiskCount > 0}
             />
           </div>
-          <div className="bg-bitumen p-6">
+          <div className="bg-bitumen p-6 border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
             <Stat
               label="— Open pipeline"
               value={formatCAD(openPipelineValue).replace("CA$", "$")}
               delta={`${openDeals.length} deals`}
             />
           </div>
-          <div className="bg-bitumen p-6">
+          <div className="bg-bitumen p-6 border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
             <Stat
               label="— Outstanding AR"
               value={formatCAD(outstandingAR).replace("CA$", "$")}

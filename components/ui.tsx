@@ -39,6 +39,7 @@ export const Button = forwardRef<
       ref={ref}
       className={cn(
         "inline-flex items-center justify-center gap-2 font-mono font-medium uppercase tracking-[0.1em]",
+        "rounded-[var(--radius)]",
         "transition-colors focus-gold",
         buttonVariants[variant],
         buttonSizes[size],
@@ -60,7 +61,7 @@ export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivEl
   return (
     <div
       className={cn(
-        "bg-asphalt border border-graphite",
+        "bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]",
         className,
       )}
       {...props}
@@ -104,7 +105,7 @@ export function Label({
 }
 
 /* ──────────────────────────────────────────────────────────────────────
-   Badge — status pill but sharp-cornered (per brand)
+   Badge — pill-rounded status chip
    ────────────────────────────────────────────────────────────────────── */
 
 type BadgeTone = "neutral" | "gold" | "steel" | "red" | "bone";
@@ -126,7 +127,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2 py-0.5 border font-mono font-medium uppercase tracking-[0.1em] text-[10px]",
+        "inline-flex items-center px-2 py-0.5 border font-mono font-medium uppercase tracking-[0.1em] text-[10px] rounded-[var(--radius-pill)]",
         badgeTones[tone],
         className,
       )}
@@ -147,7 +148,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
       <input
         ref={ref}
         className={cn(
-          "w-full h-9 px-3 bg-bitumen border border-graphite text-bone text-[14px]",
+          "w-full h-9 px-3 bg-bitumen border border-graphite text-bone text-[14px] rounded-[var(--radius)]",
           "placeholder:text-bone-mute focus:border-track-gold focus:outline-none",
           "transition-colors",
           className,
@@ -165,7 +166,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
       <textarea
         ref={ref}
         className={cn(
-          "w-full px-3 py-2 bg-bitumen border border-graphite text-bone text-[14px]",
+          "w-full px-3 py-2 bg-bitumen border border-graphite text-bone text-[14px] rounded-[var(--radius)]",
           "placeholder:text-bone-mute focus:border-track-gold focus:outline-none",
           "transition-colors resize-none",
           className,

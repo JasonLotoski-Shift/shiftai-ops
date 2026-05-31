@@ -113,8 +113,8 @@ Per [../brand/brand-guide.md](../shiftai-firm/brand/brand-guide.md):
 
 - **Dark mode primary, light mode available** — Bitumen `#0A0A0B` page, Asphalt `#141416` cards, Graphite `#26262A` hairlines. Light mode re-themes by overriding palette CSS variables under `html[data-theme="light"]`; no component classes change. No-flash pre-paint script on load.
 - **Track Gold** `#C9A961` once per surface — wordmark, key data point, agent accent.
-- **Sharp corners everywhere** — no rounded cards/pills/radius (enforced in `globals.css`).
-- **1px Graphite hairlines** for dividers. **No drop shadows, gradients, or glassmorphism.**
+- **Rounded corners + subtle elevation** — medium radius (10px) on cards/controls, pill badges, faint shadows; radius/shadow tokens in `globals.css`, applied via primitives in `components/ui.tsx`. (Modern pass 2026-05-30, ops tool only — the firm brand guide is unchanged.)
+- **1px Graphite hairlines** for dividers. **No gradients or glassmorphism.**
 - **Big Shoulders 900 + 12° skew** for display headlines and the wordmark; **Inter** for body; **JetBrains Mono** for labels and tabular numbers; all-caps mono eyebrows at 0.15em tracking.
 
 ---

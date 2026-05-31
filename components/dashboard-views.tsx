@@ -129,7 +129,7 @@ export function DashboardViews({
           <section className="flex flex-col gap-4">
             <Label>— Quick actions</Label>
             {soon && (
-              <div className="flex items-center gap-3 px-4 py-2 border border-track-gold/40 bg-track-gold-dim/10">
+              <div className="flex items-center gap-3 px-4 py-2 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
                 <Sparkles size={13} strokeWidth={1.5} className="text-track-gold" />
                 <span className="text-[13px] text-bone">
                   <span className="text-track-gold">{soon}</span> is coming soon — not wired up yet.
@@ -139,14 +139,14 @@ export function DashboardViews({
                 </button>
               </div>
             )}
-            <div className="grid grid-cols-3 gap-px bg-graphite border border-graphite">
+            <div className="grid grid-cols-3 gap-3">
               {quickActions.map((a) => {
                 const Icon = a.icon;
                 return (
                   <button
                     key={a.label}
                     onClick={() => openPicker(a)}
-                    className="bg-asphalt p-5 text-left flex flex-col gap-2 hover:bg-graphite/40 transition-colors group"
+                    className="bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 text-left flex flex-col gap-2 hover:border-bone-mute hover:shadow-[var(--shadow)] transition-all group"
                   >
                     <Icon size={16} strokeWidth={1.5} className="text-track-gold" />
                     <span className="text-[14px] text-bone group-hover:text-bone">{a.label}</span>
@@ -163,7 +163,7 @@ export function DashboardViews({
               className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
               onClick={() => setPick(null)}
             >
-              <div className="w-full max-w-[480px] bg-asphalt border border-graphite mb-20" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full max-w-[480px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
                   <Label gold>— {pick.label} · pick a {pick.type}</Label>
                   <button onClick={() => setPick(null)} className="text-bone-mute hover:text-bone">

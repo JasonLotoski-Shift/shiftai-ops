@@ -75,7 +75,7 @@ export default async function ContactsPage() {
                   <Badge tone="bone">{industryLabels[c.industry]}</Badge>
                 </div>
                 <div className="flex items-center gap-2 self-center">
-                  <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">
+                  <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim rounded-[var(--radius-pill)]">
                     {c.partnerLead.initials}
                   </div>
                   <span className="text-[12px] text-bone-dim truncate">{c.partnerLead.name.split(" ")[0]}</span>

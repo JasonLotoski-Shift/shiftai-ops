@@ -155,7 +155,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                   const agent = it.loggedBy.startsWith("AGENT");
                   return (
                     <div key={it.id} className={`flex items-start gap-4 px-5 py-4 ${i < log.length - 1 ? "border-b border-graphite" : ""}`}>
-                      <div className="w-7 h-7 border border-graphite-2 flex items-center justify-center shrink-0 text-bone-mute">
+                      <div className="w-7 h-7 border border-graphite-2 flex items-center justify-center shrink-0 text-bone-mute rounded-[var(--radius-sm)]">
                         <Ic size={13} strokeWidth={1.5} />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -220,7 +220,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
           <Card>
             <div className="px-5 py-4 border-b border-graphite"><Label>— Partner lead</Label></div>
             <CardBody className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold">
+              <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold rounded-[var(--radius-pill)]">
                 {partner.initials}
               </div>
               <div>

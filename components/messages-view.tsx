@@ -137,7 +137,7 @@ export function MessagesView({
       {/* New DM picker */}
       {newDMOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-28 px-4 bg-bitumen/85 backdrop-blur-sm" onClick={() => setNewDMOpen(false)}>
-          <div className="w-full max-w-[400px] bg-asphalt border border-graphite" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-[400px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
               <Label gold>— New direct message</Label>
               <button onClick={() => setNewDMOpen(false)} className="text-bone-mute hover:text-bone">
@@ -320,7 +320,7 @@ function MessageRow({
           <span className="label text-[9px]">{m.authorName ?? "System"}</span>
           <span className="label text-[9px]">{timeLabel(m.createdAt)}</span>
         </div>
-        <div className="border border-track-gold/40 bg-track-gold-dim/10 px-4 py-3 flex items-center gap-3 max-w-[440px]">
+        <div className="border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex items-center gap-3 max-w-[440px]">
           <button onClick={() => onTaskToggle(m.task!.id)} className="shrink-0 text-track-gold hover:text-track-gold/80">
             {m.task.done ? <CheckSquare size={16} strokeWidth={1.5} /> : <Square size={16} strokeWidth={1.5} />}
           </button>
@@ -347,7 +347,7 @@ function MessageRow({
         <span className="label text-[9px]">{mine ? "You" : m.authorName}</span>
         <span className="label text-[9px]">{timeLabel(m.createdAt)}</span>
       </div>
-      <div className={cn("px-4 py-2 text-[13px] leading-relaxed whitespace-pre-wrap border", mine ? "bg-asphalt border-track-gold/30 text-bone" : "bg-asphalt border-graphite text-bone-dim")}>
+      <div className={cn("px-4 py-2 text-[13px] leading-relaxed whitespace-pre-wrap border rounded-[var(--radius-lg)]", mine ? "bg-asphalt border-track-gold/30 text-bone" : "bg-asphalt border-graphite text-bone-dim")}>
         {m.body}
       </div>
     </div>

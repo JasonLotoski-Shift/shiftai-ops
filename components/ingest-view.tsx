@@ -151,7 +151,7 @@ function PasteModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-[680px] bg-asphalt border border-graphite mb-20" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[680px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
           <div className="flex items-center gap-3">
             <FileText size={14} strokeWidth={1.5} className="text-track-gold" />
@@ -183,7 +183,7 @@ function PasteModal({ onClose }: { onClose: () => void }) {
             onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f); }}
             onClick={() => !isPending && fileInputRef.current?.click()}
             className={cn(
-              "border border-dashed px-4 py-5 flex flex-col items-center gap-1.5 text-center cursor-pointer transition-colors",
+              "border border-dashed rounded-[var(--radius-lg)] px-4 py-5 flex flex-col items-center gap-1.5 text-center cursor-pointer transition-colors",
               dragging ? "border-track-gold bg-track-gold-dim/10" : "border-graphite hover:border-bone-mute",
               isPending && "opacity-50 pointer-events-none",
             )}
@@ -207,18 +207,18 @@ function PasteModal({ onClose }: { onClose: () => void }) {
             <Label>Transcript / notes <span className="text-flag-red">*</span></Label>
             <Textarea rows={10} value={transcript} onChange={(e) => { setTranscript(e.target.value); if (fileName) setFileName(null); }} placeholder="Paste the notes or transcript here — or drop a file above…" required disabled={isPending} />
           </div>
-          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen">
+          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
             <span className="text-[12px] text-bone-dim">Extraction proposes records for your review — nothing is written to a contact, deal, or task until you approve it.</span>
           </div>
           {note && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-track-gold/40 bg-track-gold-dim/10">
+            <div className="flex items-start gap-2 px-3 py-2 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
               <CircleAlert size={13} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{note}</span>
             </div>
           )}
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>
@@ -353,14 +353,14 @@ function ProposalCard({
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label>Contact (for the logged meeting)</Label>
-              <select value={contactId} onChange={(e) => setContactId(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite text-bone text-[13px] focus:border-track-gold focus:outline-none">
+              <select value={contactId} onChange={(e) => setContactId(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[13px] focus:border-track-gold focus:outline-none">
                 <option value="">— none —</option>
                 {contacts.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.company}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-2">
               <Label>Client (for the filed transcript)</Label>
-              <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite text-bone text-[13px] focus:border-track-gold focus:outline-none">
+              <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[13px] focus:border-track-gold focus:outline-none">
                 <option value="">— none —</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
               </select>
@@ -391,7 +391,7 @@ function ProposalCard({
               <Label gold>— Action items → tasks ({items.filter((i) => i.keep).length} kept)</Label>
               <div className="flex flex-col gap-2">
                 {items.map((it, i) => (
-                  <div key={i} className={cn("border border-graphite px-4 py-3 flex flex-col gap-2", !it.keep && "opacity-50")}>
+                  <div key={i} className={cn("border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2", !it.keep && "opacity-50")}>
                     <div className="flex items-center gap-3">
                       <input type="checkbox" checked={it.keep} onChange={() => setItems((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="accent-track-gold" />
                       <Input value={it.title} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} className="flex-1 h-8" disabled={isPending} />
@@ -399,7 +399,7 @@ function ProposalCard({
                     <div className="grid grid-cols-[1fr_160px] gap-3 pl-7">
                       <Input value={it.context} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, context: e.target.value } : x))} placeholder="context" className="h-8 text-[12px]" disabled={isPending} />
                       <div className="flex gap-2">
-                        <select value={it.ownerId} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, ownerId: e.target.value } : x))} disabled={isPending} className="h-8 px-2 bg-bitumen border border-graphite text-bone text-[12px] focus:border-track-gold focus:outline-none min-w-0 flex-1">
+                        <select value={it.ownerId} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, ownerId: e.target.value } : x))} disabled={isPending} className="h-8 px-2 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[12px] focus:border-track-gold focus:outline-none min-w-0 flex-1">
                           {partners.map((pt) => <option key={pt.id} value={pt.id}>{pt.name.split(" ")[0]}</option>)}
                         </select>
                         <Input type="date" value={it.due} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, due: e.target.value } : x))} className="h-8 text-[11px] w-[120px]" disabled={isPending} />
@@ -421,7 +421,7 @@ function ProposalCard({
 
           {/* Stage signal — suggestion only */}
           {prop.stageSignal && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-track-gold/40 bg-track-gold-dim/10">
+            <div className="flex items-start gap-2 px-3 py-2 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
               <Sparkles size={13} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">
                 <span className="text-bone">Stage signal:</span> {prop.stageSignal.suggestion} — {prop.stageSignal.rationale}
@@ -431,7 +431,7 @@ function ProposalCard({
           )}
 
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>
@@ -471,7 +471,7 @@ function EnrichGroup({
         <Label>— {label}</Label>
         {disabledNote && <span className="text-[11px] text-flag-red">{disabledNote}</span>}
       </div>
-      <div className="border border-graphite">
+      <div className="border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
         {items.map((a, i) => (
           <label key={i} className={cn("flex items-start gap-3 px-4 py-2.5 cursor-pointer", i < items.length - 1 && "border-b border-graphite", (disabled || !keep[i]) && "opacity-50")}>
             <input type="checkbox" checked={!disabled && keep[i]} disabled={disabled} onChange={() => setKeep(keep.map((k, j) => (j === i ? !k : k)))} className="mt-1 accent-track-gold" />

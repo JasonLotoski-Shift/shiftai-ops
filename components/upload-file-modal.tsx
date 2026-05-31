@@ -62,7 +62,7 @@ export function UploadFileModal({
       className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
       onClick={onClose}
     >
-      <div className="w-full max-w-[680px] bg-asphalt border border-graphite mb-20" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[680px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
           <div className="flex items-center gap-3">
             <Upload size={14} strokeWidth={1.5} className="text-track-gold" />
@@ -123,7 +123,7 @@ export function UploadFileModal({
             )}
 
             {err && (
-              <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+              <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
                 <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
                 <span className="text-[12px] text-bone-dim">{err}</span>
               </div>

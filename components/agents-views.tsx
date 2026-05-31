@@ -163,7 +163,7 @@ function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
               onClick={() => cycleStatus(s)}
               disabled={isPending || s === plan.status}
               className={cn(
-                "mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 border transition-colors",
+                "mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 border rounded-[var(--radius-sm)] transition-colors",
                 s === plan.status
                   ? "border-track-gold/40 text-track-gold bg-track-gold-dim/10"
                   : "border-graphite text-bone-mute hover:text-bone hover:border-bone-mute",
@@ -212,7 +212,7 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-[600px] bg-asphalt border border-graphite mb-20" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[600px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
           <div className="flex items-center gap-3">
             <Bot size={14} strokeWidth={1.5} className="text-track-gold" />
@@ -246,7 +246,7 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
                 value={status}
                 onChange={(e) => setStatus(e.target.value as PlanStatus)}
                 disabled={isPending}
-                className="h-9 px-3 bg-bitumen border border-graphite text-bone text-[14px] focus:border-track-gold focus:outline-none"
+                className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>{s}</option>
@@ -255,7 +255,7 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
             </div>
           </div>
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5">
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>

@@ -166,7 +166,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       {/* User chip + sign out */}
       <div className="px-5 py-4 border-t border-graphite flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-7 h-7 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[11px] text-track-gold shrink-0">
+          <div className="w-7 h-7 rounded-[var(--radius-pill)] bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[11px] text-track-gold shrink-0">
             {user.initials}
           </div>
           <div className="flex flex-col leading-tight min-w-0">

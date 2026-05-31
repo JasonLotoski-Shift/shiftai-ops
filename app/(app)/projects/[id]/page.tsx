@@ -107,19 +107,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 >
                   <div className="shrink-0">
                     {m.status === "complete" ? (
-                      <div className="w-6 h-6 bg-diagnostic-steel/20 border border-diagnostic-steel/50 flex items-center justify-center">
+                      <div className="w-6 h-6 bg-diagnostic-steel/20 border border-diagnostic-steel/50 rounded-[var(--radius-sm)] flex items-center justify-center">
                         <Check size={12} strokeWidth={2} className="text-diagnostic-steel" />
                       </div>
                     ) : m.status === "at_risk" ? (
-                      <div className="w-6 h-6 bg-flag-red/20 border border-flag-red/50 flex items-center justify-center">
+                      <div className="w-6 h-6 bg-flag-red/20 border border-flag-red/50 rounded-[var(--radius-sm)] flex items-center justify-center">
                         <AlertTriangle size={12} strokeWidth={2} className="text-flag-red" />
                       </div>
                     ) : m.status === "in_progress" ? (
-                      <div className="w-6 h-6 bg-track-gold-dim/30 border border-track-gold flex items-center justify-center mono text-[10px] text-track-gold">
+                      <div className="w-6 h-6 bg-track-gold-dim/30 border border-track-gold rounded-[var(--radius-sm)] flex items-center justify-center mono text-[10px] text-track-gold">
                         <Circle size={8} strokeWidth={3} className="text-track-gold animate-pulse" fill="currentColor" />
                       </div>
                     ) : (
-                      <div className="w-6 h-6 border border-graphite-2 flex items-center justify-center">
+                      <div className="w-6 h-6 border border-graphite-2 rounded-[var(--radius-sm)] flex items-center justify-center">
                         <Circle size={8} strokeWidth={1.5} className="text-bone-mute" />
                       </div>
                     )}
@@ -217,7 +217,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             </div>
             <CardBody className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold">
+                <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 rounded-[var(--radius-pill)] flex items-center justify-center mono text-[13px] text-track-gold">
                   {partner.initials}
                 </div>
                 <div>
@@ -228,7 +228,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <Hairline />
               {consultants.map((c) => (
                 <div key={c.id} className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-graphite-2 flex items-center justify-center mono text-[13px] text-bone-dim">
+                  <div className="w-9 h-9 bg-graphite-2 rounded-[var(--radius-pill)] flex items-center justify-center mono text-[13px] text-bone-dim">
                     {c.initials}
                   </div>
                   <div>

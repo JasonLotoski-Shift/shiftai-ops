@@ -172,7 +172,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <Label>— Issued by</Label>
               </div>
               <CardBody className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold">
+                <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold rounded-[var(--radius-pill)]">
                   {partner.initials}
                 </div>
                 <div>
