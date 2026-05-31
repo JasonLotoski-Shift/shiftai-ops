@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X, ArrowRight, Check, FolderPlus, ShieldAlert } from "lucide-react";
-import { Button, Textarea, Label, Hairline } from "@/components/ui";
+import { Button, Textarea, Label } from "@/components/ui";
 import { Wordmark } from "@/components/wordmark";
 import type {
   DealModel as Deal,
@@ -66,10 +66,10 @@ export function ConvertDealModal({
         className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-16"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             <ArrowRight size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— Convert deal · {deal.company}</Label>
+            <Label gold>Convert deal · {deal.company}</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -89,28 +89,28 @@ export function ConvertDealModal({
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
-                  <Label>— Client</Label>
+                <div className="bg-bitumen rounded-[var(--radius-lg)] p-4">
+                  <Label>Client</Label>
                   <div className="text-[14px] text-bone mt-2">{deal.company}</div>
                 </div>
-                <div className="bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
-                  <Label>— Contract value</Label>
+                <div className="bg-bitumen rounded-[var(--radius-lg)] p-4">
+                  <Label>Contract value</Label>
                   <div className="mono text-[18px] text-track-gold mt-2 tabular-nums">
                     {formatCAD(deal.valueEstimate).replace("CA$", "$")}
                   </div>
                 </div>
-                <div className="bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
-                  <Label>— Partner lead</Label>
+                <div className="bg-bitumen rounded-[var(--radius-lg)] p-4">
+                  <Label>Partner lead</Label>
                   <div className="text-[14px] text-bone mt-2">{partner?.name ?? "—"}</div>
                 </div>
-                <div className="bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4">
-                  <Label>— Primary contact</Label>
+                <div className="bg-bitumen rounded-[var(--radius-lg)] p-4">
+                  <Label>Primary contact</Label>
                   <div className="text-[14px] text-bone mt-2">{contact?.name ?? "—"}</div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
-                <Label>— Engagement scope (drafts the charter)</Label>
+                <Label>Engagement scope (drafts the charter)</Label>
                 <Textarea
                   rows={5}
                   value={scope}
@@ -118,8 +118,8 @@ export function ConvertDealModal({
                 />
               </div>
 
-              <div className="bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-4 flex flex-col gap-3">
-                <Label gold>— On convert, the system will:</Label>
+              <div className="bg-bitumen rounded-[var(--radius-lg)] p-4 flex flex-col gap-3">
+                <Label gold>On convert, the system will:</Label>
                 <ul className="flex flex-col gap-1.5 text-[13px] text-bone-dim">
                   <li className="flex gap-2"><span className="text-track-gold">01</span>Create client + project records in this ops tool</li>
                   <li className="flex gap-2"><span className="text-track-gold">02</span>Create Drive folder for <code className="mono text-bone-mute">{deal.company}</code> in the firm Shared Drive</li>
@@ -139,8 +139,6 @@ export function ConvertDealModal({
                 </div>
               )}
             </div>
-
-            <Hairline />
 
             <div className="px-6 py-4 flex justify-between items-center">
               <span className="label">~5 seconds · then ready to work</span>
@@ -172,7 +170,7 @@ export function ConvertDealModal({
                     animationDelay: `${i * 0.42}s`,
                   }}
                 >
-                  <span className="w-5 h-5 border border-track-gold/40 bg-track-gold-dim/20 flex items-center justify-center text-track-gold">
+                  <span className="w-5 h-5 rounded-full bg-track-gold-dim/20 flex items-center justify-center text-track-gold">
                     <Check size={11} strokeWidth={2} />
                   </span>
                   <span className="text-bone">{line}</span>
@@ -185,11 +183,11 @@ export function ConvertDealModal({
 
         {step === "done" && (
           <div className="px-6 py-10 flex flex-col items-center gap-5 text-center">
-            <div className="w-14 h-14 bg-track-gold-dim/30 border border-track-gold flex items-center justify-center">
+            <div className="w-14 h-14 rounded-full bg-track-gold-dim/30 flex items-center justify-center">
               <Check size={24} strokeWidth={1.5} className="text-track-gold" />
             </div>
             <div>
-              <h2 className="display-md text-bone mb-2">ENGAGED.</h2>
+              <h2 className="title-lg text-bone mb-2">Engaged.</h2>
               <p className="text-[13px] text-bone-dim leading-relaxed max-w-[400px]">
                 {deal.company} is now a client. Workspace scaffolded, charter drafted, Drive folder live.
                 Open the project to begin.

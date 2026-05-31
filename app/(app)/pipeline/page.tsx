@@ -1,5 +1,5 @@
 import { Header } from "@/components/header";
-import { Label, Button } from "@/components/ui";
+import { Card, Stat, Button } from "@/components/ui";
 import { PipelineBoard } from "@/components/pipeline-board";
 import { AddDeal } from "@/components/add-deal";
 import { auth } from "@/auth";
@@ -41,24 +41,21 @@ export default async function PipelinePage() {
         }
       />
 
-      <div className="px-8 py-6 border-b border-graphite flex items-center gap-8">
-        <div className="flex flex-col gap-1">
-          <Label>— Open pipeline</Label>
-          <span className="mono text-[24px] text-bone tabular-nums">
-            {formatCAD(totalValue).replace("CA$", "$")}
-          </span>
+      <div className="px-8 py-8 flex flex-col gap-8">
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="p-5">
+            <Stat label="Open pipeline" value={formatCAD(totalValue).replace("CA$", "$")} />
+          </Card>
+          <Card className="p-5">
+            <Stat label="Open deals" value={openDeals.length} />
+          </Card>
+          <Card className="p-5">
+            <Stat label="Stale (28d+ in stage)" value={staleCount} />
+          </Card>
         </div>
-        <div className="flex flex-col gap-1">
-          <Label>— Open deals</Label>
-          <span className="mono text-[24px] text-bone tabular-nums">{openDeals.length}</span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label>— Stale (28d+ in stage)</Label>
-          <span className="mono text-[24px] text-flag-red tabular-nums">{staleCount}</span>
-        </div>
-      </div>
 
-      <PipelineBoard initialDeals={deals} />
+        <PipelineBoard initialDeals={deals} />
+      </div>
     </>
   );
 }

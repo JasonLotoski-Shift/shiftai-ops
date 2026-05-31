@@ -3,7 +3,7 @@
 import { useMemo, useState, type ComponentType } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Label, Badge, Tabs, Input } from "@/components/ui";
+import { Card, Label, Badge, Tabs, SearchInput, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import type {
   ActivityModel as Activity,
@@ -22,7 +22,9 @@ import {
   Upload,
   Bot,
   Newspaper,
-  Search,
+  Megaphone,
+  Activity as ActivityIcon,
+  Briefcase,
   X,
 } from "lucide-react";
 
@@ -127,7 +129,7 @@ export function DashboardViews({
         <div className="flex flex-col gap-10">
           {/* Quick actions */}
           <section className="flex flex-col gap-4">
-            <Label>— Quick actions</Label>
+            <h2 className="title-md">Quick actions</h2>
             {soon && (
               <div className="flex items-center gap-3 px-4 py-2 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
                 <Sparkles size={13} strokeWidth={1.5} className="text-track-gold" />
@@ -146,7 +148,7 @@ export function DashboardViews({
                   <button
                     key={a.label}
                     onClick={() => openPicker(a)}
-                    className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 text-left flex flex-col gap-2 hover:shadow-[var(--shadow)] transition-all group"
+                    className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 text-left flex flex-col gap-2 hover:shadow-[var(--shadow)] hover:bg-[var(--color-row-hover)] transition-all group"
                   >
                     <Icon size={16} strokeWidth={1.5} className="text-track-gold" />
                     <span className="text-[14px] text-bone group-hover:text-bone">{a.label}</span>
@@ -164,27 +166,24 @@ export function DashboardViews({
               onClick={() => setPick(null)}
             >
               <div className="w-full max-w-[480px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
-                  <Label gold>— {pick.label} · pick a {pick.type}</Label>
+                <div className="flex items-center justify-between px-5 py-4">
+                  <Label gold>{pick.label} · pick a {pick.type}</Label>
                   <button onClick={() => setPick(null)} className="text-bone-mute hover:text-bone">
                     <X size={16} strokeWidth={1.5} />
                   </button>
                 </div>
-                <div className="px-5 py-3 border-b border-graphite flex items-center gap-2">
-                  <Search size={13} strokeWidth={1.5} className="text-bone-mute" />
-                  <Input autoFocus placeholder={`Search ${pick.type}s…`} value={query} onChange={(e) => setQuery(e.target.value)} className="border-0 px-0 h-7" />
+                <div className="px-5 py-3">
+                  <SearchInput autoFocus placeholder={`Search ${pick.type}s…`} value={query} onChange={(e) => setQuery(e.target.value)} />
                 </div>
                 <div className="max-h-[50vh] overflow-y-auto">
                   {filtered.length === 0 ? (
-                    <div className="px-5 py-8 text-center">
-                      <span className="label text-bone-mute">— No {pick.type}s match</span>
-                    </div>
+                    <EmptyState compact title={`No ${pick.type}s match`} />
                   ) : (
                     filtered.map((r, i) => (
                       <button
                         key={r.id}
                         onClick={() => choose(r.id)}
-                        className="w-full text-left px-5 py-3 flex items-center justify-between gap-3 hover:bg-graphite/40 transition-colors"
+                        className="w-full text-left px-5 py-3 flex items-center justify-between gap-3 hover:bg-[var(--color-row-hover)] transition-colors"
                       >
                         <span className="text-[14px] text-bone">{r.label}</span>
                         {r.sub && <span className="text-[12px] text-bone-mute">{r.sub}</span>}
@@ -202,9 +201,12 @@ export function DashboardViews({
           <div className="col-span-2 flex flex-col gap-6">
             {/* Team updates */}
             <section className="flex flex-col gap-4">
-              <Label>— Team updates</Label>
+              <h2 className="title-md">Team updates</h2>
               <Card>
-                {teamUpdates.map((u, i) => (
+                {teamUpdates.length === 0 ? (
+                  <EmptyState compact icon={Megaphone} title="No team updates yet" />
+                ) : (
+                  teamUpdates.map((u, i) => (
                   <div key={u.id} className="px-5 py-4">
                     <div className="flex items-baseline justify-between gap-3 mb-1">
                       <div className="flex items-center gap-2">
@@ -218,28 +220,33 @@ export function DashboardViews({
                     </div>
                     <p className="text-[13px] text-bone leading-relaxed">{u.body}</p>
                   </div>
-                ))}
+                  ))
+                )}
               </Card>
             </section>
 
             {/* Engagements board (already filtered server-side to active) */}
             <section className="flex flex-col gap-4">
               <div className="flex items-end justify-between">
-                <Label>— Engagements</Label>
+                <h2 className="title-md">Engagements</h2>
                 <Link href="/projects" className="label-gold hover:underline">View all →</Link>
               </div>
               <Card>
-                <div className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-3 border-b border-graphite">
-                  <span className="label">Project</span>
-                  <span className="label">Phase</span>
-                  <span className="label text-right">Status</span>
+                {activeProjects.length === 0 ? (
+                  <EmptyState compact icon={Briefcase} title="No active engagements" />
+                ) : (
+                <>
+                <div className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-3">
+                  <span className="text-[11px] text-bone-dim">Project</span>
+                  <span className="text-[11px] text-bone-dim">Phase</span>
+                  <span className="text-[11px] text-bone-dim text-right">Status</span>
                 </div>
                 {activeProjects.map((p) => {
                   return (
                     <Link
                       href={`/projects/${p.id}`}
                       key={p.id}
-                      className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
+                      className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors"
                     >
                       <div className="flex flex-col gap-1 min-w-0">
                         <span className="text-[14px] text-bone truncate">{p.client.company}</span>
@@ -256,6 +263,8 @@ export function DashboardViews({
                     </Link>
                   );
                 })}
+                </>
+                )}
               </Card>
             </section>
           </div>
@@ -264,11 +273,14 @@ export function DashboardViews({
           <div className="flex flex-col gap-6">
             <section className="flex flex-col gap-4">
               <div className="flex items-center gap-2">
-                <Newspaper size={13} strokeWidth={1.5} className="text-bone-mute" />
-                <Label>— Industry news</Label>
+                <Newspaper size={15} strokeWidth={1.5} className="text-bone-mute" />
+                <h2 className="title-md">Industry news</h2>
               </div>
               <Card>
-                {news.map((n, i) => (
+                {news.length === 0 ? (
+                  <EmptyState compact icon={Newspaper} title="No industry news yet" />
+                ) : (
+                  news.map((n, i) => (
                   <div key={n.id} className="px-5 py-4">
                     <div className="flex items-baseline justify-between gap-2 mb-1">
                       <Label>{n.source}</Label>
@@ -277,14 +289,18 @@ export function DashboardViews({
                     <p className="text-[13px] text-bone leading-snug">{n.headline}</p>
                     <p className="text-[11px] text-bone-mute mt-1 leading-snug">{n.why}</p>
                   </div>
-                ))}
+                  ))
+                )}
               </Card>
             </section>
 
             <section className="flex flex-col gap-4">
-              <Label>— Activity · 48h</Label>
+              <h2 className="title-md">Activity · 48h</h2>
               <Card>
-                {activities.map((a, i) => {
+                {activities.length === 0 ? (
+                  <EmptyState compact icon={ActivityIcon} title="No activity in the last 48h" />
+                ) : (
+                activities.map((a, i) => {
                   const rowClass = `block px-5 py-3`;
                   const inner = (
                     <>
@@ -299,7 +315,7 @@ export function DashboardViews({
                     </>
                   );
                   return a.link ? (
-                    <Link key={a.id} href={a.link} className={`${rowClass} hover:bg-graphite/40 transition-colors`}>
+                    <Link key={a.id} href={a.link} className={`${rowClass} hover:bg-[var(--color-row-hover)] transition-colors`}>
                       {inner}
                     </Link>
                   ) : (
@@ -307,7 +323,8 @@ export function DashboardViews({
                       {inner}
                     </div>
                   );
-                })}
+                })
+                )}
               </Card>
             </section>
           </div>

@@ -63,10 +63,10 @@ export function UploadFileModal({
       onClick={onClose}
     >
       <div className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <Upload size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— Upload client files · {company}</Label>
+            <Label gold>Upload client files · {company}</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -75,7 +75,7 @@ export function UploadFileModal({
 
         {saved ? (
           <div className="px-5 py-12 text-center">
-            <div className="display-md text-track-gold mb-2 inline-block">FILED</div>
+            <div className="title-md text-track-gold mb-2 inline-block">Filed</div>
             <p className="text-[13px] text-bone-dim">
               Filed to {company}&apos;s Drive · registered on the Deliverables tab
               {logAsMeeting ? " · logged as a meeting interaction." : "."}

@@ -64,7 +64,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       {/* Primary nav */}
       <nav className="flex-1 py-4">
         <div className="px-5 pb-2">
-          <span className="label">— Operate</span>
+          <span className="label">Operate</span>
         </div>
         <ul>
           {nav.map((item) => {
@@ -79,7 +79,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                     "border-l-2",
                     active
                       ? "bg-track-gold-dim/15 text-bone border-track-gold"
-                      : "text-bone-dim border-transparent hover:text-bone hover:bg-graphite/40",
+                      : "text-bone-dim border-transparent hover:text-bone hover:bg-[var(--color-row-hover)]",
                   )}
                 >
                   <Icon size={15} strokeWidth={1.5} />
@@ -91,7 +91,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         </ul>
 
         <div className="px-5 pb-2 pt-6">
-          <span className="label">— Reference</span>
+          <span className="label">Reference</span>
         </div>
         <ul>
           {reference.map((item) => {
@@ -106,7 +106,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                     "border-l-2",
                     active
                       ? "bg-track-gold-dim/15 text-bone border-track-gold"
-                      : "text-bone-dim border-transparent hover:text-bone hover:bg-graphite/40",
+                      : "text-bone-dim border-transparent hover:text-bone hover:bg-[var(--color-row-hover)]",
                   )}
                 >
                   <Icon size={15} strokeWidth={1.5} />
@@ -118,7 +118,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         </ul>
 
         <div className="px-5 pb-2 pt-6">
-          <span className="label">— Firm</span>
+          <span className="label">Firm</span>
         </div>
         <ul>
           {secondary.map((item) => {
@@ -151,7 +151,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                     "border-l-2",
                     active
                       ? "bg-track-gold-dim/15 text-bone border-track-gold"
-                      : "text-bone-dim border-transparent hover:text-bone hover:bg-graphite/40",
+                      : "text-bone-dim border-transparent hover:text-bone hover:bg-[var(--color-row-hover)]",
                   )}
                 >
                   <Icon size={15} strokeWidth={1.5} />

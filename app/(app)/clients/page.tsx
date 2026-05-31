@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { Briefcase } from "lucide-react";
 import { Header } from "@/components/header";
-import { Label, Badge, Card } from "@/components/ui";
+import { Badge, Card, Stat, Avatar, EmptyState } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
 import { industryLabels } from "@/lib/data/seed";
@@ -21,41 +22,44 @@ export default async function ClientsPage() {
     <>
       <Header eyebrow="Active engagements" title="Clients." />
 
-      <div className="px-8 py-6 border-b border-graphite flex items-center gap-8">
-        <div className="flex flex-col gap-1">
-          <Label>— Active clients</Label>
-          <span className="mono text-[24px] text-bone tabular-nums">{clients.length}</span>
+      <div className="px-8 py-8 flex flex-col gap-8">
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="p-5">
+            <Stat label="Active clients" value={clients.length} />
+          </Card>
+          <Card className="p-5">
+            <Stat label="Total contract value" value={formatCAD(totalContractValue).replace("CA$", "$")} gold />
+          </Card>
+          <Card className="p-5">
+            <Stat label="At-risk" value={atRiskCount} />
+          </Card>
         </div>
-        <div className="flex flex-col gap-1">
-          <Label>— Total contract value</Label>
-          <span className="mono text-[24px] text-track-gold tabular-nums">
-            {formatCAD(totalContractValue).replace("CA$", "$")}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label>— At-risk</Label>
-          <span className="mono text-[24px] text-flag-red tabular-nums">{atRiskCount}</span>
-        </div>
-      </div>
 
-      <div className="px-8 py-8">
         <Card>
-          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_120px] gap-4 px-5 py-3 border-b border-graphite">
-            <span className="label">Client</span>
-            <span className="label">Industry</span>
-            <span className="label">Revenue</span>
-            <span className="label">Contract</span>
-            <span className="label">Partner lead</span>
-            <span className="label text-right">Status</span>
-          </div>
+          {clients.length === 0 ? (
+            <EmptyState
+              icon={Briefcase}
+              title="No active clients"
+              hint="Converted deals show up here as engagements."
+            />
+          ) : (
+            <>
+              <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_120px] gap-4 px-5 py-3">
+                <span className="text-[11px] text-bone-dim">Client</span>
+                <span className="text-[11px] text-bone-dim">Industry</span>
+                <span className="text-[11px] text-bone-dim">Revenue</span>
+                <span className="text-[11px] text-bone-dim">Contract</span>
+                <span className="text-[11px] text-bone-dim">Partner lead</span>
+                <span className="text-[11px] text-bone-dim text-right">Status</span>
+              </div>
 
-          {clients.map((c) => {
+              {clients.map((c) => {
             const activeCount = c.projects.length;
             return (
               <Link
                 key={c.id}
                 href={`/clients/${c.id}`}
-                className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_120px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
+                className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_120px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors"
               >
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-[14px] text-bone truncate">{c.company}</span>
@@ -69,9 +73,7 @@ export default async function ClientsPage() {
                   {formatCAD(c.contractValue).replace("CA$", "$")}
                 </span>
                 <div className="flex items-center gap-2 self-center">
-                  <div className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim rounded-[var(--radius-pill)]">
-                    {c.partnerLead.initials}
-                  </div>
+                  <Avatar initials={c.partnerLead.initials} size="sm" />
                   <span className="text-[12px] text-bone-dim truncate">{c.partnerLead.name.split(" ")[0]}</span>
                 </div>
                 <div className="flex justify-end self-center">
@@ -82,6 +84,8 @@ export default async function ClientsPage() {
               </Link>
             );
           })}
+            </>
+          )}
         </Card>
       </div>
     </>

@@ -1,6 +1,7 @@
 "use client";
 
-import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ComponentType, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ export const Button = forwardRef<
     <button
       ref={ref}
       className={cn(
-        "inline-flex items-center justify-center gap-2 font-mono font-medium uppercase tracking-[0.1em]",
+        "inline-flex items-center justify-center gap-2 font-medium",
         "rounded-[var(--radius)]",
         "transition-colors focus-gold",
         buttonVariants[variant],
@@ -61,7 +62,7 @@ export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivEl
   return (
     <div
       className={cn(
-        "bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow)]",
+        "bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]",
         className,
       )}
       {...props}
@@ -73,7 +74,7 @@ export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivEl
 
 export function CardHeader({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("px-5 py-4 border-b border-graphite", className)} {...props}>
+    <div className={cn("px-5 pt-4 pb-2", className)} {...props}>
       {children}
     </div>
   );
@@ -127,7 +128,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2 py-0.5 border font-mono font-medium uppercase tracking-[0.1em] text-[10px] rounded-[var(--radius-pill)]",
+        "inline-flex items-center px-2.5 py-0.5 border font-medium text-[11px] rounded-[var(--radius-pill)]",
         badgeTones[tone],
         className,
       )}
@@ -195,22 +196,19 @@ export function Stat({
   gold?: boolean;
   className?: string;
 }) {
+  const isZero = /^(\$?0|0)$/.test(String(value).trim());
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <Label>{label}</Label>
       <div
         className={cn(
-          "font-mono font-medium tabular-nums text-[32px] leading-none",
-          gold ? "text-track-gold" : "text-bone",
+          "font-mono font-medium tabular-nums text-[28px] leading-none",
+          isZero ? "text-bone-mute" : gold ? "text-track-gold" : "text-bone",
         )}
       >
         {value}
       </div>
-      {delta && (
-        <div className="font-mono text-[11px] text-bone-mute uppercase tracking-[0.1em]">
-          {delta}
-        </div>
-      )}
+      {delta && <div className="text-[11px] text-bone-mute">{delta}</div>}
     </div>
   );
 }
@@ -242,7 +240,7 @@ export function Tabs({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-stretch gap-6 border-b border-graphite", className)}>
+    <div className={cn("flex items-stretch gap-6", className)}>
       {tabs.map((t) => {
         const on = t.key === active;
         return (
@@ -251,7 +249,7 @@ export function Tabs({
             onClick={() => onChange(t.key)}
             className={cn(
               "relative -mb-px pb-3 pt-1 flex items-center gap-2",
-              "font-mono font-medium uppercase tracking-[0.15em] text-[12px] transition-colors",
+              "font-medium text-[13px] tracking-[0.01em] transition-colors",
               on ? "text-bone" : "text-bone-mute hover:text-bone-dim",
             )}
           >
@@ -268,3 +266,115 @@ export function Tabs({
     </div>
   );
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+   EmptyState — calm, centered "nothing here yet" (replaces "— Empty" voids)
+   ────────────────────────────────────────────────────────────────────── */
+
+export function EmptyState({
+  icon: Icon,
+  title,
+  hint,
+  action,
+  compact = false,
+  className,
+}: {
+  icon?: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  title: string;
+  hint?: string;
+  action?: ReactNode;
+  compact?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-col items-center text-center gap-2", compact ? "py-10" : "py-16", className)}>
+      {Icon && <Icon size={compact ? 22 : 28} strokeWidth={1.5} className="text-bone-mute mb-1" />}
+      <span className="title-md">{title}</span>
+      {hint && <span className="text-[13px] text-bone-dim max-w-[42ch] leading-relaxed">{hint}</span>}
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Avatar — circular initials chip. One shape app-wide.
+   ────────────────────────────────────────────────────────────────────── */
+
+export function Avatar({
+  initials,
+  size = "md",
+  gold = false,
+  className,
+}: {
+  initials: string;
+  size?: "sm" | "md" | "lg";
+  gold?: boolean;
+  className?: string;
+}) {
+  const dims = { sm: "w-5 h-5 text-[9px]", md: "w-6 h-6 text-[10px]", lg: "w-7 h-7 text-[11px]" }[size];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center justify-center shrink-0 rounded-[var(--radius-pill)] font-mono tabular-nums",
+        gold ? "bg-track-gold-dim/30 text-track-gold border border-track-gold/40" : "bg-graphite-2 text-bone-dim",
+        dims,
+        className,
+      )}
+    >
+      {initials}
+    </span>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Select — Input parity + chevron affordance
+   ────────────────────────────────────────────────────────────────────── */
+
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <div className="relative w-full">
+        <select
+          ref={ref}
+          className={cn(
+            "w-full h-9 pl-3 pr-9 bg-bitumen border border-graphite text-bone text-[14px] rounded-[var(--radius)] appearance-none",
+            "focus:border-track-gold focus:outline-none transition-colors cursor-pointer",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </select>
+        <ChevronDown
+          size={14}
+          strokeWidth={1.5}
+          className="text-bone-mute absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+        />
+      </div>
+    );
+  },
+);
+Select.displayName = "Select";
+
+/* ──────────────────────────────────────────────────────────────────────
+   SearchInput — filled, icon-prefixed search/filter field (no hard border)
+   ────────────────────────────────────────────────────────────────────── */
+
+export const SearchInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  ({ className, ...props }, ref) => {
+    return (
+      <div className="flex items-center gap-2 w-full bg-asphalt rounded-[var(--radius)] px-3 h-9 shadow-[var(--shadow-sm)]">
+        <Search size={14} strokeWidth={1.5} className="text-bone-mute shrink-0" />
+        <input
+          ref={ref}
+          className={cn(
+            "w-full bg-transparent text-bone text-[13px] placeholder:text-bone-mute focus:outline-none",
+            className,
+          )}
+          {...props}
+        />
+      </div>
+    );
+  },
+);
+SearchInput.displayName = "SearchInput";

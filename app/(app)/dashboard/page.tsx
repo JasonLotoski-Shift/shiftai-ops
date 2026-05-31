@@ -1,5 +1,5 @@
 import { Header } from "@/components/header";
-import { Stat } from "@/components/ui";
+import { Card, Stat } from "@/components/ui";
 import { DashboardViews } from "@/components/dashboard-views";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
@@ -48,31 +48,31 @@ export default async function DashboardPage() {
     <>
       <Header eyebrow="The firm · This week" title="Operating dashboard." />
 
-      <div className="px-8 py-8 flex flex-col gap-10">
+      <div className="px-8 py-8 flex flex-col gap-8">
         {/* Top-line stats */}
-        <section className="grid grid-cols-3 gap-3">
-          <div className="bg-asphalt p-6 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+        <section className="grid grid-cols-3 gap-4">
+          <Card className="p-5">
             <Stat
-              label="— Active engagements"
+              label="Active engagements"
               value={activeProjects.length}
               delta={`${atRiskCount} at risk`}
               gold={atRiskCount > 0}
             />
-          </div>
-          <div className="bg-asphalt p-6 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+          </Card>
+          <Card className="p-5">
             <Stat
-              label="— Open pipeline"
+              label="Open pipeline"
               value={formatCAD(openPipelineValue).replace("CA$", "$")}
               delta={`${openDeals.length} deals`}
             />
-          </div>
-          <div className="bg-asphalt p-6 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+          </Card>
+          <Card className="p-5">
             <Stat
-              label="— Outstanding AR"
+              label="Outstanding AR"
               value={formatCAD(outstandingAR).replace("CA$", "$")}
               delta={overdueAR > 0 ? `${formatCAD(overdueAR).replace("CA$", "$")} overdue` : "On track"}
             />
-          </div>
+          </Card>
         </section>
 
         <DashboardViews

@@ -80,7 +80,9 @@ export default async function MessagesPage() {
   return (
     <>
       <Header eyebrow="Firm · Messages" title="Messages." />
-      <MessagesView conversations={conversations} partners={partners} currentPartnerId={partnerId} />
+      <div className="px-8 py-8">
+        <MessagesView conversations={conversations} partners={partners} currentPartnerId={partnerId} />
+      </div>
     </>
   );
 }

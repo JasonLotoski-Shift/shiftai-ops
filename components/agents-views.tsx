@@ -12,7 +12,7 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
-import { Card, Label, Badge, Button, Input, Textarea, Tabs } from "@/components/ui";
+import { Card, Label, Badge, Button, Input, Textarea, Tabs, Select, EmptyState } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
   createAgentPlan,
@@ -59,7 +59,7 @@ export function AgentsViews({
   const [creating, setCreating] = useState(false);
 
   return (
-    <div className="px-8 py-8 flex flex-col gap-6">
+    <div className="px-8 py-8 flex flex-col gap-8">
       <Tabs
         tabs={[
           { key: "plans", label: "Agent plans", count: plans.length },
@@ -83,10 +83,17 @@ export function AgentsViews({
           </div>
 
           {plans.length === 0 ? (
-            <Card className="px-5 py-12 text-center">
-              <Bot size={22} strokeWidth={1.5} className="text-bone-mute mx-auto mb-3" />
-              <p className="text-[13px] text-bone-dim">No agent plans yet. Draft the first one.</p>
-            </Card>
+            <EmptyState
+              icon={Bot}
+              title="No agent plans yet"
+              hint="Draft the first one."
+              action={
+                <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+                  <Plus size={13} strokeWidth={1.5} />
+                  New plan
+                </Button>
+              }
+            />
           ) : (
             <div className="grid grid-cols-2 gap-4">
               {plans.map((p) => (
@@ -131,10 +138,10 @@ function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
 
   return (
     <Card className={cn("flex flex-col", isPending && "opacity-60")}>
-      <div className="px-5 py-4 border-b border-graphite flex items-start justify-between gap-3">
+      <div className="px-5 py-4 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <Bot size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
-          <span className="text-[14px] text-bone truncate">{plan.name}</span>
+          <span className="title-md truncate">{plan.name}</span>
         </div>
         <Badge tone={STATUS_TONE[plan.status]}>{plan.status}</Badge>
       </div>
@@ -142,7 +149,7 @@ function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
         <p className="text-[13px] text-bone-dim leading-relaxed">{plan.goal}</p>
         {plan.keyTasks.length > 0 && (
           <div className="flex flex-col gap-1.5">
-            <Label>— Key tasks</Label>
+            <Label>Key tasks</Label>
             <ul className="flex flex-col gap-1">
               {plan.keyTasks.map((t, i) => (
                 <li key={i} className="text-[12px] text-bone-dim flex items-start gap-2">
@@ -153,9 +160,9 @@ function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
             </ul>
           </div>
         )}
-        {plan.notes && <p className="text-[12px] text-bone-mute leading-snug border-l-2 border-graphite pl-3">{plan.notes}</p>}
+        {plan.notes && <p className="text-[12px] text-bone-mute leading-snug">{plan.notes}</p>}
       </div>
-      <div className="px-5 py-3 border-t border-graphite flex items-center justify-between gap-2">
+      <div className="px-5 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           {STATUSES.map((s) => (
             <button
@@ -213,10 +220,10 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-[600px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <Bot size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— {plan ? "Edit agent plan" : "New agent plan"}</Label>
+            <Label gold>{plan ? "Edit agent plan" : "New agent plan"}</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -242,16 +249,15 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
             </div>
             <div className="flex flex-col gap-2">
               <Label>Status</Label>
-              <select
+              <Select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as PlanStatus)}
                 disabled={isPending}
-                className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
           {error && (
@@ -291,10 +297,7 @@ function LiveSkills({ skills, firmContext }: { skills: SkillDoc[]; firmContext: 
       )}
 
       {skills.length === 0 ? (
-        <Card className="px-5 py-12 text-center">
-          <FileCode size={22} strokeWidth={1.5} className="text-bone-mute mx-auto mb-3" />
-          <p className="text-[13px] text-bone-dim">No skills found on disk.</p>
-        </Card>
+        <EmptyState icon={FileCode} title="No skills found on disk" />
       ) : (
         skills.map((s) => <SkillBlock key={s.name} name={s.name} title={s.title} body={s.body} defaultOpen={false} />)
       )}
@@ -318,19 +321,19 @@ function SkillBlock({
   const [open, setOpen] = useState(!!defaultOpen);
   return (
     <Card>
-      <button onClick={() => setOpen((o) => !o)} className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-graphite/30 transition-colors">
+      <button onClick={() => setOpen((o) => !o)} className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-[var(--color-row-hover)] transition-colors">
         <div className="flex items-center gap-3 min-w-0">
           {open ? <ChevronDown size={15} strokeWidth={1.5} className="text-track-gold shrink-0" /> : <ChevronRight size={15} strokeWidth={1.5} className="text-bone-mute shrink-0" />}
           <FileCode size={14} strokeWidth={1.5} className="text-track-gold shrink-0" />
           <div className="min-w-0">
-            <span className="text-[14px] text-bone">{title}</span>
+            <span className="title-md">{title}</span>
             {subtitle && <p className="text-[11px] text-bone-mute leading-snug">{subtitle}</p>}
           </div>
         </div>
         <span className="mono text-[10px] text-bone-mute shrink-0">skills/{name}/</span>
       </button>
       {open && (
-        <div className="px-5 py-4 border-t border-graphite">
+        <div className="px-5 pb-4">
           <pre className="text-[12px] text-bone-dim leading-relaxed whitespace-pre-wrap font-mono overflow-x-auto">{body}</pre>
         </div>
       )}

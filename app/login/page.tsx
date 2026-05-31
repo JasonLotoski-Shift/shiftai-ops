@@ -11,13 +11,13 @@ export default async function LoginPage() {
   return (
     <div className="min-h-screen bg-bitumen flex">
       {/* Left side — brand block */}
-      <div className="hidden lg:flex flex-col justify-between w-[55%] p-16 border-r border-graphite relative overflow-hidden">
+      <div className="hidden lg:flex flex-col justify-between w-[55%] p-16 relative overflow-hidden">
         <div>
           <Wordmark size="md" />
         </div>
 
         <div className="flex flex-col gap-8 max-w-[640px]">
-          <span className="label">— Internal · ops tool</span>
+          <span className="label">Internal · ops tool</span>
           <h1 className="display-lg text-bone">
             THE OPERATING<br />SYSTEM OF<br />
             <span className="text-track-gold">THE FIRM.</span>
@@ -31,11 +31,11 @@ export default async function LoginPage() {
 
         <div className="flex justify-between items-end">
           <div className="flex flex-col gap-1">
-            <span className="label">— Edition</span>
+            <span className="label">Edition</span>
             <span className="mono text-[13px] text-bone-dim">01 · 2026.05</span>
           </div>
           <div className="flex flex-col gap-1 items-end">
-            <span className="label">— Status</span>
+            <span className="label">Status</span>
             <span className="mono text-[13px] text-track-gold">DEV</span>
           </div>
         </div>
@@ -43,13 +43,13 @@ export default async function LoginPage() {
 
       {/* Right side — sign-in */}
       <div className="flex-1 flex flex-col justify-center px-12 lg:px-20 max-w-[560px]">
-        <div className="flex flex-col gap-10">
+        <div className="flex flex-col gap-10 bg-asphalt rounded-lg shadow-sm p-8">
           <div className="lg:hidden">
             <Wordmark size="sm" />
           </div>
 
           <div className="flex flex-col gap-3">
-            <span className="label">— Sign in</span>
+            <span className="label">Sign in</span>
             <h2 className="display-md text-bone">Welcome back.</h2>
           </div>
 
@@ -65,8 +65,8 @@ export default async function LoginPage() {
             </Button>
           </form>
 
-          <div className="pt-8 border-t border-graphite flex flex-col gap-2">
-            <span className="label">— Access</span>
+          <div className="pt-8 flex flex-col gap-2">
+            <span className="label">Access</span>
             <p className="text-[12px] text-bone-mute leading-relaxed max-w-[420px]">
               Sign-in is restricted to <code className="mono text-bone-dim">@shiftai.partners</code> Google
               Workspace accounts. If you sign in with a different account, Google

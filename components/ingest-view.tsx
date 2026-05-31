@@ -14,7 +14,7 @@ import {
   CircleAlert,
   Upload,
 } from "lucide-react";
-import { Card, Label, Badge, Button, Input, Textarea } from "@/components/ui";
+import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
   extractAndQueue,
@@ -51,7 +51,7 @@ export function IngestView({
   const [expanded, setExpanded] = useState<string | null>(proposals[0]?.id ?? null);
 
   return (
-    <div className="px-8 py-8 flex flex-col gap-6">
+    <div className="px-8 py-8 flex flex-col gap-8">
       <div className="flex items-start justify-between gap-6">
         <p className="text-[13px] text-bone-mute max-w-[680px] leading-relaxed">
           Drop in a notes file or paste a transcript — Claude extracts a summary, action items, enrichment facts, and a
@@ -66,9 +66,12 @@ export function IngestView({
       </div>
 
       {proposals.length === 0 ? (
-        <Card className="px-5 py-12 text-center">
-          <FileText size={22} strokeWidth={1.5} className="text-bone-mute mx-auto mb-3" />
-          <p className="text-[13px] text-bone-dim">No pending meetings. Drop in notes or paste a transcript to start.</p>
+        <Card>
+          <EmptyState
+            icon={FileText}
+            title="No pending meetings"
+            hint="Drop in notes or paste a transcript to start."
+          />
         </Card>
       ) : (
         <div className="flex flex-col gap-3">
@@ -152,10 +155,10 @@ function PasteModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <FileText size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— Add meeting notes</Label>
+            <Label gold>Add meeting notes</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -190,7 +193,7 @@ function PasteModal({ onClose }: { onClose: () => void }) {
           >
             <Upload size={16} strokeWidth={1.5} className="text-track-gold" />
             {fileName ? (
-              <span className="text-[12px] text-bone">Loaded <span className="text-track-gold">{fileName}</span> — edit below or drop another</span>
+              <span className="text-[12px] text-bone">Loaded <span className="text-track-gold">{fileName}</span> · edit below or drop another</span>
             ) : (
               <span className="text-[12px] text-bone-dim">Drop a notes file or <span className="text-track-gold">click to browse</span> · .txt .md .vtt .srt</span>
             )}
@@ -335,7 +338,7 @@ function ProposalCard({
 
   return (
     <Card className={cn(isPending && "opacity-60")}>
-      <button onClick={onToggle} className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-graphite/30 transition-colors">
+      <button onClick={onToggle} className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-[var(--color-row-hover)] transition-colors">
         <div className="flex items-center gap-3 min-w-0">
           {open ? <ChevronDown size={15} strokeWidth={1.5} className="text-track-gold shrink-0" /> : <ChevronRight size={15} strokeWidth={1.5} className="text-bone-mute shrink-0" />}
           <FileText size={14} strokeWidth={1.5} className="text-track-gold shrink-0" />
@@ -348,35 +351,35 @@ function ProposalCard({
       </button>
 
       {open && (
-        <div className="px-5 py-5 border-t border-graphite flex flex-col gap-5">
+        <div className="px-5 py-5 flex flex-col gap-5">
           {/* Attach entity */}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label>Contact (for the logged meeting)</Label>
-              <select value={contactId} onChange={(e) => setContactId(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[13px] focus:border-track-gold focus:outline-none">
-                <option value="">— none —</option>
+              <Select value={contactId} onChange={(e) => setContactId(e.target.value)} disabled={isPending}>
+                <option value="">none</option>
                 {contacts.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.company}</option>)}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <Label>Client (for the filed transcript)</Label>
-              <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[13px] focus:border-track-gold focus:outline-none">
-                <option value="">— none —</option>
+              <Select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={isPending}>
+                <option value="">none</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
-              </select>
+              </Select>
             </div>
           </div>
 
           {/* Summary */}
           <div className="flex flex-col gap-2">
-            <Label gold>— Summary (logged as the interaction)</Label>
+            <Label gold>Summary (logged as the interaction)</Label>
             <Textarea rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} disabled={isPending} />
           </div>
 
           {/* Key points */}
           {prop.keyPoints.length > 0 && (
             <div className="flex flex-col gap-2">
-              <Label>— Key points</Label>
+              <Label>Key points</Label>
               <ul className="flex flex-col gap-1">
                 {prop.keyPoints.map((k, i) => (
                   <li key={i} className="text-[12px] text-bone-dim flex items-start gap-2"><span className="text-track-gold mt-0.5">·</span>{k}</li>
@@ -388,10 +391,10 @@ function ProposalCard({
           {/* Action items */}
           {items.length > 0 && (
             <div className="flex flex-col gap-2">
-              <Label gold>— Action items → tasks ({items.filter((i) => i.keep).length} kept)</Label>
+              <Label gold>Action items → tasks ({items.filter((i) => i.keep).length} kept)</Label>
               <div className="flex flex-col gap-2">
                 {items.map((it, i) => (
-                  <div key={i} className={cn("rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2", !it.keep && "opacity-50")}>
+                  <div key={i} className={cn("bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2", !it.keep && "opacity-50")}>
                     <div className="flex items-center gap-3">
                       <input type="checkbox" checked={it.keep} onChange={() => setItems((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="accent-track-gold" />
                       <Input value={it.title} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} className="flex-1 h-8" disabled={isPending} />
@@ -399,9 +402,9 @@ function ProposalCard({
                     <div className="grid grid-cols-[1fr_160px] gap-3 pl-7">
                       <Input value={it.context} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, context: e.target.value } : x))} placeholder="context" className="h-8 text-[12px]" disabled={isPending} />
                       <div className="flex gap-2">
-                        <select value={it.ownerId} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, ownerId: e.target.value } : x))} disabled={isPending} className="h-8 px-2 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[12px] focus:border-track-gold focus:outline-none min-w-0 flex-1">
+                        <Select value={it.ownerId} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, ownerId: e.target.value } : x))} disabled={isPending} className="h-8 text-[12px]">
                           {partners.map((pt) => <option key={pt.id} value={pt.id}>{pt.name.split(" ")[0]}</option>)}
-                        </select>
+                        </Select>
                         <Input type="date" value={it.due} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, due: e.target.value } : x))} className="h-8 text-[11px] w-[120px]" disabled={isPending} />
                       </div>
                     </div>
@@ -424,8 +427,8 @@ function ProposalCard({
             <div className="flex items-start gap-2 px-3 py-2 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
               <Sparkles size={13} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">
-                <span className="text-bone">Stage signal:</span> {prop.stageSignal.suggestion} — {prop.stageSignal.rationale}
-                <span className="text-bone-mute"> (suggestion only — move the deal yourself on the board.)</span>
+                <span className="text-bone">Stage signal:</span> {prop.stageSignal.suggestion} · {prop.stageSignal.rationale}
+                <span className="text-bone-mute"> (suggestion only · move the deal yourself on the board.)</span>
               </span>
             </div>
           )}
@@ -468,12 +471,12 @@ function EnrichGroup({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <Label>— {label}</Label>
+        <Label>{label}</Label>
         {disabledNote && <span className="text-[11px] text-flag-red">{disabledNote}</span>}
       </div>
-      <div className="rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
+      <div className="bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
         {items.map((a, i) => (
-          <label key={i} className={cn("flex items-start gap-3 px-4 py-2.5 cursor-pointer", (disabled || !keep[i]) && "opacity-50")}>
+          <label key={i} className={cn("flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--color-row-hover)] transition-colors", (disabled || !keep[i]) && "opacity-50")}>
             <input type="checkbox" checked={!disabled && keep[i]} disabled={disabled} onChange={() => setKeep(keep.map((k, j) => (j === i ? !k : k)))} className="mt-1 accent-track-gold" />
             <span className="min-w-0">
               <span className="label">{ENRICH_LABELS[a.field] ?? a.field}</span>

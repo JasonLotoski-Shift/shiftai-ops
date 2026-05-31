@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Label, Badge, Button, Textarea, Input } from "@/components/ui";
+import { Card, Label, Badge, Button, Textarea, Input, Avatar } from "@/components/ui";
 import { formatCAD, daysSince, stageAgeTier, type StageAgeTier } from "@/lib/format";
 import { industryLabels, stageOrder, stageLabels } from "@/lib/data/seed";
 import { updateDealStage } from "@/app/(app)/pipeline/actions";
@@ -52,11 +52,11 @@ function dueInDays(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-// Left-accent color by time-in-stage — green (fresh) → orange (warming) → red (stale).
-const AGE_ACCENT: Record<StageAgeTier, string> = {
-  fresh: "border-l-signal-fresh",
-  warming: "border-l-signal-warming",
-  stale: "border-l-flag-red",
+// Status-dot color by time-in-stage — green (fresh) → orange (warming) → red (stale).
+const AGE_DOT: Record<StageAgeTier, string> = {
+  fresh: "bg-signal-fresh",
+  warming: "bg-signal-warming",
+  stale: "bg-flag-red",
 };
 
 interface PipelineBoardProps {
@@ -164,10 +164,10 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
 
   return (
     <>
-      <div className="flex-1 overflow-x-auto">
-        {/* Columns flex to fill the width; each has a min so on narrow screens
-            they floor out and the container scrolls instead of clipping. */}
-        <div className="flex gap-3 h-full">
+      <div className="flex-1 overflow-x-auto px-8 py-6">
+        {/* Fixed-width, content-height lanes: empty lanes stay short instead of
+            stretching into tall channels. Only the deal cards float. */}
+        <div className="flex gap-5 items-start">
           {DROP_STAGES.map((stage) => {
             const stageDeals = deals.filter((d) => d.stage === stage);
             const stageValue = stageDeals.reduce((s, d) => s + d.valueEstimate, 0);
@@ -187,22 +187,19 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                   }
                 }}
                 onDrop={(e) => onDrop(e, stage)}
-                className={cn(
-                  "bg-asphalt flex-1 basis-0 min-w-[172px] flex flex-col transition-colors rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden",
-                  isOver && "bg-asphalt ring-1 ring-inset ring-track-gold/50",
-                )}
+                className="w-[280px] shrink-0 flex flex-col"
               >
-                <div className="px-4 py-4 border-b border-graphite">
-                  <div className="flex items-center justify-between mb-1">
-                    <Label>— {stageLabels[stage]}</Label>
-                    <span className="label">{stageDeals.length}</span>
+                <div className="sticky top-0 z-10 bg-bitumen/85 backdrop-blur px-1 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] text-bone">{stageLabels[stage]}</span>
+                    <span className="text-[12px] text-bone-mute tabular-nums">{stageDeals.length}</span>
                   </div>
                   <span className="mono text-[12px] text-bone-dim tabular-nums">
                     {formatCAD(stageValue).replace("CA$", "$")}
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-2 p-3 flex-1">
+                <div className="flex flex-col gap-2">
                   {stageDeals.map((deal) => {
                     const tier = stageAgeTier(deal.stageEnteredAt);
                     const daysInStage = daysSince(deal.stageEnteredAt);
@@ -215,13 +212,17 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         onDragEnd={onDragEnd}
                         onClick={() => router.push(`/pipeline/${deal.id}`)}
                         className={cn(
-                          "block bg-asphalt border-l-2 rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-colors cursor-grab active:cursor-grabbing hover:bg-graphite/40",
-                          AGE_ACCENT[tier],
+                          "block bg-asphalt rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-all cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow)] hover:-translate-y-px",
                           dragging && "opacity-40",
                         )}
                       >
                         <div className="flex justify-between items-start mb-2 gap-2">
-                          <span className="text-[13px] text-bone leading-snug">{deal.company}</span>
+                          <span className="flex items-center gap-1.5 text-[13px] text-bone leading-snug">
+                            {tier !== "fresh" && (
+                              <span className={cn("inline-block w-1.5 h-1.5 rounded-full shrink-0", AGE_DOT[tier])} />
+                            )}
+                            {deal.company}
+                          </span>
                           <span className="mono text-[12px] text-track-gold tabular-nums shrink-0">
                             {formatCAD(deal.valueEstimate).replace("CA$", "$").replace(",000", "k")}
                           </span>
@@ -242,16 +243,19 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         </div>
                         <div className="flex justify-between items-center pt-2">
                           <span className="text-[11px] text-bone-mute">{deal.contact.name}</span>
-                          <div className="w-5 h-5 bg-graphite-2 rounded-[var(--radius-sm)] flex items-center justify-center mono text-[9px] text-bone-dim">
-                            {deal.partnerLead.initials}
-                          </div>
+                          <Avatar initials={deal.partnerLead.initials} size="sm" />
                         </div>
                       </div>
                     );
                   })}
                   {stageDeals.length === 0 && (
-                    <div className="text-center py-6">
-                      <span className="label text-bone-mute">— Empty</span>
+                    <div
+                      className={cn(
+                        "border border-dashed rounded py-8 text-center text-[12px] transition-colors",
+                        isOver ? "border-track-gold/60 text-bone-dim" : "border-graphite text-bone-mute",
+                      )}
+                    >
+                      Drop a deal here
                     </div>
                   )}
                 </div>
@@ -259,19 +263,12 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
             );
           })}
 
-          <div className="bg-asphalt flex-1 basis-0 min-w-[180px] flex flex-col border-l-2 border-l-track-gold rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
-            <div className="px-4 py-4 border-b border-graphite">
-              <Label gold>— Signed → Convert</Label>
-              <span className="block label mt-2 text-[10px] text-bone-mute">
-                Sign a deal from its detail page — Convert scaffolds the client.
-              </span>
-            </div>
-            <div className="p-3 flex-1">
-              <div className="text-center py-8">
-                <span className="label">— Drag here disabled</span>
-              </div>
-            </div>
-          </div>
+          <Card className="w-[280px] shrink-0 border border-track-gold/25 p-4">
+            <Label gold>Signed → Convert</Label>
+            <span className="block label mt-2 text-[10px] text-bone-mute">
+              Sign a deal from its detail page — Convert scaffolds the client.
+            </span>
+          </Card>
         </div>
       </div>
 
@@ -281,7 +278,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
           <Card className="w-full max-w-lg p-6 flex flex-col gap-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <Label gold>— {nextTask.deal.company}</Label>
+                <Label gold>{nextTask.deal.company}</Label>
                 <h2 className="text-[18px] text-bone">
                   Moved to {stageLabels[nextTask.stage]}. Action the next task?
                 </h2>
@@ -292,12 +289,12 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label>— Next task</Label>
+              <Label>Next task</Label>
               <Input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} autoFocus />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label>— Context</Label>
+              <Label>Context</Label>
               <Textarea rows={5} value={taskContext} onChange={(e) => setTaskContext(e.target.value)} />
               <span className="label text-[9px] text-bone-mute">
                 Assigned to {nextTask.deal.partnerLead.name.split(" ")[0]} · due in 3 days

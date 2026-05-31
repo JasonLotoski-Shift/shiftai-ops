@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
-import { Card, CardBody, Label, Badge, Button, Hairline } from "@/components/ui";
+import { Card, CardBody, CardHeader, Label, Badge, Button, Avatar, EmptyState } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate } from "@/lib/format";
 import { ArrowLeft, Bot, Check, Circle, AlertTriangle, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink } from "lucide-react";
@@ -61,44 +61,51 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </Link>
       </div>
 
-      <div className="px-8 pb-12 grid grid-cols-3 gap-6">
-        <div className="col-span-2 flex flex-col gap-6">
+      <div className="px-8 pb-12 grid grid-cols-3 gap-8">
+        <div className="col-span-2 flex flex-col gap-8">
           <Card>
             <CardBody>
-              <Label>— Scope</Label>
+              <h2 className="title-md">Scope</h2>
               <p className="text-[14px] text-bone-dim mt-2 leading-relaxed">{project.description}</p>
             </CardBody>
           </Card>
 
-          <Card>
-            <div className="p-6 grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-3 gap-4">
+            <Card className="p-5">
               <div className="flex flex-col gap-2">
-                <Label>— Fee</Label>
+                <Label>Fee</Label>
                 <span className="mono text-[28px] text-bone tabular-nums">
                   {formatCAD(project.budgetFee).replace("CA$", "$")}
                 </span>
                 <span className="label text-[10px]">{Math.round(feeBurn)}% billed</span>
               </div>
+            </Card>
+            <Card className="p-5">
               <div className="flex flex-col gap-2">
-                <Label>— Milestones</Label>
+                <Label>Milestones</Label>
                 <span className="mono text-[28px] text-bone tabular-nums">
                   {milestonesComplete}<span className="text-bone-mute text-[16px]"> / {projectMilestones.length}</span>
                 </span>
                 <span className="label text-[10px]">complete</span>
               </div>
+            </Card>
+            <Card className="p-5">
               <div className="flex flex-col gap-2">
-                <Label>— Status</Label>
+                <Label>Status</Label>
                 <Badge tone={project.status === "on_track" ? "steel" : project.status === "at_risk" ? "gold" : project.status === "blocked" ? "red" : "neutral"}>
                   {project.status.replace("_", "-")}
                 </Badge>
               </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Milestones</Label>
-            </div>
+            <CardHeader>
+              <h2 className="title-md">Milestones</h2>
+            </CardHeader>
+            {projectMilestones.length === 0 ? (
+              <EmptyState icon={Check} title="No milestones yet" hint="Milestones added to this project will appear here." compact />
+            ) : (
             <div className="flex flex-col">
               {projectMilestones.map((m, i) => (
                 <div
@@ -140,17 +147,16 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 </div>
               ))}
             </div>
+            )}
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
-              <Label>— Deliverables</Label>
+            <CardHeader className="flex justify-between items-center">
+              <h2 className="title-md">Deliverables</h2>
               <span className="label">{projectArtifacts.length} {projectArtifacts.length === 1 ? "artifact" : "artifacts"}</span>
-            </div>
+            </CardHeader>
             {projectArtifacts.length === 0 ? (
-              <CardBody>
-                <span className="label">— No deliverables logged yet. AI-generated drafts and partner uploads appear here.</span>
-              </CardBody>
+              <EmptyState icon={FileText} title="No deliverables yet" hint="AI-generated drafts and partner uploads appear here." compact />
             ) : (
               <div className="flex flex-col">
                 {projectArtifacts.map((ar, i) => {
@@ -162,7 +168,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                       target="_blank"
                       rel="noreferrer"
                       key={ar.id}
-                      className="grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors group"
+                      className="grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors group"
                     >
                       <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
                         <Icon size={16} strokeWidth={1.5} />
@@ -196,11 +202,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </Card>
         </div>
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-8">
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Client</Label>
-            </div>
+            <CardHeader>
+              <h2 className="title-md">Client</h2>
+            </CardHeader>
             <CardBody className="flex flex-col gap-3">
               <Link href={`/clients/${client.id}`} className="text-[14px] text-bone hover:text-track-gold">
                 {client.company}
@@ -212,25 +218,20 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Team</Label>
-            </div>
+            <CardHeader>
+              <h2 className="title-md">Team</h2>
+            </CardHeader>
             <CardBody className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 rounded-[var(--radius-pill)] flex items-center justify-center mono text-[13px] text-track-gold">
-                  {partner.initials}
-                </div>
+                <Avatar initials={partner.initials} size="lg" gold />
                 <div>
                   <div className="text-[14px] text-bone">{partner.name}</div>
                   <div className="label text-[9px]">Partner lead</div>
                 </div>
               </div>
-              <Hairline />
               {consultants.map((c) => (
                 <div key={c.id} className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-graphite-2 rounded-[var(--radius-pill)] flex items-center justify-center mono text-[13px] text-bone-dim">
-                    {c.initials}
-                  </div>
+                  <Avatar initials={c.initials} size="lg" />
                   <div>
                     <div className="text-[14px] text-bone">{c.name}</div>
                     <div className="label text-[9px]">Consultant</div>
@@ -240,17 +241,16 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             </CardBody>
           </Card>
 
-          <Card className="border-track-gold/40 bg-track-gold-dim/5">
-            <div className="px-5 py-4 border-b border-track-gold/20 flex items-center gap-2">
+          <Card className="border border-track-gold/40 bg-track-gold-dim/5">
+            <CardHeader className="flex items-center gap-2">
               <Bot size={14} strokeWidth={1.5} className="text-track-gold" />
-              <Label gold>— Agent · Claude</Label>
-            </div>
+              <h2 className="title-md text-track-gold">Agent · Claude</h2>
+            </CardHeader>
             <CardBody className="flex flex-col gap-3">
               <p className="text-[13px] text-bone leading-relaxed">
                 Last sync: <span className="mono">2026-05-11 14:42</span>. Drafted weekly brief from
                 recent activity. Suggested 2 IP harvests if engagement closes on time.
               </p>
-              <Hairline />
               <div className="flex flex-col gap-2 text-[12px]">
                 <button className="text-left text-bone-dim hover:text-bone">→ Open in Claude workspace</button>
                 <button className="text-left text-bone-dim hover:text-bone">→ Generate weekly brief</button>

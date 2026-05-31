@@ -12,7 +12,7 @@ import {
   ClipboardList,
   MessageSquare,
 } from "lucide-react";
-import { Button, Label, Input } from "@/components/ui";
+import { Button, Label, Input, Card, Avatar, EmptyState } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
   getMessagesSince,
@@ -73,11 +73,11 @@ export function MessagesView({
   }
 
   return (
-    <div className="flex h-[calc(100vh-180px)]">
+    <div className="flex gap-4 h-[calc(100vh-180px)]">
       {/* Conversation rail */}
-      <div className="w-[260px] shrink-0 border-r border-graphite flex flex-col">
-        <div className="px-4 py-3 border-b border-graphite flex items-center justify-between">
-          <Label>— Conversations</Label>
+      <Card className="w-[260px] shrink-0 flex flex-col overflow-hidden">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <Label>Conversations</Label>
           <button onClick={() => setNewDMOpen(true)} className="text-bone-mute hover:text-track-gold" title="New direct message">
             <Plus size={14} strokeWidth={1.5} />
           </button>
@@ -91,16 +91,14 @@ export function MessagesView({
                 onClick={() => selectConversation(c.id)}
                 className={cn(
                   "w-full text-left px-4 py-3 flex items-center gap-3 transition-colors",
-                  on ? "bg-asphalt" : "hover:bg-asphalt/50",
+                  on ? "bg-bitumen" : "hover:bg-[var(--color-row-hover)]",
                 )}
               >
                 <span className="shrink-0">
                   {c.kind === "channel" ? (
                     <Hash size={15} strokeWidth={1.5} className={on ? "text-track-gold" : "text-bone-mute"} />
                   ) : (
-                    <span className="w-6 h-6 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">
-                      {c.initials}
-                    </span>
+                    <Avatar initials={c.initials ?? ""} size="md" />
                   )}
                 </span>
                 <span className="flex-1 min-w-0">
@@ -116,7 +114,7 @@ export function MessagesView({
             );
           })}
         </div>
-      </div>
+      </Card>
 
       {/* Message pane */}
       {selected ? (
@@ -126,35 +124,32 @@ export function MessagesView({
           currentPartnerId={currentPartnerId}
         />
       ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <MessageSquare size={22} strokeWidth={1.5} className="text-bone-mute mx-auto mb-3" />
-            <p className="text-[13px] text-bone-mute">No conversations yet.</p>
-          </div>
-        </div>
+        <Card className="flex-1 flex items-center justify-center">
+          <EmptyState icon={MessageSquare} title="No conversations yet" />
+        </Card>
       )}
 
       {/* New DM picker */}
       {newDMOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-28 px-4 bg-bitumen/85 backdrop-blur-sm" onClick={() => setNewDMOpen(false)}>
           <div className="w-full max-w-[400px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
-              <Label gold>— New direct message</Label>
+            <div className="flex items-center justify-between px-5 py-4">
+              <Label gold>New direct message</Label>
               <button onClick={() => setNewDMOpen(false)} className="text-bone-mute hover:text-bone">
                 <X size={16} strokeWidth={1.5} />
               </button>
             </div>
             <div>
               {partners.length === 0 ? (
-                <div className="px-5 py-8 text-center"><span className="label text-bone-mute">— No other partners</span></div>
+                <EmptyState icon={MessageSquare} title="No other partners" compact />
               ) : (
                 partners.map((p, i) => (
                   <button
                     key={p.id}
                     onClick={() => startDM(p.id)}
-                    className="w-full text-left px-5 py-3 flex items-center gap-3 hover:bg-graphite/40 transition-colors"
+                    className="w-full text-left px-5 py-3 flex items-center gap-3 hover:bg-[var(--color-row-hover)] transition-colors"
                   >
-                    <span className="w-6 h-6 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">{p.initials}</span>
+                    <Avatar initials={p.initials} size="md" />
                     <span className="text-[14px] text-bone">{p.name}</span>
                   </button>
                 ))
@@ -262,21 +257,21 @@ function ChannelPane({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
-      <div className="px-6 py-3 border-b border-graphite flex items-center gap-2">
+    <Card className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="px-6 py-3 flex items-center gap-2">
         {conversation.kind === "channel" ? (
           <Hash size={15} strokeWidth={1.5} className="text-track-gold" />
         ) : (
-          <span className="w-5 h-5 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">{conversation.initials}</span>
+          <Avatar initials={conversation.initials ?? ""} size="sm" />
         )}
         <span className="text-[14px] text-bone">{conversation.label}</span>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-3">
         {loading ? (
-          <span className="label text-bone-mute self-center mt-8">— Loading…</span>
+          <EmptyState icon={MessageSquare} title="Loading…" compact />
         ) : messages.length === 0 ? (
-          <span className="label text-bone-mute self-center mt-8">— No messages yet. Say something.</span>
+          <EmptyState icon={MessageSquare} title="No messages yet" hint="Say something." compact />
         ) : (
           messages.map((m) => (
             <MessageRow key={m.id} m={m} mine={m.authorId === currentPartnerId} onTaskToggle={onTaskToggle} />
@@ -284,7 +279,7 @@ function ChannelPane({
         )}
       </div>
 
-      <form onSubmit={send} className="px-6 py-4 border-t border-graphite flex items-center gap-3">
+      <form onSubmit={send} className="px-6 py-4 flex items-center gap-3">
         <Input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -296,7 +291,7 @@ function ChannelPane({
           Send
         </Button>
       </form>
-    </div>
+    </Card>
   );
 }
 
@@ -320,7 +315,7 @@ function MessageRow({
           <span className="label text-[9px]">{m.authorName ?? "System"}</span>
           <span className="label text-[9px]">{timeLabel(m.createdAt)}</span>
         </div>
-        <div className="border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex items-center gap-3 max-w-[440px]">
+        <div className="bg-track-gold-dim/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex items-center gap-3 max-w-[440px]">
           <button onClick={() => onTaskToggle(m.task!.id)} className="shrink-0 text-track-gold hover:text-track-gold/80">
             {m.task.done ? <CheckSquare size={16} strokeWidth={1.5} /> : <Square size={16} strokeWidth={1.5} />}
           </button>
@@ -347,7 +342,7 @@ function MessageRow({
         <span className="label text-[9px]">{mine ? "You" : m.authorName}</span>
         <span className="label text-[9px]">{timeLabel(m.createdAt)}</span>
       </div>
-      <div className={cn("px-4 py-2 text-[13px] leading-relaxed whitespace-pre-wrap border rounded-[var(--radius-lg)]", mine ? "bg-asphalt border-track-gold/30 text-bone" : "bg-asphalt border-graphite text-bone-dim")}>
+      <div className={cn("px-4 py-2 text-[13px] leading-relaxed whitespace-pre-wrap rounded-lg", mine ? "bg-track-gold-dim/15 text-bone" : "bg-bitumen text-bone-dim")}>
         {m.body}
       </div>
     </div>

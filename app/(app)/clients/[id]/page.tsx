@@ -42,14 +42,12 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         }
       />
 
-      <div className="px-8 py-6">
-        <Link href="/clients" className="label hover:text-bone flex items-center gap-2">
+      <div className="px-8 py-8 flex flex-col gap-8">
+        <Link href="/clients" className="label hover:text-bone flex items-center gap-2 w-fit">
           <ArrowLeft size={12} strokeWidth={1.5} />
           Back to clients
         </Link>
-      </div>
 
-      <div className="px-8 pb-12">
         <ClientDetailTabs
           client={client}
           partner={client.partnerLead}

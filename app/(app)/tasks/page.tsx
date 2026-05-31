@@ -1,8 +1,9 @@
 import { Header } from "@/components/header";
-import { Label } from "@/components/ui";
+import { Card, Stat, EmptyState } from "@/components/ui";
 import { TasksViews } from "@/components/tasks-views";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
+import { CheckSquare } from "lucide-react";
 
 export default async function TasksPage() {
   const session = await auth();
@@ -28,27 +29,32 @@ export default async function TasksPage() {
     <>
       <Header eyebrow="The firm · Do" title="Tasks." />
 
-      <div className="px-8 py-6 border-b border-graphite flex items-center gap-8">
-        <div className="flex flex-col gap-1">
-          <Label>— Open</Label>
-          <span className="mono text-[24px] text-bone tabular-nums">{openTasks.length}</span>
+      <div className="px-8 py-8 flex flex-col gap-8">
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="p-5">
+            <Stat label="Open" value={openTasks.length} />
+          </Card>
+          <Card className="p-5">
+            <Stat label="High priority" value={highPriority} />
+          </Card>
+          <Card className="p-5">
+            <Stat label="Assigned to you" value={mine} gold />
+          </Card>
         </div>
-        <div className="flex flex-col gap-1">
-          <Label>— High priority</Label>
-          <span className="mono text-[24px] text-flag-red tabular-nums">{highPriority}</span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label>— Assigned to you</Label>
-          <span className="mono text-[24px] text-track-gold tabular-nums">{mine}</span>
-        </div>
-      </div>
 
-      <div className="px-8 py-8">
-        <TasksViews
-          initialTasks={tasks}
-          partners={partners}
-          currentPartnerId={currentPartnerId}
-        />
+        {tasks.length === 0 ? (
+          <EmptyState
+            icon={CheckSquare}
+            title="No tasks yet"
+            hint="Tasks you create or get assigned will show up here."
+          />
+        ) : (
+          <TasksViews
+            initialTasks={tasks}
+            partners={partners}
+            currentPartnerId={currentPartnerId}
+          />
+        )}
       </div>
     </>
   );

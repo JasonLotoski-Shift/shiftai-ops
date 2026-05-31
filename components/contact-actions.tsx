@@ -11,7 +11,7 @@ import {
   ShieldAlert,
   Check,
 } from "lucide-react";
-import { Button, Label, Input, Textarea } from "@/components/ui";
+import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { ContactModel as Contact } from "@/lib/generated/prisma/models";
 import { interactionLabels } from "@/lib/data/seed";
@@ -101,10 +101,10 @@ function Modal({
         className={cn("w-full bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20", wide ? "max-w-[680px]" : "max-w-[520px]")}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             {icon}
-            <Label gold>— {title}</Label>
+            <span className="title-md">{title}</span>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -169,7 +169,7 @@ function DraftEmailModal({
   return (
     <Modal icon={<Mail size={14} strokeWidth={1.5} className="text-track-gold" />} title={`Draft email · ${contact.name}`} onClose={onClose} wide>
       {/* Anti-hallucination banner — always visible */}
-      <div className="flex items-start gap-3 px-5 py-3 border-b border-graphite bg-flag-red/5">
+      <div className="flex items-start gap-3 mx-5 mb-1 px-3 py-3 border-l-2 border-flag-red bg-flag-red/5 rounded-[var(--radius-sm)]">
         <ShieldAlert size={15} strokeWidth={1.5} className="text-flag-red shrink-0 mt-0.5" />
         <p className="text-[12px] text-bone-dim leading-snug">
           Claude will <span className="text-bone">not assume</span> a price, your role, a timeline, or any
@@ -302,16 +302,14 @@ function DraftEmailModal({
           </div>
         </div>
       ) : (
-        <div className="px-5 py-12 text-center">
-          <div className="display-md text-track-gold mb-2 inline-block">
-            {savedKind === "sent" ? "SENT" : "SAVED"}
-          </div>
-          <p className="text-[13px] text-bone-dim">
+        <div className="px-5 py-12 flex flex-col items-center text-center gap-3">
+          <Check size={28} strokeWidth={1.5} className="text-track-gold" />
+          <p className="text-[15px] text-bone leading-relaxed">
             {savedKind === "sent"
               ? `Email logged as sent to ${contact.name} · interaction recorded.`
               : `Draft saved to Drive · review on the Deliverables tab.`}
           </p>
-          <div className="pt-5">
+          <div className="pt-2">
             <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
           </div>
         </div>
@@ -349,24 +347,20 @@ function LogInteractionModal({ contact, onClose }: { contact: Contact; onClose: 
   return (
     <Modal icon={<CalendarPlus size={14} strokeWidth={1.5} className="text-track-gold" />} title={`Log interaction · ${contact.name}`} onClose={onClose}>
       {done ? (
-        <div className="px-5 py-12 text-center">
-          <div className="display-md text-track-gold mb-2 inline-block">LOGGED</div>
-          <p className="text-[13px] text-bone-dim">{interactionLabels[type]} · {date}</p>
+        <div className="px-5 py-12 flex flex-col items-center text-center gap-3">
+          <Check size={28} strokeWidth={1.5} className="text-track-gold" />
+          <p className="text-[15px] text-bone leading-relaxed">{interactionLabels[type]} · {date}</p>
         </div>
       ) : (
         <form onSubmit={submit} className="px-5 py-5 flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label>Type</Label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
-              >
+              <Select value={type} onChange={(e) => setType(e.target.value)}>
                 {Object.entries(interactionLabels).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <Label>Date</Label>
@@ -532,12 +526,12 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
             <>
               {additions.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Label gold>— Proposed additions ({additions.length}) · check what to keep</Label>
-                  <div className="rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
+                  <Label gold>Proposed additions ({additions.length}) · check what to keep</Label>
+                  <div className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
                     {additions.map((a, i) => (
                       <label
                         key={i}
-                        className={`flex items-start gap-3 px-4 py-3 cursor-pointer ${selected.has(i) ? "" : "opacity-50"}`}
+                        className={`flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-[var(--color-row-hover)] ${i > 0 ? "border-t border-graphite/30" : ""} ${selected.has(i) ? "" : "opacity-50"}`}
                       >
                         <input
                           type="checkbox"
@@ -557,7 +551,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
 
               {conflicts.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Label>— Conflicts · review ({conflicts.length})</Label>
+                  <Label>Conflicts · review ({conflicts.length})</Label>
                   {conflicts.map((c, i) => (
                     <div key={i} className="border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2">
                       <Label>{ENRICH_FIELD_LABELS[c.field] ?? c.field}</Label>
@@ -599,13 +593,12 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
       )}
 
       {phase === "applied" && (
-        <div className="px-5 py-12 text-center">
-          <div className="display-md text-track-gold mb-2 inline-block">MERGED</div>
-          <p className="text-[13px] text-bone-dim flex items-center justify-center gap-2">
-            <Check size={14} strokeWidth={2} className="text-diagnostic-steel" />
+        <div className="px-5 py-12 flex flex-col items-center text-center gap-3">
+          <Check size={28} strokeWidth={1.5} className="text-track-gold" />
+          <p className="text-[15px] text-bone leading-relaxed">
             {appliedCount} fact(s) added to {contact.name}&apos;s record.
           </p>
-          <div className="pt-5">
+          <div className="pt-2">
             <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
           </div>
         </div>

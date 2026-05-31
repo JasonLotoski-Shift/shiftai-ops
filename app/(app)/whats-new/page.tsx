@@ -1,5 +1,6 @@
+import { Sparkles } from "lucide-react";
 import { Header } from "@/components/header";
-import { Badge, Card } from "@/components/ui";
+import { Badge, Card, CardBody, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { updates, type UpdateTag } from "@/lib/data/updates";
 
@@ -31,10 +32,10 @@ export default function UpdatesPage() {
       <div className="px-8 py-8 flex flex-col gap-8 max-w-[760px]">
         {groups.map((group) => (
           <div key={group.date} className="flex flex-col gap-3">
-            <span className="label">— {formatDate(group.date)}</span>
+            <span className="text-[11px] text-bone-dim">{formatDate(group.date)}</span>
             {group.items.map((u, i) => (
               <Card key={`${group.date}-${i}`}>
-                <div className="px-5 py-4 flex flex-col gap-1.5">
+                <CardBody className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-3">
                     <Badge tone={tag[u.tag].tone}>{tag[u.tag].label}</Badge>
                     <span className="text-[15px] text-bone">{u.title}</span>
@@ -42,14 +43,19 @@ export default function UpdatesPage() {
                   {u.detail && (
                     <p className="text-[13px] text-bone-dim leading-relaxed">{u.detail}</p>
                   )}
-                </div>
+                </CardBody>
               </Card>
             ))}
           </div>
         ))}
 
         {groups.length === 0 && (
-          <p className="text-[13px] text-bone-mute">No updates logged yet.</p>
+          <EmptyState
+            icon={Sparkles}
+            title="No updates yet"
+            hint="Changes to the tool will show up here as they ship."
+            compact
+          />
         )}
       </div>
     </>

@@ -2,8 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, ShieldAlert, Search, UserPlus } from "lucide-react";
-import { Button, Label, Input, Textarea } from "@/components/ui";
+import { Plus, X, ShieldAlert, UserPlus } from "lucide-react";
+import { Button, Label, Input, Textarea, Select, SearchInput } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { createDeal } from "@/app/(app)/pipeline/actions";
 import { industryLabels, stageLabels, stageOrder } from "@/lib/data/seed";
@@ -120,10 +120,10 @@ function AddDealModal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-[620px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <Plus size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— New deal</Label>
+            <Label gold>New deal</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -143,20 +143,16 @@ function AddDealModal({
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-2 px-3 h-9 bg-bitumen rounded-[var(--radius)]">
-                  <Search size={13} strokeWidth={1.5} className="text-bone-mute shrink-0" />
-                  <input
-                    autoFocus
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search contacts by name or company…"
-                    className="bg-transparent border-0 text-[14px] text-bone placeholder:text-bone-mute focus:outline-none w-full"
-                  />
-                </div>
-                <div className="rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden max-h-[180px] overflow-y-auto">
+                <SearchInput
+                  autoFocus
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search contacts by name or company…"
+                />
+                <div className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden max-h-[180px] overflow-y-auto">
                   {contacts.length === 0 ? (
-                    <a href="/contacts?qa=add" className="flex items-center gap-2 px-4 py-3 text-[13px] text-track-gold hover:bg-graphite/40">
-                      <UserPlus size={13} strokeWidth={1.5} /> No contacts yet — add one first
+                    <a href="/contacts?qa=add" className="flex items-center gap-2 px-4 py-3 text-[13px] text-track-gold hover:bg-[var(--color-row-hover)]">
+                      <UserPlus size={13} strokeWidth={1.5} /> No contacts yet, add one first
                     </a>
                   ) : filtered.length === 0 ? (
                     <div className="px-4 py-3 text-[12px] text-bone-mute">No match. <a href="/contacts?qa=add" className="text-track-gold hover:underline">Add a contact</a> first.</div>
@@ -166,7 +162,7 @@ function AddDealModal({
                         type="button"
                         key={c.id}
                         onClick={() => pickContact(c)}
-                        className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-graphite/40"
+                        className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-[var(--color-row-hover)]"
                       >
                         <span className="text-[13px] text-bone truncate">{c.name}</span>
                         <span className="text-[12px] text-bone-mute truncate">{c.company}</span>
@@ -185,11 +181,11 @@ function AddDealModal({
             </div>
             <div className="flex flex-col gap-2">
               <Label>Stage</Label>
-              <select value={stage} onChange={(e) => setStage(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none">
+              <Select value={stage} onChange={(e) => setStage(e.target.value)} disabled={isPending}>
                 {stageOrder.map((s) => (
                   <option key={s} value={s}>{stageLabels[s]}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <Label>Est. value (CAD)</Label>
@@ -197,11 +193,11 @@ function AddDealModal({
             </div>
             <div className="flex flex-col gap-2">
               <Label>Industry</Label>
-              <select value={industry} onChange={(e) => setIndustry(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none">
+              <Select value={industry} onChange={(e) => setIndustry(e.target.value)} disabled={isPending}>
                 {Object.entries(industryLabels).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <Label>Target close</Label>
@@ -209,11 +205,11 @@ function AddDealModal({
             </div>
             <div className="flex flex-col gap-2">
               <Label>Deal lead</Label>
-              <select value={partnerLeadId} onChange={(e) => setPartnerLeadId(e.target.value)} disabled={isPending} className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none">
+              <Select value={partnerLeadId} onChange={(e) => setPartnerLeadId(e.target.value)} disabled={isPending}>
                 {partners.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 

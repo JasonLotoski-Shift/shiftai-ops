@@ -52,10 +52,10 @@ export function DraftProposalModal({
         className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <FileText size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— Draft proposal · {company}</Label>
+            <Label gold>Draft proposal · {company}</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -63,7 +63,7 @@ export function DraftProposalModal({
         </div>
 
         {/* Anti-hallucination banner */}
-        <div className="flex items-start gap-3 px-5 py-3 border-b border-graphite bg-flag-red/5">
+        <div className="flex items-start gap-3 px-5 py-3 bg-flag-red/5">
           <ShieldAlert size={15} strokeWidth={1.5} className="text-flag-red shrink-0 mt-0.5" />
           <p className="text-[12px] text-bone-dim leading-snug">
             Claude drafts from the deal&apos;s history and won&apos;t invent a fee, a date, or a
@@ -177,7 +177,7 @@ export function DraftProposalModal({
           </div>
         ) : (
           <div className="px-5 py-12 text-center">
-            <div className="display-md text-track-gold mb-2 inline-block">SAVED</div>
+            <div className="title-lg text-track-gold mb-2 inline-block">SAVED</div>
             <p className="text-[13px] text-bone-dim">
               Proposal saved to Drive · review it on the deal&apos;s Deliverables.
             </p>

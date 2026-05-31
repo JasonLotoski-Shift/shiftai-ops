@@ -57,17 +57,17 @@ export function ClientDocModal({
       onClick={onClose}
     >
       <div className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <Icon size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— {title} · {company}</Label>
+            <Label gold>{title} · {company}</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
           </button>
         </div>
 
-        <div className="flex items-start gap-3 px-5 py-3 border-b border-graphite bg-flag-red/5">
+        <div className="flex items-start gap-3 mx-5 mb-1 px-3 py-3 rounded-[var(--radius)] border border-flag-red/40 bg-flag-red/5">
           <ShieldAlert size={15} strokeWidth={1.5} className="text-flag-red shrink-0 mt-0.5" />
           <p className="text-[12px] text-bone-dim leading-snug">
             Claude drafts from the client&apos;s engagement and history — it won&apos;t invent facts.
@@ -151,7 +151,7 @@ export function ClientDocModal({
           </div>
         ) : (
           <div className="px-5 py-12 text-center">
-            <div className="display-md text-track-gold mb-2 inline-block">SAVED</div>
+            <div className="title-lg text-track-gold mb-2 inline-block">SAVED</div>
             <p className="text-[13px] text-bone-dim">Saved to Drive · review it on the Deliverables tab.</p>
             <div className="pt-5">
               <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>

@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { UserPlus, X, ShieldAlert } from "lucide-react";
-import { Button, Label, Input, Textarea } from "@/components/ui";
+import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { createContact } from "@/app/(app)/contacts/actions";
 import { industryLabels } from "@/lib/data/seed";
 
@@ -99,10 +99,10 @@ function AddContactModal({
         className="w-full max-w-[600px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
+        <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <UserPlus size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— Add contact</Label>
+            <Label gold>Add contact</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -133,16 +133,15 @@ function AddContactModal({
             </div>
             <div className="flex flex-col gap-2">
               <Label>Industry</Label>
-              <select
+              <Select
                 value={industry}
                 onChange={(e) => setIndustry(e.target.value)}
                 disabled={isPending}
-                className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
               >
                 {Object.entries(industryLabels).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <Label>Source</Label>
@@ -150,16 +149,15 @@ function AddContactModal({
             </div>
             <div className="flex flex-col gap-2">
               <Label>Partner lead</Label>
-              <select
+              <Select
                 value={partnerLeadId}
                 onChange={(e) => setPartnerLeadId(e.target.value)}
                 disabled={isPending}
-                className="h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
               >
                 {partners.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
           <div className="flex flex-col gap-2">

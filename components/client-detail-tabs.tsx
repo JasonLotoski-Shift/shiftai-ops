@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardBody, Label, Badge, Button, Hairline, Tabs } from "@/components/ui";
+import { Card, CardBody, Label, Badge, Button, Tabs, Avatar, EmptyState, Stat } from "@/components/ui";
 import { industryLabels } from "@/lib/data/seed";
 import { formatCAD, formatDate } from "@/lib/format";
 import type {
@@ -84,23 +84,20 @@ export function ClientDetailTabs({
 
         <div className="flex flex-col gap-6">
           <Card>
-            <div className="px-5 py-4 border-b border-graphite"><Label>— Primary contact</Label></div>
-            <CardBody className="flex flex-col gap-3">
+            <div className="px-5 pt-4 pb-2"><span className="title-md">Primary contact</span></div>
+            <CardBody className="flex flex-col gap-4 pt-0">
               <div>
                 <div className="text-[14px] text-bone">{contact?.name}</div>
                 <div className="text-[11px] text-bone-mute">{contact?.title}</div>
               </div>
-              <Hairline />
               <Link href={`/contacts/${contact?.id}`} className="label-gold hover:underline">Open contact →</Link>
             </CardBody>
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite"><Label>— Partner lead</Label></div>
-            <CardBody className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold rounded-[var(--radius-pill)]">
-                {partner?.initials}
-              </div>
+            <div className="px-5 pt-4 pb-2"><span className="title-md">Partner lead</span></div>
+            <CardBody className="flex items-center gap-3 pt-0">
+              <Avatar initials={partner?.initials ?? ""} size="lg" gold />
               <div>
                 <div className="text-[14px] text-bone">{partner?.name}</div>
                 <div className="text-[11px] text-bone-mute">{partner?.role}</div>
@@ -109,8 +106,8 @@ export function ClientDetailTabs({
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite"><Label>— System links</Label></div>
-            <CardBody className="flex flex-col gap-3 text-[12px]">
+            <div className="px-5 pt-4 pb-2"><span className="title-md">System links</span></div>
+            <CardBody className="flex flex-col gap-4 text-[12px] pt-0">
               <div className="flex flex-col gap-1">
                 <Label>Drive folder</Label>
                 <a href={client.driveFolderUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-bone-dim hover:text-bone group">
@@ -119,7 +116,6 @@ export function ClientDetailTabs({
                   <ExternalLink size={10} strokeWidth={1.5} className="opacity-50 group-hover:opacity-100" />
                 </a>
               </div>
-              <Hairline />
               <div className="flex flex-col gap-1">
                 <Label>Claude workspace</Label>
                 <span className="flex items-start gap-2 text-bone-dim font-mono text-[11px]">
@@ -128,13 +124,10 @@ export function ClientDetailTabs({
                 </span>
               </div>
               {billingContact && (
-                <>
-                  <Hairline />
-                  <div className="flex flex-col gap-1">
-                    <Label>Billing contact</Label>
-                    <Link href={`/contacts/${billingContact.id}`} className="text-bone-dim hover:text-bone">{billingContact.name}</Link>
-                  </div>
-                </>
+                <div className="flex flex-col gap-1">
+                  <Label>Billing contact</Label>
+                  <Link href={`/contacts/${billingContact.id}`} className="text-bone-dim hover:text-bone">{billingContact.name}</Link>
+                </div>
               )}
             </CardBody>
           </Card>
@@ -170,7 +163,7 @@ function CompanyProfile({ client }: { client: Client }) {
       <Card>
         <div className="p-6 flex items-start gap-5">
           <div
-            className="w-16 h-16 border border-graphite flex items-center justify-center mono text-[15px] tracking-[0.1em] text-bone shrink-0 rounded-[var(--radius-sm)]"
+            className="w-16 h-16 bg-graphite-2 flex items-center justify-center mono text-[15px] tracking-[0.1em] text-bone shrink-0 rounded-[var(--radius-sm)]"
             style={{ background: client.brandColors?.[0] ? `${client.brandColors[0]}22` : undefined }}
           >
             {client.logoMonogram ?? client.company.split(" ").map((w) => w[0]).join("").slice(0, 3)}
@@ -197,11 +190,10 @@ function CompanyProfile({ client }: { client: Client }) {
             )}
           </div>
         </div>
-        <Hairline />
-        <div className="px-6 py-5 grid grid-cols-3 gap-5">
+        <div className="px-6 pb-6 grid grid-cols-3 gap-5">
           {facts.map((f) => (
             <div key={f.label} className="flex flex-col gap-1.5">
-              <Label>— {f.label}</Label>
+              <Label>{f.label}</Label>
               <span className="text-[14px] text-bone">{f.value ?? <span className="text-bone-mute">—</span>}</span>
             </div>
           ))}
@@ -210,15 +202,15 @@ function CompanyProfile({ client }: { client: Client }) {
 
       {client.description && (
         <Card>
-          <div className="px-5 py-4 border-b border-graphite"><Label>— What they do</Label></div>
-          <CardBody><p className="text-[14px] text-bone-dim leading-relaxed">{client.description}</p></CardBody>
+          <div className="px-5 pt-4 pb-2"><span className="title-md">What they do</span></div>
+          <CardBody className="pt-0"><p className="text-[14px] text-bone-dim leading-relaxed">{client.description}</p></CardBody>
         </Card>
       )}
 
       {client.companyKeyFacts && client.companyKeyFacts.length > 0 && (
         <Card>
-          <div className="px-5 py-4 border-b border-graphite"><Label>— Key facts</Label></div>
-          <div className="flex flex-col">
+          <div className="px-5 pt-4 pb-2"><span className="title-md">Key facts</span></div>
+          <div className="flex flex-col pb-2">
             {client.companyKeyFacts.map((f, i) => (
               <div key={i} className="flex items-start gap-3 px-5 py-3">
                 <span className="mono text-[11px] text-track-gold mt-0.5 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
@@ -229,24 +221,24 @@ function CompanyProfile({ client }: { client: Client }) {
         </Card>
       )}
 
-      <Card className="border-track-gold/40 bg-track-gold-dim/5">
-        <div className="px-5 py-4 border-b border-track-gold/20 flex items-center justify-between">
+      <Card className="border border-track-gold/40 bg-track-gold-dim/5">
+        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>— Keep this current</Label>
+            <span className="title-md text-track-gold">Keep this current</span>
           </div>
           {client.enrichedAt && <span className="label">Last enriched {formatDate(client.enrichedAt)}</span>}
         </div>
-        <CardBody className="flex flex-col gap-3">
+        <CardBody className="flex flex-col gap-3 pt-0">
           <p className="text-[13px] text-bone leading-relaxed">
             This profile updates from logged communications and on-demand web search. Updates are{" "}
             <span className="text-track-gold">proposed</span> — existing facts are never overwritten without review.
           </p>
 
           {enrich === "results" && (
-            <div className="rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+            <div className="flex flex-col gap-3">
               {proposed.map((p, i) => (
-                <div key={i} className="flex items-start gap-3 px-4 py-3">
+                <div key={i} className="flex items-start gap-3">
                   <Plus size={13} strokeWidth={2} className="text-diagnostic-steel shrink-0 mt-0.5" />
                   <div>
                     <Label>{p.field}</Label>
@@ -309,41 +301,40 @@ function Engagement({
 }) {
   return (
     <>
-      <Card>
-        <div className="p-6 grid grid-cols-4 gap-6">
+      <div className="grid grid-cols-4 gap-4">
+        <Card className="p-5">
+          <Stat label="Contract value" value={formatCAD(client.contractValue).replace("CA$", "$")} gold />
+        </Card>
+        <Card className="p-5">
+          <Stat label="Billed" value={formatCAD(totalBilled).replace("CA$", "$")} />
+        </Card>
+        <Card className="p-5">
+          <Stat label="Collected" value={formatCAD(totalPaid).replace("CA$", "$")} />
+        </Card>
+        <Card className="p-5">
           <div className="flex flex-col gap-2">
-            <Label>— Contract value</Label>
-            <span className="mono text-[24px] text-track-gold tabular-nums">{formatCAD(client.contractValue).replace("CA$", "$")}</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label>— Billed</Label>
-            <span className="mono text-[18px] text-bone tabular-nums">{formatCAD(totalBilled).replace("CA$", "$")}</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label>— Collected</Label>
-            <span className="mono text-[18px] text-bone tabular-nums">{formatCAD(totalPaid).replace("CA$", "$")}</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label>— Outstanding</Label>
+            <Label>Outstanding</Label>
             <span className={`mono text-[18px] tabular-nums ${outstanding > 0 ? "text-flag-red" : "text-bone"}`}>
               {formatCAD(outstanding).replace("CA$", "$")}
             </span>
           </div>
-        </div>
-        <Hairline />
+        </Card>
+      </div>
+
+      <Card>
         <div className="px-6 py-5 grid grid-cols-3 gap-6">
           <div className="flex flex-col gap-1.5">
-            <Label>— Payment terms</Label>
+            <Label>Payment terms</Label>
             <span className="text-[14px] text-bone">{client.paymentTerms ?? "—"}</span>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>— Contract period</Label>
+            <Label>Contract period</Label>
             <span className="mono text-[13px] text-bone tabular-nums">
               {formatDate(client.contractSignedAt)} → {client.contractEndAt ? formatDate(client.contractEndAt) : "—"}
             </span>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>— Status</Label>
+            <Label>Status</Label>
             <div>
               <Badge tone={client.status === "on_track" ? "steel" : client.status === "at_risk" ? "gold" : client.status === "blocked" ? "red" : "neutral"}>
                 {client.status.replace("_", "-")}
@@ -352,19 +343,16 @@ function Engagement({
           </div>
         </div>
         {client.notes && (
-          <>
-            <Hairline />
-            <div className="px-6 py-5">
-              <Label>— Status note</Label>
-              <p className="text-[14px] text-bone-dim mt-2 leading-relaxed">{client.notes}</p>
-            </div>
-          </>
+          <div className="px-6 pb-5">
+            <Label>Status note</Label>
+            <p className="text-[14px] text-bone-dim mt-2 leading-relaxed">{client.notes}</p>
+          </div>
         )}
       </Card>
 
       <Card>
-        <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
-          <Label>— Projects ({clientProjects.length})</Label>
+        <div className="px-5 pt-4 pb-2 flex justify-between items-center">
+          <span className="title-md">Projects ({clientProjects.length})</span>
           <Link href="/projects" className="label-gold hover:underline">All projects →</Link>
         </div>
         {clientProjects.map((p, i) => {
@@ -372,7 +360,7 @@ function Engagement({
             <Link
               href={`/projects/${p.id}`}
               key={p.id}
-              className="grid grid-cols-[2fr_120px_100px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
+              className="grid grid-cols-[2fr_120px_100px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors"
             >
               <div className="min-w-0">
                 <div className="text-[14px] text-bone truncate">{p.name.split("·")[1]?.trim() ?? p.name}</div>
@@ -392,15 +380,15 @@ function Engagement({
       </Card>
 
       <Card>
-        <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
-          <Label>— Invoices</Label>
+        <div className="px-5 pt-4 pb-2 flex justify-between items-center">
+          <span className="title-md">Invoices</span>
           <Link href="/invoices" className="label-gold hover:underline">All →</Link>
         </div>
         {clientInvoices.map((inv, i) => (
           <Link
             href={`/invoices/${inv.id}`}
             key={inv.id}
-            className="grid grid-cols-[1fr_140px_140px_100px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
+            className="grid grid-cols-[1fr_140px_140px_100px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors"
           >
             <span className="mono text-[13px] text-bone self-center">{inv.number}</span>
             <span className="mono text-[14px] text-bone tabular-nums self-center">{formatCAD(inv.amount).replace("CA$", "$")}</span>
@@ -448,44 +436,43 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
   if (artifacts.length === 0) {
     return (
       <Card>
-        <CardBody className="flex flex-col gap-3 items-start">
-          <Label>— Deliverables</Label>
-          <p className="text-[13px] text-bone-dim">
-            No deliverables logged yet. AI-generated artifacts (proposals, decks,
-            emails) and partner uploads will appear here as the engagement runs.
-          </p>
-        </CardBody>
+        <EmptyState
+          icon={FileText}
+          title="No deliverables yet"
+          hint="AI-generated artifacts (proposals, decks, emails) and partner uploads will appear here as the engagement runs."
+        />
       </Card>
     );
   }
 
   return (
     <>
-      <Card>
-        <div className="p-6 grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-5">
+          <Stat label="Total" value={artifacts.length} />
+        </Card>
+        <Card className="p-5">
           <div className="flex flex-col gap-2">
-            <Label>— Total</Label>
-            <span className="mono text-[24px] text-bone tabular-nums">{artifacts.length}</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label>— AI-generated</Label>
+            <Label>AI-generated</Label>
             <span className="mono text-[18px] text-track-gold tabular-nums flex items-center gap-2">
               {aiCount}
               {aiCount > 0 && <Bot size={14} strokeWidth={1.5} />}
             </span>
           </div>
+        </Card>
+        <Card className="p-5">
           <div className="flex flex-col gap-2">
-            <Label>— Drafts pending review</Label>
+            <Label>Drafts pending review</Label>
             <span className={`mono text-[18px] tabular-nums ${draftCount > 0 ? "text-flag-red" : "text-bone"}`}>
               {draftCount}
             </span>
           </div>
-        </div>
-      </Card>
+        </Card>
+      </div>
 
       <Card>
-        <div className="px-5 py-4 border-b border-graphite flex justify-between items-center">
-          <Label>— All deliverables (newest first)</Label>
+        <div className="px-5 pt-4 pb-2 flex justify-between items-center">
+          <span className="title-md">All deliverables (newest first)</span>
         </div>
         {artifacts.map((ar, i) => {
           const Icon = artifactIcon[ar.type] ?? FileText;
@@ -496,7 +483,7 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
               target="_blank"
               rel="noreferrer"
               key={ar.id}
-              className="grid grid-cols-[28px_1fr_180px_100px_20px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors group"
+              className="grid grid-cols-[28px_1fr_180px_100px_20px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors group"
             >
               <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
                 <Icon size={16} strokeWidth={1.5} />

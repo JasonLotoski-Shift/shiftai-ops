@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
-import { Card, CardBody, Label, Badge, Button, Hairline } from "@/components/ui";
+import { Card, CardBody, Label, Badge, Button, Hairline, Avatar } from "@/components/ui";
 import { InvoiceStatusActions } from "@/components/invoice-status-actions";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
@@ -44,35 +44,34 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         }
       />
 
-      <div className="px-8 py-6">
+      <div className="px-8 py-8 flex flex-col gap-8">
         <Link href="/invoices" className="label hover:text-bone flex items-center gap-2">
           <ArrowLeft size={12} strokeWidth={1.5} />
           Back to invoices
         </Link>
-      </div>
 
-      <div className="px-8 pb-12 grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 flex flex-col gap-6">
           <Card>
             <div className="p-6 grid grid-cols-4 gap-6">
               <div className="flex flex-col gap-2">
-                <Label>— Number</Label>
+                <Label>Number</Label>
                 <span className="mono text-[20px] text-bone">{invoice.number}</span>
               </div>
               <div className="flex flex-col gap-2">
-                <Label>— Status</Label>
+                <Label>Status</Label>
                 <Badge tone={invoice.status === "paid" ? "steel" : invoice.status === "overdue" ? "red" : invoice.status === "sent" ? "gold" : "neutral"}>
                   {invoice.status}
                 </Badge>
               </div>
               <div className="flex flex-col gap-2">
-                <Label>— Issued</Label>
+                <Label>Issued</Label>
                 <span className="mono text-[14px] text-bone tabular-nums">
                   {formatDate(invoice.issuedAt)}
                 </span>
               </div>
               <div className="flex flex-col gap-2">
-                <Label>— {invoice.status === "paid" ? "Paid" : "Due"}</Label>
+                <Label>{invoice.status === "paid" ? "Paid" : "Due"}</Label>
                 <span className={`mono text-[14px] tabular-nums ${overdueDays > 0 ? "text-flag-red" : "text-bone"}`}>
                   {formatDate(invoice.paidAt ?? invoice.dueAt)}
                   {overdueDays > 0 && (
@@ -84,12 +83,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Line items</Label>
+            <div className="px-5 pt-5 pb-3">
+              <h2 className="title-md">Line items</h2>
             </div>
-            <div className="grid grid-cols-[1fr_140px] gap-4 px-5 py-3 border-b border-graphite">
-              <span className="label">Description</span>
-              <span className="label text-right">Amount</span>
+            <div className="grid grid-cols-[1fr_140px] gap-4 px-5 py-2">
+              <span className="text-[11px] text-bone-dim">Description</span>
+              <span className="text-[11px] text-bone-dim text-right">Amount</span>
             </div>
             <div className="grid grid-cols-[1fr_140px] gap-4 px-5 py-4">
               <div className="flex flex-col gap-0.5">
@@ -101,7 +100,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </span>
             </div>
 
-            <div className="px-5 py-4 flex flex-col gap-2 items-end">
+            <div className="px-5 pt-4 pb-5 flex flex-col gap-2 items-end">
               <div className="grid grid-cols-2 gap-12 text-[13px]">
                 <span className="label">Subtotal</span>
                 <span className="mono tabular-nums text-bone text-right">
@@ -126,7 +125,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
           <Card>
             <CardBody className="flex flex-col gap-2">
-              <Label>— Memo</Label>
+              <h2 className="title-md">Memo</h2>
               <p className="text-[13px] text-bone-dim leading-relaxed">
                 Professional services rendered for {project.name}. Payment due {formatDate(invoice.dueAt)} via wire
                 transfer or e-transfer to <code className="mono text-bone">jason@shiftai.partners</code>.
@@ -137,10 +136,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
         <div className="flex flex-col gap-6">
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Bill to</Label>
+            <div className="px-5 pt-5 pb-2">
+              <h2 className="title-md">Bill to</h2>
             </div>
-            <CardBody className="flex flex-col gap-3">
+            <CardBody className="flex flex-col gap-3 pt-0">
               <Link href={`/clients/${client.id}`} className="text-[14px] text-bone hover:text-track-gold">
                 {client.company}
               </Link>
@@ -151,10 +150,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Project</Label>
+            <div className="px-5 pt-5 pb-2">
+              <h2 className="title-md">Project</h2>
             </div>
-            <CardBody className="flex flex-col gap-3">
+            <CardBody className="flex flex-col gap-3 pt-0">
               <Link href={`/projects/${project.id}`} className="text-[14px] text-bone hover:text-track-gold">
                 {project.name.split("·")[1]?.trim() ?? project.name}
               </Link>
@@ -168,13 +167,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
           {partner && (
             <Card>
-              <div className="px-5 py-4 border-b border-graphite">
-                <Label>— Issued by</Label>
+              <div className="px-5 pt-5 pb-2">
+                <h2 className="title-md">Issued by</h2>
               </div>
-              <CardBody className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold rounded-[var(--radius-pill)]">
-                  {partner.initials}
-                </div>
+              <CardBody className="flex items-center gap-3 pt-0">
+                <Avatar initials={partner.initials} size="lg" gold />
                 <div>
                   <div className="text-[14px] text-bone">{partner.name}</div>
                   <div className="text-[11px] text-bone-mute">{partner.role}</div>
@@ -182,6 +179,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </CardBody>
             </Card>
           )}
+          </div>
         </div>
       </div>
     </>

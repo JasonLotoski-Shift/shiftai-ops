@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
-import { Card, CardBody, Label, Badge, Hairline } from "@/components/ui";
+import { Card, CardBody, Label, Badge, Hairline, Avatar, EmptyState } from "@/components/ui";
 import { DealActions } from "@/components/deal-actions";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { stageLabels, industryLabels } from "@/lib/data/seed";
-import { ArrowLeft, Mail, Phone, Sparkles } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Sparkles, Activity } from "lucide-react";
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,60 +29,53 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         actions={<DealActions deal={deal} partner={partner} contact={contact} />}
       />
 
-      <div className="px-8 py-6 flex gap-8">
+      <div className="px-8 py-8 flex flex-col gap-8">
         <Link href="/pipeline" className="label hover:text-bone flex items-center gap-2">
           <ArrowLeft size={12} strokeWidth={1.5} />
           Back to board
         </Link>
-      </div>
 
-      <div className="px-8 pb-12 grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 flex flex-col gap-6">
           <Card>
             <div className="p-6 grid grid-cols-4 gap-6">
               <div className="flex flex-col gap-2">
-                <Label>— Value</Label>
+                <Label>Value</Label>
                 <span className="mono text-[24px] text-track-gold tabular-nums">
                   {formatCAD(deal.valueEstimate).replace("CA$", "$")}
                 </span>
               </div>
               <div className="flex flex-col gap-2">
-                <Label>— Stage</Label>
+                <Label>Stage</Label>
                 <span className="text-[18px] text-bone">{stageLabels[deal.stage]}</span>
               </div>
               <div className="flex flex-col gap-2">
-                <Label>— Industry</Label>
+                <Label>Industry</Label>
                 <span className="text-[18px] text-bone">{industryLabels[deal.industry]}</span>
               </div>
               <div className="flex flex-col gap-2">
-                <Label>— Close target</Label>
+                <Label>Close target</Label>
                 <span className="mono text-[14px] text-bone tabular-nums">
                   {formatDate(deal.closeTargetDate)}
                 </span>
               </div>
             </div>
             {deal.notes && (
-              <>
-                <Hairline />
-                <div className="px-6 py-5">
-                  <Label>— Latest note</Label>
-                  <p className="text-[14px] text-bone-dim mt-2 leading-relaxed">{deal.notes}</p>
-                </div>
-              </>
+              <div className="px-6 pb-6">
+                <Label>Latest note</Label>
+                <p className="text-[14px] text-bone-dim mt-2 leading-relaxed">{deal.notes}</p>
+              </div>
             )}
             {stale && (
-              <>
-                <Hairline />
-                <div className="px-6 py-4 bg-flag-red/10 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Badge tone="red">{daysSince(deal.lastTouchAt)}d cold</Badge>
-                    <span className="text-[13px] text-bone-dim">
-                      Last touch {formatDate(deal.lastTouchAt)} — flagged stale.
-                    </span>
-                  </div>
-                  <button className="label-gold hover:underline">Re-engage →</button>
+              <div className="mx-6 mb-6 px-4 py-4 bg-flag-red/10 border border-flag-red/40 rounded-[var(--radius)] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Badge tone="red">{daysSince(deal.lastTouchAt)}d cold</Badge>
+                  <span className="text-[13px] text-bone-dim">
+                    Last touch {formatDate(deal.lastTouchAt)} — flagged stale.
+                  </span>
                 </div>
-              </>
+                <button className="label-gold hover:underline">Re-engage →</button>
+              </div>
             )}
           </Card>
 
@@ -92,7 +85,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                 <Sparkles size={14} strokeWidth={1.5} className="text-track-gold" />
               </div>
               <div className="flex-1 flex flex-col gap-2">
-                <Label gold>— Agent · Claude proposal</Label>
+                <Label gold>Agent · Claude proposal</Label>
                 <p className="text-[13px] text-bone leading-relaxed">
                   Based on the {industryLabels[deal.industry]} vertical and the {stageLabels[deal.stage].toLowerCase()} stage,
                   Claude can draft a tailored SOW pulling from the IP library — methodology, prior case study
@@ -107,33 +100,46 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Activity</Label>
+            <div className="px-5 pt-5 pb-3">
+              <span className="title-md">Activity</span>
             </div>
             <div className="flex flex-col">
-              {[
-                { ts: deal.lastTouchAt, actor: partner?.name ?? "—", detail: "Touch logged — most recent activity" },
-                { ts: deal.createdAt, actor: partner?.name ?? "—", detail: `Deal created · stage: ${stageLabels[deal.stage]}` },
-              ].map((a, i, arr) => (
-                <div
-                  key={i}
-                  className="px-5 py-3"
-                >
-                  <div className="flex items-baseline justify-between mb-1">
-                    <Label>{a.actor}</Label>
-                    <span className="label">{formatDate(a.ts)}</span>
+              {(() => {
+                const activity = [
+                  { ts: deal.lastTouchAt, actor: partner?.name ?? "—", detail: "Touch logged — most recent activity" },
+                  { ts: deal.createdAt, actor: partner?.name ?? "—", detail: `Deal created · stage: ${stageLabels[deal.stage]}` },
+                ];
+                if (activity.length === 0) {
+                  return (
+                    <EmptyState
+                      icon={Activity}
+                      title="No activity yet"
+                      hint="Logged touches and stage changes will appear here."
+                      compact
+                    />
+                  );
+                }
+                return activity.map((a, i) => (
+                  <div
+                    key={i}
+                    className="px-5 py-3 hover:bg-[var(--color-row-hover)]"
+                  >
+                    <div className="flex items-baseline justify-between mb-1">
+                      <Label>{a.actor}</Label>
+                      <span className="label">{formatDate(a.ts)}</span>
+                    </div>
+                    <p className="text-[13px] text-bone-dim">{a.detail}</p>
                   </div>
-                  <p className="text-[13px] text-bone-dim">{a.detail}</p>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           </Card>
         </div>
 
         <div className="flex flex-col gap-6">
           <Card>
-            <div className="px-5 py-4 border-b border-graphite flex items-center justify-between">
-              <Label>— Primary contact</Label>
+            <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+              <span className="title-md">Primary contact</span>
               <Link href={`/contacts/${contact.id}`} className="label-gold hover:underline">
                 View →
               </Link>
@@ -160,13 +166,11 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Partner lead</Label>
+            <div className="px-5 pt-5 pb-3">
+              <span className="title-md">Partner lead</span>
             </div>
             <CardBody className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[13px] text-track-gold rounded-[var(--radius-pill)]">
-                {partner.initials}
-              </div>
+              <Avatar initials={partner.initials} size="lg" gold />
               <div>
                 <div className="text-[14px] text-bone">{partner.name}</div>
                 <div className="text-[11px] text-bone-mute">{partner.role}</div>
@@ -175,13 +179,14 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           </Card>
 
           <Card>
-            <div className="px-5 py-4 border-b border-graphite">
-              <Label>— Source</Label>
+            <div className="px-5 pt-5 pb-3">
+              <span className="title-md">Source</span>
             </div>
             <CardBody>
-              <p className="text-[13px] text-bone-dim">{contact.source ?? "—"}</p>
+              <p className="text-[13px] text-bone-dim">{contact.source ?? "Unknown"}</p>
             </CardBody>
           </Card>
+        </div>
         </div>
       </div>
     </>

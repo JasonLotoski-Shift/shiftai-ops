@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Label, Badge, Button, Input, Textarea } from "@/components/ui";
+import { Card, Label, Badge, Button, Input, Textarea, Select, Avatar, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { toggleTaskDone } from "@/app/(app)/dashboard/actions";
 import { createTask } from "@/app/(app)/tasks/actions";
@@ -10,7 +10,7 @@ import type {
   TaskModel as Task,
   PartnerModel as Partner,
 } from "@/lib/generated/prisma/models";
-import { Check, Plus, X } from "lucide-react";
+import { Check, Plus, X, ListChecks } from "lucide-react";
 
 type TaskRow = Task & { owner: Partner; assignedBy: Partner | null };
 type PartnerOption = Pick<Partner, "id" | "name" | "initials">;
@@ -106,10 +106,10 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="px-8 py-8 flex flex-col gap-8">
       {/* Action bar */}
       <div className="flex items-center justify-between">
-        <Label>— All tasks</Label>
+        <Label>All tasks</Label>
         <Button size="sm" variant={showForm ? "ghost" : "secondary"} onClick={() => setShowForm((s) => !s)}>
           {showForm ? <X size={13} strokeWidth={1.5} /> : <Plus size={13} strokeWidth={1.5} />}
           {showForm ? "Cancel" : "New task"}
@@ -120,7 +120,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
       {showForm && (
         <Card className="p-5 flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label>— Task</Label>
+            <Label>Task</Label>
             <Input
               placeholder="What needs doing?"
               value={title}
@@ -131,42 +131,38 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
 
           <div className="grid grid-cols-3 gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label>— Assign to</Label>
-              <select
-                value={ownerId}
-                onChange={(e) => setOwnerId(e.target.value)}
-                className="w-full h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none"
-              >
+              <Label>Assign to</Label>
+              <Select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
                 {partners.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                     {p.id === currentPartnerId ? " (you)" : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>— Priority</Label>
-              <select
+              <Label>Priority</Label>
+              <Select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as (typeof PRIORITIES)[number])}
-                className="w-full h-9 px-3 bg-bitumen border border-graphite rounded-[var(--radius)] text-bone text-[14px] focus:border-track-gold focus:outline-none capitalize"
+                className="capitalize"
               >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>— Due</Label>
+              <Label>Due</Label>
               <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>— Related to (optional)</Label>
+            <Label>Related to (optional)</Label>
             <Input
               placeholder="Client / project / contact"
               value={relatedTo}
@@ -176,7 +172,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <Label>— Context</Label>
+              <Label>Context</Label>
               <button
                 type="button"
                 onClick={() => setContext(CONTEXT_TEMPLATE)}
@@ -209,12 +205,16 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
       {/* Task list */}
       <Card>
         {tasks.length === 0 ? (
-          <div className="px-5 py-10 text-center text-[13px] text-bone-mute">No tasks yet.</div>
+          <EmptyState
+            icon={ListChecks}
+            title="No tasks yet"
+            hint="Create a task to start tracking work."
+          />
         ) : (
           tasks.map((t, i) => (
             <div
               key={t.id}
-              className="grid grid-cols-[24px_1fr_120px_140px] gap-4 items-start px-5 py-4"
+              className="grid grid-cols-[24px_1fr_120px_140px] gap-4 items-start px-5 py-4 hover:bg-[var(--color-row-hover)]"
             >
               <button
                 onClick={() => toggleTask(t.id)}
@@ -234,7 +234,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
                   )}
                 </div>
                 {t.context && (
-                  <p className="text-[11px] text-bone-mute leading-snug whitespace-pre-line line-clamp-3 border-l border-graphite-2 pl-2 mt-0.5">
+                  <p className="text-[11px] text-bone-mute leading-snug whitespace-pre-line line-clamp-3 mt-0.5">
                     {t.context}
                   </p>
                 )}
@@ -246,9 +246,9 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
               </div>
               <div className="flex items-center justify-end gap-2 pt-0.5">
                 <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
-                <div className="w-5 h-5 bg-graphite-2 rounded-[var(--radius-sm)] flex items-center justify-center mono text-[9px] text-bone-dim" title={t.owner.name}>
-                  {t.owner.initials}
-                </div>
+                <span title={t.owner.name} className="inline-flex">
+                  <Avatar initials={t.owner.initials} size="sm" />
+                </span>
               </div>
             </div>
           ))
