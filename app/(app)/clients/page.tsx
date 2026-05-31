@@ -2,25 +2,45 @@ import Link from "next/link";
 import { Briefcase } from "lucide-react";
 import { Header } from "@/components/header";
 import { Badge, Card, Stat, Avatar, EmptyState } from "@/components/ui";
+import { AddClient } from "@/components/add-client";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
 import { industryLabels } from "@/lib/data/seed";
 
 export default async function ClientsPage() {
-  const clients = await prisma.client.findMany({
-    include: {
-      partnerLead: true,
-      projects: { where: { status: { not: "closed" } }, select: { id: true } },
-    },
-    orderBy: { contractSignedAt: "desc" },
-  });
+  const [clients, contacts, partners, session] = await Promise.all([
+    prisma.client.findMany({
+      include: {
+        partnerLead: true,
+        projects: { where: { status: { not: "closed" } }, select: { id: true } },
+      },
+      orderBy: { contractSignedAt: "desc" },
+    }),
+    prisma.contact.findMany({
+      select: { id: true, name: true, company: true, industry: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    auth(),
+  ]);
 
   const totalContractValue = clients.reduce((s, c) => s + c.contractValue, 0);
   const atRiskCount = clients.filter((c) => c.status === "at_risk" || c.status === "blocked").length;
 
   return (
     <>
-      <Header eyebrow="Active engagements" title="Clients." />
+      <Header
+        eyebrow="Active engagements"
+        title="Clients."
+        actions={
+          <AddClient
+            contacts={contacts}
+            partners={partners}
+            defaultPartnerId={session?.user?.partnerId}
+          />
+        }
+      />
 
       <div className="px-8 py-8 flex flex-col gap-8">
         <div className="grid grid-cols-3 gap-4">

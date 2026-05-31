@@ -117,6 +117,17 @@ enum AgentPlanStatus {
 enum ChannelKind {
   channel
   dm
+  system
+}
+
+// Typed system notifications — drives the color + icon in the per-partner
+// "Claude" system chat. 'chat' is an ordinary human message (the default for
+// DMs/channels); the rest are AI/system notes.
+enum MessageKind {
+  chat
+  task_assigned     @map("task-assigned")
+  deliverable_added @map("deliverable-added")
+  approval_needed   @map("approval-needed")
 }
 
 enum IngestSource {
@@ -167,6 +178,9 @@ model Partner {
   agentPlans      AgentPlan[] @relation("AgentPlanCreatedBy")
   channelMemberships ChannelMember[]
   messagesAuthored   Message[]
+
+  // Last time this partner opened What's new — drives the unread dot + bolding.
+  whatsNewSeenAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -618,9 +632,15 @@ model Message {
   author    Partner? @relation(fields: [authorId], references: [id])
   authorId  String?
   body      String
+  // Notification type — 'chat' for ordinary messages, or a typed system note
+  // (drives color + icon + sort in the per-partner system chat).
+  kind      MessageKind @default(chat)
   // If set, render this message as an inline task card.
   task      Task?    @relation(fields: [taskId], references: [id])
   taskId    String?
+  // Optional deep-link for a system note (e.g. "/ingest", "/projects/<id>") —
+  // makes a typed notification click through to the thing it's about.
+  link      String?
   createdAt DateTime @default(now())
 
   @@index([channelId, createdAt])

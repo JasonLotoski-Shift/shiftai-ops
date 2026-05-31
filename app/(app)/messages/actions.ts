@@ -15,6 +15,14 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { findOrCreateDMChannel } from "@/lib/messaging";
 
+// Message.kind: "chat" for partner chat; "task_assigned" | "deliverable_added"
+// | "approval_needed" for typed system notes in the Claude system channel.
+export type MessageKindValue =
+  | "chat"
+  | "task_assigned"
+  | "deliverable_added"
+  | "approval_needed";
+
 export type ChatMessage = {
   id: string;
   body: string;
@@ -22,6 +30,8 @@ export type ChatMessage = {
   authorId: string | null;
   authorName: string | null;
   authorInitials: string | null;
+  kind: MessageKindValue;
+  link: string | null;
   task: { id: string; title: string; done: boolean; due: string; priority: string } | null;
 };
 
@@ -30,6 +40,8 @@ const MESSAGE_SELECT = {
   body: true,
   createdAt: true,
   authorId: true,
+  kind: true,
+  link: true,
   author: { select: { name: true, initials: true } },
   task: { select: { id: true, title: true, done: true, due: true, priority: true } },
 } as const;
@@ -39,6 +51,8 @@ type RawMessage = {
   body: string;
   createdAt: Date;
   authorId: string | null;
+  kind: MessageKindValue;
+  link: string | null;
   author: { name: string; initials: string } | null;
   task: { id: string; title: string; done: boolean; due: Date; priority: string } | null;
 };
@@ -51,6 +65,8 @@ function shape(m: RawMessage): ChatMessage {
     authorId: m.authorId,
     authorName: m.author?.name ?? null,
     authorInitials: m.author?.initials ?? null,
+    kind: m.kind,
+    link: m.link,
     task: m.task
       ? {
           id: m.task.id,

@@ -16,7 +16,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, folderIdFromUrl } from "@/lib/drive";
-import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { formatDate } from "@/lib/format";
@@ -289,4 +289,256 @@ export async function uploadClientFile(
 
   revalidatePath(`/clients/${clientId}`);
   return { artifactId: result.id, driveUrl: webViewLink };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Company web enrichment — the "Enrich from web" Quick Action on the
+// company-profile tab. Web counterpart to the contact enrich pattern:
+//
+//   generateCompanyEnrichment() runs the enrich-company-web skill with
+//     web_search ON, PROPOSES company-profile additions + conflicts
+//     (cited from public sources), writes nothing.
+//   applyCompanyEnrichment() takes the partner-approved additions and merges
+//     them append-only: single-value fields set ONLY if currently empty;
+//     companyKeyFacts appended with case-insensitive dedupe. Never overwrites
+//     an existing scalar — divergences come back as conflicts the skill flags.
+//
+// Mirrors contacts applyEnrichment() exactly (set-if-empty scalars + dedup'd
+// list append + enrichedAt + writeAudit/writeActivity under agentActor).
+// ──────────────────────────────────────────────────────────────────────
+
+// Fields the enrich-company-web skill is allowed to touch, split by shape so
+// the merge knows append (list) vs set-if-empty (scalar).
+const COMPANY_ENRICH_LIST_FIELDS = ["companyKeyFacts"] as const;
+const COMPANY_ENRICH_SCALAR_FIELDS = [
+  "companySize",
+  "headquarters",
+  "founded",
+  "website",
+  "ownership",
+  "description",
+] as const;
+type CompanyEnrichListField = (typeof COMPANY_ENRICH_LIST_FIELDS)[number];
+type CompanyEnrichScalarField = (typeof COMPANY_ENRICH_SCALAR_FIELDS)[number];
+type CompanyEnrichField = CompanyEnrichListField | CompanyEnrichScalarField;
+
+export type CompanyEnrichAddition = { field: CompanyEnrichField; value: string };
+export type CompanyEnrichConflict = {
+  field: CompanyEnrichScalarField;
+  existing: string;
+  proposed: string;
+  note?: string;
+};
+
+const ALL_COMPANY_ENRICH_FIELDS: string[] = [
+  ...COMPANY_ENRICH_LIST_FIELDS,
+  ...COMPANY_ENRICH_SCALAR_FIELDS,
+];
+
+function isCompanyEnrichField(f: unknown): f is CompanyEnrichField {
+  return typeof f === "string" && ALL_COMPANY_ENRICH_FIELDS.includes(f);
+}
+
+function parseCompanyEnrichmentJSON(raw: string): {
+  additions: CompanyEnrichAddition[];
+  conflicts: CompanyEnrichConflict[];
+} {
+  let text = raw.trim();
+  // Strip a ```json fence if the model added one despite instructions.
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  // Otherwise slice to the outermost braces.
+  if (!text.startsWith("{")) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end !== -1) text = text.slice(start, end + 1);
+  }
+
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    throw new Error("Enrichment returned malformed output — try again.");
+  }
+  const o = obj as { additions?: unknown; conflicts?: unknown };
+
+  const additions: CompanyEnrichAddition[] = Array.isArray(o.additions)
+    ? o.additions
+        .filter(
+          (a): a is { field: CompanyEnrichField; value: string } =>
+            !!a &&
+            typeof a === "object" &&
+            isCompanyEnrichField((a as { field?: unknown }).field) &&
+            typeof (a as { value?: unknown }).value === "string" &&
+            (a as { value: string }).value.trim().length > 0,
+        )
+        .map((a) => ({ field: a.field, value: a.value.trim() }))
+    : [];
+
+  const isScalarField = (f: unknown): f is CompanyEnrichScalarField =>
+    typeof f === "string" &&
+    (COMPANY_ENRICH_SCALAR_FIELDS as readonly string[]).includes(f);
+
+  const conflicts: CompanyEnrichConflict[] = Array.isArray(o.conflicts)
+    ? o.conflicts
+        .filter(
+          (c): c is CompanyEnrichConflict =>
+            !!c &&
+            typeof c === "object" &&
+            isScalarField((c as { field?: unknown }).field) &&
+            typeof (c as { existing?: unknown }).existing === "string" &&
+            typeof (c as { proposed?: unknown }).proposed === "string",
+        )
+        .map((c) => ({
+          field: c.field,
+          existing: c.existing,
+          proposed: c.proposed,
+          note: typeof c.note === "string" ? c.note : undefined,
+        }))
+    : [];
+
+  return { additions, conflicts };
+}
+
+export async function generateCompanyEnrichment(
+  clientId: string,
+): Promise<{ additions: CompanyEnrichAddition[]; conflicts: CompanyEnrichConflict[] }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      company: true,
+      industry: true,
+      companySize: true,
+      headquarters: true,
+      founded: true,
+      website: true,
+      ownership: true,
+      description: true,
+      companyKeyFacts: true,
+    },
+  });
+  if (!client) throw new Error("Client not found");
+
+  const ctx: string[] = [
+    "## Company record (existing)",
+    `Company: ${client.company}`,
+    `Industry: ${client.industry}`,
+    `Website: ${client.website || "(empty)"}`,
+    `Company size: ${client.companySize || "(empty)"}`,
+    `Headquarters: ${client.headquarters || "(empty)"}`,
+    `Founded: ${client.founded || "(empty)"}`,
+    `Ownership: ${client.ownership || "(empty)"}`,
+    `Description: ${client.description || "(empty)"}`,
+    `Key facts: ${client.companyKeyFacts.length ? client.companyKeyFacts.join("; ") : "(none)"}`,
+  ];
+
+  const raw = await generate({
+    skill: "enrich-company-web",
+    context: ctx.join("\n"),
+    intake:
+      "Use web search to find public, authoritative facts about this exact company (use the company name, industry, and website to disambiguate). Propose company-profile additions, citing a source for every fact. Return the JSON object exactly as specified.",
+    webSearch: true,
+    maxTokens: 2000,
+  });
+
+  return parseCompanyEnrichmentJSON(raw);
+}
+
+export async function applyCompanyEnrichment(
+  clientId: string,
+  additions: CompanyEnrichAddition[],
+) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+
+  const clean = (additions ?? []).filter(
+    (a) => isCompanyEnrichField(a?.field) && a.value?.trim(),
+  );
+  if (clean.length === 0) throw new Error("No additions to apply");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      company: true,
+      companySize: true,
+      headquarters: true,
+      founded: true,
+      website: true,
+      ownership: true,
+      description: true,
+      companyKeyFacts: true,
+    },
+  });
+  if (!client) throw new Error("Client not found");
+
+  // Non-destructive update: append new list facts (case-insensitive dedupe);
+  // set scalar fields ONLY if currently empty (never overwrite — that's a
+  // conflict the partner resolves by hand).
+  const data: Record<string, unknown> = {};
+  const keyFacts = [...client.companyKeyFacts];
+  const applied: CompanyEnrichAddition[] = [];
+  const skipped: CompanyEnrichAddition[] = [];
+
+  for (const a of clean) {
+    if ((COMPANY_ENRICH_LIST_FIELDS as readonly string[]).includes(a.field)) {
+      const exists = keyFacts.some((v) => v.toLowerCase() === a.value.toLowerCase());
+      if (!exists) {
+        keyFacts.push(a.value);
+        applied.push(a);
+      } else {
+        skipped.push(a);
+      }
+    } else {
+      const f = a.field as CompanyEnrichScalarField;
+      const current = client[f];
+      if (!current || !current.trim()) {
+        data[f] = a.value;
+        applied.push(a);
+      } else {
+        // Already set — don't overwrite. Partner resolves conflicts manually.
+        skipped.push(a);
+      }
+    }
+  }
+
+  if (keyFacts.length !== client.companyKeyFacts.length) data.companyKeyFacts = keyFacts;
+
+  if (applied.length === 0) {
+    return { applied: 0, skipped: skipped.length };
+  }
+
+  data.enrichedAt = new Date();
+  // The act of enriching is itself an AI surface, attributed to the skill.
+  const aiActor = agentActor("enrich-company-web");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.client.update({ where: { id: clientId }, data });
+
+    await writeAudit(tx, {
+      actor: aiActor,
+      action: "update.client.enrich",
+      targetType: "Client",
+      targetId: clientId,
+      changes: {
+        approvedBy: partnerLabel,
+        applied: applied.map((a) => ({ field: a.field, value: a.value })),
+        skipped: skipped.length,
+      },
+    });
+
+    await writeActivity(tx, {
+      actor: aiActor,
+      type: "ai",
+      target: client.company,
+      detail: `Enriched company profile — ${applied.length} fact(s) added (approved by ${partnerLabel.split(" ")[0]})`,
+      link: `/clients/${clientId}`,
+    });
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  return { applied: applied.length, skipped: skipped.length };
 }

@@ -1,10 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Card, CardBody, Label, Badge, Button, Tabs, Avatar, EmptyState, Stat } from "@/components/ui";
 import { industryLabels } from "@/lib/data/seed";
 import { formatCAD, formatDate } from "@/lib/format";
+import {
+  generateCompanyEnrichment,
+  applyCompanyEnrichment,
+  type CompanyEnrichAddition,
+  type CompanyEnrichConflict,
+} from "@/app/(app)/clients/[id]/actions";
 import type {
   ClientModel as Client,
   PartnerModel as Partner,
@@ -19,12 +25,12 @@ import {
   Terminal,
   Globe,
   Sparkles,
-  Plus,
   Check,
   FileText,
   Presentation,
   Mail,
   Bot,
+  ShieldAlert,
 } from "lucide-react";
 
 interface ClientDetailTabsProps {
@@ -141,8 +147,63 @@ export function ClientDetailTabs({
    Sub-tab A — Company profile
    ────────────────────────────────────────────────────────────────────── */
 
+const COMPANY_ENRICH_FIELD_LABELS: Record<string, string> = {
+  companySize: "Headcount",
+  headquarters: "Headquarters",
+  founded: "Founded",
+  website: "Website",
+  ownership: "Ownership",
+  description: "Description",
+  companyKeyFacts: "Key facts",
+};
+
 function CompanyProfile({ client }: { client: Client }) {
-  const [enrich, setEnrich] = useState<"idle" | "running" | "results" | "applied">("idle");
+  const [phase, setPhase] = useState<"idle" | "results" | "applied">("idle");
+  const [additions, setAdditions] = useState<CompanyEnrichAddition[]>([]);
+  const [conflicts, setConflicts] = useState<CompanyEnrichConflict[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [appliedCount, setAppliedCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [isRunning, startRun] = useTransition();
+  const [isApplying, startApply] = useTransition();
+
+  function runEnrichment() {
+    setError(null);
+    startRun(async () => {
+      try {
+        const res = await generateCompanyEnrichment(client.id);
+        setAdditions(res.additions);
+        setConflicts(res.conflicts);
+        setSelected(new Set(res.additions.map((_, i) => i))); // all checked by default
+        setPhase("results");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Enrichment failed");
+      }
+    });
+  }
+
+  function toggle(i: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
+  function apply() {
+    setError(null);
+    const chosen = additions.filter((_, i) => selected.has(i));
+    startApply(async () => {
+      try {
+        const res = await applyCompanyEnrichment(client.id, chosen);
+        setAppliedCount(res.applied);
+        setPhase("applied");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to apply");
+      }
+    });
+  }
 
   const facts: { label: string; value?: string | null }[] = [
     { label: "Industry", value: industryLabels[client.industry] },
@@ -151,11 +212,6 @@ function CompanyProfile({ client }: { client: Client }) {
     { label: "Headquarters", value: client.headquarters },
     { label: "Founded", value: client.founded },
     { label: "Ownership", value: client.ownership },
-  ];
-
-  const proposed = [
-    { field: "Headcount", value: `Recent job postings suggest headcount near the top of the ${client.companySize ?? "current"} band.` },
-    { field: "Key facts", value: "Trade press flagged a new regional facility opening in Q3 — possible expansion of scope." },
   ];
 
   return (
@@ -231,47 +287,99 @@ function CompanyProfile({ client }: { client: Client }) {
         </div>
         <CardBody className="flex flex-col gap-3 pt-0">
           <p className="text-[13px] text-bone leading-relaxed">
-            This profile updates from logged communications and on-demand web search. Updates are{" "}
-            <span className="text-track-gold">proposed</span> — existing facts are never overwritten without review.
+            Pull public company facts from the web — headcount, HQ, founded, ownership, and notable facts — each cited to its
+            source. Updates are <span className="text-track-gold">proposed</span>: existing facts are never overwritten, and
+            anything that conflicts is flagged for you to resolve.
           </p>
 
-          {enrich === "results" && (
-            <div className="flex flex-col gap-3">
-              {proposed.map((p, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <Plus size={13} strokeWidth={2} className="text-diagnostic-steel shrink-0 mt-0.5" />
-                  <div>
-                    <Label>{p.field}</Label>
-                    <p className="text-[13px] text-bone mt-0.5 leading-snug">{p.value}</p>
-                  </div>
-                </div>
-              ))}
+          {phase === "results" && (
+            <>
+              {additions.length === 0 && conflicts.length === 0 ? (
+                <p className="text-[13px] text-bone-dim leading-relaxed">
+                  Nothing new to add — the web search didn&apos;t surface anything beyond what&apos;s already on the record.
+                </p>
+              ) : (
+                <>
+                  {additions.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <Label gold>Proposed additions ({additions.length}) · check what to keep</Label>
+                      <div className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
+                        {additions.map((a, i) => (
+                          <label
+                            key={i}
+                            className={`flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-[var(--color-row-hover)] ${i > 0 ? "border-t border-graphite/30" : ""} ${selected.has(i) ? "" : "opacity-50"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected.has(i)}
+                              onChange={() => toggle(i)}
+                              className="mt-1 accent-track-gold"
+                            />
+                            <div className="min-w-0">
+                              <Label>{COMPANY_ENRICH_FIELD_LABELS[a.field] ?? a.field}</Label>
+                              <p className="text-[13px] text-bone mt-0.5 leading-snug">{a.value}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {conflicts.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <Label>Conflicts · review ({conflicts.length})</Label>
+                      {conflicts.map((c, i) => (
+                        <div key={i} className="border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2">
+                          <Label>{COMPANY_ENRICH_FIELD_LABELS[c.field] ?? c.field}</Label>
+                          <div className="grid grid-cols-2 gap-3 text-[13px]">
+                            <div className="flex flex-col gap-1">
+                              <span className="label text-[9px]">Keep (current)</span>
+                              <span className="text-bone">{c.existing}</span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <span className="label text-[9px]">Proposed</span>
+                              <span className="text-bone-dim">{c.proposed}</span>
+                            </div>
+                          </div>
+                          {c.note && <span className="text-[11px] text-bone-mute">{c.note}</span>}
+                          <span className="text-[11px] text-bone-mute">Not applied — edit the record by hand if you want this.</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {phase === "applied" && (
+            <div className="flex items-center gap-2 px-3 py-2 border border-diagnostic-steel/40 bg-diagnostic-steel/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+              <Check size={14} strokeWidth={2} className="text-diagnostic-steel" />
+              <span className="text-[13px] text-bone">{appliedCount} fact(s) merged. Existing facts kept.</span>
             </div>
           )}
 
-          {enrich === "applied" && (
-            <div className="flex items-center gap-2 px-3 py-2 border border-diagnostic-steel/40 bg-diagnostic-steel/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
-              <Check size={14} strokeWidth={2} className="text-diagnostic-steel" />
-              <span className="text-[13px] text-bone">Additions merged. Existing facts kept.</span>
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-sm)]">
+              <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+              <span className="text-[12px] text-bone-dim">{error}</span>
             </div>
           )}
 
           <div className="flex gap-2">
-            {enrich === "idle" && (
-              <>
-                <Button variant="secondary" size="sm" onClick={() => { setEnrich("running"); setTimeout(() => setEnrich("results"), 1000); }}>
-                  <Globe size={13} strokeWidth={1.5} />
-                  Web search
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setEnrich("running"); setTimeout(() => setEnrich("results"), 1000); }}>
-                  <Sparkles size={13} strokeWidth={1.5} />
-                  AI enrich from comms
-                </Button>
-              </>
+            {phase === "idle" && (
+              <Button variant="secondary" size="sm" onClick={runEnrichment} disabled={isRunning}>
+                <Globe size={13} strokeWidth={1.5} />
+                {isRunning ? "Searching the web…" : "Enrich from web"}
+              </Button>
             )}
-            {enrich === "running" && <span className="label py-2">Searching…</span>}
-            {enrich === "results" && (
-              <Button variant="primary" size="sm" onClick={() => setEnrich("applied")}>Add {proposed.length} (keep existing)</Button>
+            {phase === "results" && additions.length > 0 && (
+              <Button variant="primary" size="sm" onClick={apply} disabled={isApplying || selected.size === 0}>
+                {isApplying ? "Merging…" : `Add ${selected.size} (keep existing)`}
+              </Button>
+            )}
+            {phase === "results" && additions.length === 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setPhase("idle")}>Done</Button>
             )}
           </div>
         </CardBody>

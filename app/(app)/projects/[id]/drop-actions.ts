@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
+import { notifyPartner } from "@/lib/messaging";
 import { generate } from "@/lib/ai";
 import { formatDate } from "@/lib/format";
 import type { InteractionType, MilestoneStatus, TaskPriority } from "@/lib/generated/prisma/enums";
@@ -125,6 +126,7 @@ export async function extractProjectDrop(
 ): Promise<{ id: string }> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerId = session.user.partnerId;
   const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
 
   const content = input.content.trim();
@@ -182,8 +184,19 @@ export async function extractProjectDrop(
     select: { id: true },
   });
 
+  // Tell the partner who dropped it that there's something to review. This runs
+  // outside a $transaction in this action — pass the singleton as db, that's fine.
+  await notifyPartner(
+    prisma,
+    partnerId,
+    "approval_needed",
+    `A dropped document on ${project.name} is ready for your review`,
+    { link: "/ingest" },
+  );
+
   revalidatePath("/ingest");
   revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/messages");
   return { id: created.id };
 }
 

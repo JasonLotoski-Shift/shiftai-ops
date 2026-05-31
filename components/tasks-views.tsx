@@ -14,10 +14,13 @@ import { Check, Plus, X, ListChecks } from "lucide-react";
 
 type TaskRow = Task & { owner: Partner; assignedBy: Partner | null };
 type PartnerOption = Pick<Partner, "id" | "name" | "initials">;
+type DeliverableOption = { id: string; title: string; projectId: string | null };
+type ProjectOption = { id: string; name: string; artifacts: DeliverableOption[] };
 
 interface TasksViewsProps {
   initialTasks: TaskRow[];
   partners: PartnerOption[];
+  projects: ProjectOption[];
   currentPartnerId: string;
 }
 
@@ -33,7 +36,7 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksViewsProps) {
+export function TasksViews({ initialTasks, partners, projects, currentPartnerId }: TasksViewsProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
   const [showForm, setShowForm] = useState(false);
@@ -53,6 +56,13 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
   const [due, setDue] = useState(todayISO());
   const [relatedTo, setRelatedTo] = useState("");
   const [context, setContext] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [artifactId, setArtifactId] = useState("");
+
+  // Deliverable options filter to the chosen project (and are optional).
+  const deliverables = projectId
+    ? projects.find((p) => p.id === projectId)?.artifacts ?? []
+    : [];
 
   function resetForm() {
     setTitle("");
@@ -61,7 +71,15 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
     setDue(todayISO());
     setRelatedTo("");
     setContext("");
+    setProjectId("");
+    setArtifactId("");
     setError(null);
+  }
+
+  // Changing the project clears any deliverable selection that no longer applies.
+  function onProjectChange(next: string) {
+    setProjectId(next);
+    setArtifactId("");
   }
 
   // Optimistic flip — toggleTaskDone persists + writes the activity row.
@@ -93,6 +111,8 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
         due,
         context: context.trim() || undefined,
         relatedTo: relatedTo.trim() || undefined,
+        projectId: projectId || undefined,
+        artifactId: artifactId || undefined,
       });
       resetForm();
       setShowForm(false);
@@ -168,6 +188,41 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
               value={relatedTo}
               onChange={(e) => setRelatedTo(e.target.value)}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Project (optional)</Label>
+              <Select value={projectId} onChange={(e) => onProjectChange(e.target.value)}>
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Deliverable (optional)</Label>
+              <Select
+                value={artifactId}
+                onChange={(e) => setArtifactId(e.target.value)}
+                disabled={!projectId || deliverables.length === 0}
+              >
+                <option value="">
+                  {!projectId
+                    ? "Choose a project first"
+                    : deliverables.length === 0
+                      ? "No deliverables"
+                      : "No deliverable"}
+                </option>
+                {deliverables.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.title}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1.5">

@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
-import { findOrCreateDMChannel } from "@/lib/messaging";
+import { notifyPartner } from "@/lib/messaging";
 import type { TaskPriority } from "@/lib/generated/prisma/enums";
 
 const VALID_PRIORITIES: TaskPriority[] = ["high", "medium", "low"];
@@ -30,14 +30,13 @@ export async function createTask(input: {
   relatedTo?: string;
   clientId?: string;
   projectId?: string;
+  artifactId?: string; // optional parent deliverable (must belong to projectId)
 }) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const creatorId = session.user.partnerId;
-  const actor = partnerActor(
-    creatorId,
-    session.user.name ?? session.user.email ?? "Unknown",
-  );
+  const assignerName = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(creatorId, assignerName);
 
   const title = input.title.trim();
   if (!title) throw new Error("Task title is required");
@@ -52,6 +51,23 @@ export async function createTask(input: {
     select: { id: true, name: true },
   });
   if (!owner) throw new Error("Assignee not found");
+
+  const projectId = input.projectId || null;
+  const artifactId = input.artifactId || null;
+
+  // A deliverable must belong to the chosen project (and a deliverable implies
+  // a project). Guard against a mismatched pair from the form.
+  if (artifactId) {
+    if (!projectId) throw new Error("A deliverable requires a project");
+    const artifact = await prisma.artifact.findUnique({
+      where: { id: artifactId },
+      select: { projectId: true },
+    });
+    if (!artifact) throw new Error("Deliverable not found");
+    if (artifact.projectId !== projectId) {
+      throw new Error("Deliverable does not belong to the selected project");
+    }
+  }
 
   // A hand-off records the assigner; a self-created task leaves it null.
   const assignedById = owner.id === creatorId ? null : creatorId;
@@ -68,7 +84,8 @@ export async function createTask(input: {
         assignedById,
         relatedTo: input.relatedTo?.trim() || null,
         clientId: input.clientId || null,
-        projectId: input.projectId || null,
+        projectId,
+        artifactId,
       },
     });
 
@@ -84,6 +101,8 @@ export async function createTask(input: {
         priority: input.priority,
         due: due.toISOString(),
         hasContext: Boolean(context),
+        projectId,
+        artifactId,
       },
     });
 
@@ -95,19 +114,17 @@ export async function createTask(input: {
       link: "/tasks",
     });
 
-    // Hand-off: post a system task-card message into the DM between the
-    // assigner and the assignee. One Task row, surfaced in chat + Tasks tab +
-    // feed. The card renders interactively (toggle done from the chat).
+    // Hand-off: notify the assignee in their "Claude" system chat. One Task
+    // row, surfaced in the system inbox + Tasks tab + feed. The note renders as
+    // an inline task card (taskId) and clicks through to /tasks.
     if (assignedById) {
-      const dmId = await findOrCreateDMChannel(tx, assignedById, owner.id);
-      await tx.message.create({
-        data: {
-          channelId: dmId,
-          authorId: null, // system message
-          body: `Assigned you a task: ${title}`,
-          taskId: created.id,
-        },
-      });
+      await notifyPartner(
+        tx,
+        owner.id,
+        "task_assigned",
+        `${assignerName} assigned you a task: ${title}`,
+        { taskId: created.id, link: "/tasks" },
+      );
     }
 
     return created;

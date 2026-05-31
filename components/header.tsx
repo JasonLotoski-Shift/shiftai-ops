@@ -1,7 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
-import { Button, SearchInput } from "@/components/ui";
+import { SearchInput } from "@/components/ui";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Header({
@@ -23,10 +22,6 @@ export function Header({
             <span className="label text-[9px]">⌘K</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="secondary">
-              <Plus size={13} strokeWidth={1.5} />
-              New
-            </Button>
             <ThemeToggle />
           </div>
         </div>

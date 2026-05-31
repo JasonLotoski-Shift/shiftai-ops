@@ -21,6 +21,7 @@ import {
   saveEmailDraft,
   sendEmail,
   generateEnrichment,
+  generateWebEnrichment,
   applyEnrichment,
   type EnrichAddition,
   type EnrichConflict,
@@ -60,7 +61,7 @@ export function ContactActions({
       </Button>
       <Button variant="ghost" size="sm" onClick={() => setOpen("search")}>
         <Globe size={13} strokeWidth={1.5} />
-        Web search
+        Enrich from web
       </Button>
       <Button variant="ghost" size="sm" onClick={() => setOpen("enrich")}>
         <Sparkles size={13} strokeWidth={1.5} />
@@ -69,7 +70,7 @@ export function ContactActions({
 
       {open === "email" && <DraftEmailModal contact={contact} partnerName={partnerName} onClose={() => setOpen(null)} />}
       {open === "log" && <LogInteractionModal contact={contact} onClose={() => setOpen(null)} />}
-      {open === "search" && <EnrichModal contact={contact} mode="search" onClose={() => setOpen(null)} />}
+      {open === "search" && <EnrichModal contact={contact} mode="web" onClose={() => setOpen(null)} />}
       {open === "enrich" && <EnrichModal contact={contact} mode="ai" onClose={() => setOpen(null)} />}
     </>
   );
@@ -390,13 +391,15 @@ function LogInteractionModal({ contact, onClose }: { contact: Contact; onClose: 
 }
 
 /* ──────────────────────────────────────────────────────────────────────
-   AI enrich — non-destructive MERGE review, grounded in the interaction log.
-   Claude reads ONLY the record + logged history (no web), proposes additions,
-   and the partner approves. New list facts are ADDED; existing single-value
-   fields are never overwritten — divergences come back as conflicts to resolve.
+   Enrich — non-destructive MERGE review. Two modes, one flow:
 
-   Web search mode is not wired yet (no server-side web access) — it shows an
-   honest "coming soon" rather than fabricating facts (no-hallucination rule).
+   - "ai":  reads ONLY the record + logged interactions (no web).
+   - "web": uses web search to find public, professional facts about the
+            person, citing sources inline (enrich-contact-web skill).
+
+   Both PROPOSE additions; the partner approves. New list facts are ADDED;
+   existing single-value fields are never overwritten — divergences come back
+   as conflicts to resolve by hand. Same applyEnrichment() merge for both.
    ────────────────────────────────────────────────────────────────────── */
 
 const ENRICH_FIELD_LABELS: Record<string, string> = {
@@ -408,10 +411,10 @@ const ENRICH_FIELD_LABELS: Record<string, string> = {
   networkAffiliations: "Network affiliations",
 };
 
-function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "search" | "ai"; onClose: () => void }) {
-  const isSearch = mode === "search";
-  const title = isSearch ? `Web search · ${contact.company}` : `AI enrich · ${contact.name}`;
-  const Icon = isSearch ? Globe : Sparkles;
+function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "web" | "ai"; onClose: () => void }) {
+  const isWeb = mode === "web";
+  const title = isWeb ? `Enrich from web · ${contact.name}` : `AI enrich · ${contact.name}`;
+  const Icon = isWeb ? Globe : Sparkles;
 
   const [phase, setPhase] = useState<"idle" | "results" | "applied">("idle");
   const [additions, setAdditions] = useState<EnrichAddition[]>([]);
@@ -426,7 +429,9 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
     setError(null);
     startRun(async () => {
       try {
-        const res = await generateEnrichment(contact.id);
+        const res = isWeb
+          ? await generateWebEnrichment(contact.id)
+          : await generateEnrichment(contact.id);
         setAdditions(res.additions);
         setConflicts(res.conflicts);
         setSelected(new Set(res.additions.map((_, i) => i))); // all checked by default
@@ -460,39 +465,22 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
     });
   }
 
-  // Web search: honest not-yet-wired state — never fabricate facts.
-  if (isSearch) {
-    return (
-      <Modal icon={<Icon size={14} strokeWidth={1.5} className="text-track-gold" />} title={title} onClose={onClose} wide>
-        <div className="px-5 py-6 flex flex-col gap-4">
-          <p className="text-[13px] text-bone-dim leading-relaxed">
-            Web-search enrichment isn&apos;t wired up yet — the ops tool has no server-side web access today, and
-            inventing facts about {contact.company} would break the no-hallucination rule.
-          </p>
-          <div className="flex items-start gap-2 px-3 py-2 bg-bitumen rounded-[var(--radius-sm)]">
-            <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
-            <span className="text-[12px] text-bone-dim">
-              When connected, it will use the same <span className="text-bone">propose → approve → merge</span> flow as AI enrich —
-              nothing written without your sign-off. For now, use <span className="text-bone">AI enrich</span> (grounded in the
-              logged interactions).
-            </span>
-          </div>
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
-          </div>
-        </div>
-      </Modal>
-    );
-  }
-
   return (
     <Modal icon={<Icon size={14} strokeWidth={1.5} className="text-track-gold" />} title={title} onClose={onClose} wide>
       {phase === "idle" && (
         <div className="px-5 py-6 flex flex-col gap-4">
-          <p className="text-[13px] text-bone-dim leading-relaxed">
-            Reads {contact.name.split(" ")[0]}&apos;s record and logged interactions, then proposes additions — persona,
-            communication style, key facts, background. Grounded only in what&apos;s logged; nothing invented.
-          </p>
+          {isWeb ? (
+            <p className="text-[13px] text-bone-dim leading-relaxed">
+              Searches the public web for {contact.name.split(" ")[0]} (using name, title, and company to find the right person),
+              then proposes additions — background, key facts, network affiliations — with a source cited on each. Public,
+              professional facts only; nothing private, nothing invented.
+            </p>
+          ) : (
+            <p className="text-[13px] text-bone-dim leading-relaxed">
+              Reads {contact.name.split(" ")[0]}&apos;s record and logged interactions, then proposes additions — persona,
+              communication style, key facts, background. Grounded only in what&apos;s logged; nothing invented.
+            </p>
+          )}
           <div className="flex items-start gap-2 px-3 py-2 bg-bitumen rounded-[var(--radius-sm)]">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
             <span className="text-[12px] text-bone-dim">
@@ -509,7 +497,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} disabled={isRunning}>Cancel</Button>
             <Button variant="primary" size="sm" onClick={runEnrichment} disabled={isRunning}>
-              {isRunning ? "Reading log…" : "Run enrichment"}
+              {isRunning ? (isWeb ? "Searching the web…" : "Reading log…") : "Run enrichment"}
             </Button>
           </div>
         </div>

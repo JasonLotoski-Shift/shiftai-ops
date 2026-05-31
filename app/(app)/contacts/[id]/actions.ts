@@ -582,6 +582,69 @@ export async function generateEnrichment(
   return parsed;
 }
 
+// generateWebEnrichment — the web-mode sibling of generateEnrichment.
+//
+// Same propose-then-apply contract (returns additions + conflicts, writes
+// nothing), but runs the enrich-contact-web skill with Anthropic's native
+// web_search enabled. Claude looks up public, professional facts about the
+// named person, citing sources inline; the partner approves, and the existing
+// applyEnrichment() merges the chosen additions append-only. The skill — not
+// this code — enforces "public + professional only, cite every fact, skip
+// private/sensitive data, never the wrong person."
+//
+// Unlike the log-only path, we run even when there are no logged interactions:
+// the web is the source here, not the log.
+export async function generateWebEnrichment(
+  contactId: string,
+): Promise<{ additions: EnrichAddition[]; conflicts: EnrichConflict[] }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+
+  const contact = await prisma.contact.findUnique({
+    where: { id: contactId },
+    select: {
+      name: true,
+      title: true,
+      company: true,
+      industry: true,
+      notes: true,
+      persona: true,
+      communicationStyle: true,
+      background: true,
+      keyFacts: true,
+      hobbies: true,
+      networkAffiliations: true,
+    },
+  });
+  if (!contact) throw new Error("Contact not found");
+
+  const ctx: string[] = [
+    "## Contact record (existing)",
+    `Name: ${contact.name}`,
+    `Title: ${contact.title}`,
+    `Company: ${contact.company}`,
+    `Industry: ${contact.industry}`,
+    `Persona: ${contact.persona || "(empty)"}`,
+    `Communication style: ${contact.communicationStyle || "(empty)"}`,
+    `Background: ${contact.background || "(empty)"}`,
+    `Key facts: ${contact.keyFacts.length ? contact.keyFacts.join("; ") : "(none)"}`,
+    `Hobbies: ${contact.hobbies.length ? contact.hobbies.join("; ") : "(none)"}`,
+    `Network affiliations: ${contact.networkAffiliations.length ? contact.networkAffiliations.join("; ") : "(none)"}`,
+    `Notes: ${contact.notes || "(none)"}`,
+  ];
+
+  const raw = await generate({
+    skill: "enrich-contact-web",
+    context: ctx.join("\n"),
+    intake:
+      "Use web search to find public, professional facts about this exact person (use their name, title, and company to disambiguate). Propose enrichment additions, citing a source for every fact. Return the JSON object exactly as specified.",
+    webSearch: true,
+    maxTokens: 2000,
+  });
+
+  return parseEnrichmentJSON(raw);
+}
+
 function parseEnrichmentJSON(raw: string): {
   additions: EnrichAddition[];
   conflicts: EnrichConflict[];

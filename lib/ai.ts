@@ -56,6 +56,14 @@ async function loadSkill(skill: string): Promise<string> {
   }
 }
 
+// Anthropic's native server-side web search tool. When enabled, the model runs
+// real web searches mid-turn (billed per search) and returns final text with
+// citations — the messages.create call handles the search loop server-side, so
+// our text-block extraction below is unchanged. Only the "Enrich from web"
+// actions opt in; every existing caller leaves webSearch unset and is untouched.
+const WEB_SEARCH_TOOL = { type: "web_search_20250305" as const, name: "web_search" as const };
+const DEFAULT_WEB_SEARCH_MAX_USES = 5;
+
 async function buildMessageParams(input: GenerateInput) {
   const [firmContext, skillContent] = await Promise.all([
     loadFirmContext(),
@@ -76,6 +84,9 @@ async function buildMessageParams(input: GenerateInput) {
       { type: "text" as const, text: skillContent, cache_control: { type: "ephemeral" as const } },
     ],
     messages: [{ role: "user" as const, content: userText }],
+    ...(input.webSearch
+      ? { tools: [{ ...WEB_SEARCH_TOOL, max_uses: input.webSearchMaxUses ?? DEFAULT_WEB_SEARCH_MAX_USES }] }
+      : {}),
   };
 }
 
@@ -89,6 +100,10 @@ export type GenerateInput = {
   /** Override the model (default: Sonnet 4.6). e.g. "claude-opus-4-8" for high-stakes work. */
   model?: string;
   maxTokens?: number;
+  /** Enable Anthropic's native web_search tool (real external lookups, billed per search). Default off. */
+  webSearch?: boolean;
+  /** Cap web searches per call when webSearch is on (default 5). */
+  webSearchMaxUses?: number;
 };
 
 /** One-shot generation. Returns the full text. */

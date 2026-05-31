@@ -17,6 +17,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, folderIdFromUrl } from "@/lib/drive";
 import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
+import { notifyPartner } from "@/lib/messaging";
 import { generate } from "@/lib/ai";
 import { formatDate } from "@/lib/format";
 import type { InteractionType } from "@/lib/generated/prisma/enums";
@@ -133,6 +134,7 @@ export async function extractAndQueue(input: {
 }): Promise<{ id: string; ambiguous: boolean; matched: boolean }> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerId = session.user.partnerId;
   const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
 
   const transcript = input.transcript.trim();
@@ -184,7 +186,18 @@ export async function extractAndQueue(input: {
     select: { id: true },
   });
 
+  // Tell the partner who queued it that there's a proposal awaiting review.
+  // Runs outside a $transaction here — pass the singleton as db, that's fine.
+  await notifyPartner(
+    prisma,
+    partnerId,
+    "approval_needed",
+    `A pasted meeting "${title}" is ready for your review`,
+    { link: "/ingest" },
+  );
+
   revalidatePath("/ingest");
+  revalidatePath("/messages");
   return { id: created.id, ambiguous: match.ambiguous, matched: !!match.contactId };
 }
 

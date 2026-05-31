@@ -5,6 +5,7 @@
 
 import { prisma } from "@/lib/prisma";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import type { MessageKind } from "@/lib/generated/prisma/enums";
 
 // Anything with the model accessors we touch — the singleton or a $transaction
 // tx client both satisfy this.
@@ -85,4 +86,55 @@ export async function findOrCreateDMChannel(
     select: { id: true },
   });
   return created.id;
+}
+
+/**
+ * Find (or create) a partner's personal "Claude" system channel — a Channel of
+ * kind "system" whose sole member is that partner. This is the inbox for typed
+ * AI/system notifications (task assigned, deliverable added, approval needed).
+ * Works inside a transaction when `db` is a tx client.
+ */
+export async function ensureSystemChannel(db: DB, partnerId: string): Promise<string> {
+  const existing = await db.channelMember.findFirst({
+    where: { partnerId, channel: { kind: "system" } },
+    select: { channelId: true },
+  });
+  if (existing) return existing.channelId;
+
+  const created = await db.channel.create({
+    data: {
+      kind: "system",
+      name: "Claude",
+      members: { create: [{ partnerId }] },
+    },
+    select: { id: true },
+  });
+  return created.id;
+}
+
+/**
+ * Post a typed system notification into a partner's "Claude" system chat.
+ * authorId stays null (the message is from the system/agent, not a partner);
+ * `kind` drives the color + icon + sort in the UI. Pass `taskId` to render the
+ * note as an inline task card, and/or `link` to make it click through.
+ * Call inside the caller's transaction (pass the tx as `db`).
+ */
+export async function notifyPartner(
+  db: DB,
+  partnerId: string,
+  kind: MessageKind,
+  body: string,
+  opts?: { taskId?: string; link?: string },
+): Promise<void> {
+  const channelId = await ensureSystemChannel(db, partnerId);
+  await db.message.create({
+    data: {
+      channelId,
+      authorId: null, // system-authored
+      kind,
+      body,
+      taskId: opts?.taskId,
+      link: opts?.link,
+    },
+  });
 }

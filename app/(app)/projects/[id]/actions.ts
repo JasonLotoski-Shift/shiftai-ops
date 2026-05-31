@@ -14,7 +14,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
-import { findOrCreateDMChannel } from "@/lib/messaging";
+import { notifyPartner } from "@/lib/messaging";
 import type {
   MilestoneStatus,
   ArtifactType,
@@ -129,8 +129,9 @@ export async function createDeliverable(
 ) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actingPartnerId = session.user.partnerId;
   const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
-  const actor = partnerActor(session.user.partnerId, partnerLabel);
+  const actor = partnerActor(actingPartnerId, partnerLabel);
 
   const title = input.title.trim();
   if (!title) throw new Error("Deliverable title is required");
@@ -140,7 +141,7 @@ export async function createDeliverable(
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, partnerLeadId: true },
   });
   if (!project) throw new Error("Project not found");
 
@@ -184,11 +185,23 @@ export async function createDeliverable(
       link: `/projects/${projectId}`,
     });
 
+    // Tell the project lead a new deliverable landed (unless they added it).
+    if (project.partnerLeadId !== actingPartnerId) {
+      await notifyPartner(
+        tx,
+        project.partnerLeadId,
+        "deliverable_added",
+        `New deliverable on ${project.name}: ${title}`,
+        { link: `/projects/${projectId}` },
+      );
+    }
+
     return created;
   });
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");
+  revalidatePath("/messages");
   return { id: artifact.id };
 }
 
@@ -211,10 +224,8 @@ export async function createDeliverableTask(input: {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const creatorId = session.user.partnerId;
-  const actor = partnerActor(
-    creatorId,
-    session.user.name ?? session.user.email ?? "Unknown",
-  );
+  const assignerName = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(creatorId, assignerName);
 
   const title = input.title.trim();
   if (!title) throw new Error("Task title is required");
@@ -279,18 +290,16 @@ export async function createDeliverableTask(input: {
       link: `/projects/${input.projectId}`,
     });
 
-    // Hand-off: post a system task-card message into the DM between the
-    // assigner and the assignee (same pattern as createTask).
+    // Hand-off: notify the assignee in their "Claude" system chat (same
+    // pattern as createTask). Inline task card (taskId) → clicks through to /tasks.
     if (assignedById) {
-      const dmId = await findOrCreateDMChannel(tx, assignedById, owner.id);
-      await tx.message.create({
-        data: {
-          channelId: dmId,
-          authorId: null, // system message
-          body: `Assigned you a task: ${title}`,
-          taskId: created.id,
-        },
-      });
+      await notifyPartner(
+        tx,
+        owner.id,
+        "task_assigned",
+        `${assignerName} assigned you a task: ${title}`,
+        { taskId: created.id, link: "/tasks" },
+      );
     }
 
     return created;

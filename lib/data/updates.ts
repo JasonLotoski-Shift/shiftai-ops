@@ -25,6 +25,48 @@ export const updates: Update[] = [
   {
     date: "2026-05-31",
     tag: "new",
+    title: "Claude keeps you posted",
+    detail: "Each partner now has a Claude conversation at the top of Messages — your own notice board. When someone hands you a task, a deliverable lands on a project you lead, or something's waiting for your approval, a note shows up here, colour-coded and tagged by type, and you can sort it. It's a read-only inbox; your channels and DMs work the same as before.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "improved",
+    title: "A red dot when something needs you",
+    detail: "Messages shows a red dot in the sidebar (and on each conversation) when there's something unread, and What's new goes bold with a dot when there are entries you haven't seen. Open them and the dot clears.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "improved",
+    title: "Tie a task to a project or deliverable",
+    detail: "When you add a task you can now point it at a project — and, if you want, a specific deliverable on that project — so it's filed against the work it belongs to, not just a name in a box.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "Enrich a contact or company from the web",
+    detail: "Alongside the enrich that reads your logged history, there's now an Enrich from web button on contacts and clients. Claude searches the public web and proposes facts — role history, company size, headquarters, ownership — with its sources, for you to approve one by one. It still never writes anything until you say so.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "Add a client without a deal",
+    detail: "A New client button on the Clients page creates an engagement directly — for work that never went through the pipeline. Pick the company, contract value, primary contact and lead, and it sets up the client and its Drive folder, the same as converting a deal.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "improved",
+    title: "How it works, rebuilt — and a new \"What happens when I do X\"",
+    detail: "The How it works page is rewritten and easier to read, with a new tab that walks through what actually happens behind each action — ingesting a meeting, converting a deal, drafting a doc, raising an invoice, enriching a record — as a simple step-by-step map. A quick way to see what the tool does on your behalf.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "fixed",
+    title: "Removed a button that did nothing",
+    detail: "The New button at the top right of the screen had no purpose — it's gone.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
     title: "Plan how a project bills",
     detail: "Each project now has an invoicing structure — a list of installments with a label, an amount, and when each one is due (on signing, at a milestone, or a set date). The running total shows against the project fee so you can see the whole contract is accounted for.",
   },

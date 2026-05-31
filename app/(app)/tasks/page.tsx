@@ -9,7 +9,7 @@ export default async function TasksPage() {
   const session = await auth();
   const currentPartnerId = session?.user?.partnerId ?? "";
 
-  const [tasks, partners] = await Promise.all([
+  const [tasks, partners, projects] = await Promise.all([
     prisma.task.findMany({
       include: { owner: true, assignedBy: true },
       // Open tasks first, then soonest due.
@@ -17,6 +17,16 @@ export default async function TasksPage() {
     }),
     prisma.partner.findMany({
       select: { id: true, name: true, initials: true },
+      orderBy: { name: "asc" },
+    }),
+    // Projects + their deliverables (Artifacts), so a new task can be parented
+    // to a project and (optionally) a specific deliverable.
+    prisma.project.findMany({
+      select: {
+        id: true,
+        name: true,
+        artifacts: { select: { id: true, title: true, projectId: true }, orderBy: { createdAt: "desc" } },
+      },
       orderBy: { name: "asc" },
     }),
   ]);
@@ -52,6 +62,7 @@ export default async function TasksPage() {
           <TasksViews
             initialTasks={tasks}
             partners={partners}
+            projects={projects}
             currentPartnerId={currentPartnerId}
           />
         )}

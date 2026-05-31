@@ -48,8 +48,21 @@ const secondary = [
 
 type SidebarUser = { name: string; initials: string; role: string };
 
-export function Sidebar({ user }: { user: SidebarUser }) {
+export function Sidebar({
+  user,
+  totalUnreadMessages = 0,
+  whatsNewUnread = false,
+}: {
+  user: SidebarUser;
+  totalUnreadMessages?: number;
+  whatsNewUnread?: boolean;
+}) {
   const pathname = usePathname();
+
+  // Subtle, theme-safe red dot for an unread indicator.
+  const RedDot = () => (
+    <span className="ml-auto shrink-0 w-2 h-2 rounded-full bg-flag-red" aria-hidden />
+  );
 
   return (
     <aside className="w-[220px] shrink-0 bg-asphalt flex flex-col">
@@ -70,6 +83,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
           {nav.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
+            const showDot = item.href === "/messages" && totalUnreadMessages > 0;
             return (
               <li key={item.href}>
                 <Link
@@ -84,6 +98,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                 >
                   <Icon size={15} strokeWidth={1.5} />
                   <span>{item.label}</span>
+                  {showDot && <RedDot />}
                 </Link>
               </li>
             );
@@ -97,6 +112,8 @@ export function Sidebar({ user }: { user: SidebarUser }) {
           {reference.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
+            const isWhatsNew = item.href === "/whats-new";
+            const showDot = isWhatsNew && whatsNewUnread;
             return (
               <li key={item.href}>
                 <Link
@@ -110,7 +127,8 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                   )}
                 >
                   <Icon size={15} strokeWidth={1.5} />
-                  <span>{item.label}</span>
+                  <span className={cn(showDot && "font-semibold text-bone")}>{item.label}</span>
+                  {showDot && <RedDot />}
                 </Link>
               </li>
             );
