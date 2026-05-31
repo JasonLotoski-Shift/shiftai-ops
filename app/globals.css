@@ -8,7 +8,7 @@
 @theme {
   /* Dark mode palette — primary for screen, web, deck */
   --color-bitumen: #0a0a0b;
-  --color-asphalt: #141416;
+  --color-asphalt: #17171a; /* surface — lifted from the bitumen canvas so cards/sidebar read as raised without a border */
   --color-graphite: #26262a;
   --color-graphite-2: #34343a;
   --color-track-gold: #c9a961;
@@ -87,15 +87,15 @@
   html[data-theme="light"] {
     color-scheme: light;
 
-    --color-bitumen: #e8e4da; /* page */
-    --color-asphalt: #f6f3ec; /* card surface (lighter than page = lifts) */
-    --color-graphite: #d3ccbd; /* hairline */
-    --color-graphite-2: #bcb4a3;
+    --color-bitumen: #ecedef; /* page — cool light-grey canvas (no warm cast) */
+    --color-asphalt: #ffffff; /* card/surface — white, floats above the canvas */
+    --color-graphite: #d7d8dc; /* hairline — cool, used sparingly */
+    --color-graphite-2: #c4c6cc;
     --color-track-gold: #9a7a2e; /* darkened so gold reads as text on light */
     --color-track-gold-dim: #b89a52;
-    --color-bone: #1a1916; /* primary text */
-    --color-bone-dim: #54514a; /* secondary text */
-    --color-bone-mute: #86827a; /* tertiary text */
+    --color-bone: #15171a; /* primary text — cool ink */
+    --color-bone-dim: #5c5f66; /* secondary text */
+    --color-bone-mute: #9a9da4; /* tertiary text */
     --color-diagnostic-steel: #3f6678;
     --color-flag-red: #a82a26;
     --color-signal-fresh: #46734c;

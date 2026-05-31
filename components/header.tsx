@@ -15,10 +15,10 @@ export function Header({
 }) {
   return (
     <>
-      <header className="border-b border-graphite bg-bitumen">
+      <header className="bg-bitumen">
         {/* Top utility row */}
-        <div className="flex items-center justify-between px-8 py-3 border-b border-graphite">
-          <div className="flex items-center gap-3 w-[400px]">
+        <div className="flex items-center justify-between px-8 py-3">
+          <div className="flex items-center gap-3 w-[400px] bg-asphalt rounded-[var(--radius)] px-3 py-2 shadow-[var(--shadow-sm)]">
             <Search size={14} strokeWidth={1.5} className="text-bone-mute" />
             <input
               placeholder="Search contacts, clients, projects…"

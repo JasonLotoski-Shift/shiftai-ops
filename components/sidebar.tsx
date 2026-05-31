@@ -52,9 +52,9 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-[220px] shrink-0 bg-bitumen border-r border-graphite flex flex-col">
+    <aside className="w-[220px] shrink-0 bg-asphalt flex flex-col">
       {/* Wordmark / brand block */}
-      <div className="px-5 py-6 border-b border-graphite">
+      <div className="px-5 py-6">
         <Link href="/dashboard" className="inline-flex items-center gap-3">
           <Sigil size={28} />
           <span className="label">Ops · v1.0</span>
@@ -78,8 +78,8 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                     "flex items-center gap-3 px-5 py-2.5 text-[13px] transition-colors",
                     "border-l-2",
                     active
-                      ? "bg-asphalt text-bone border-track-gold"
-                      : "text-bone-dim border-transparent hover:text-bone hover:bg-asphalt/60",
+                      ? "bg-track-gold-dim/15 text-bone border-track-gold"
+                      : "text-bone-dim border-transparent hover:text-bone hover:bg-graphite/40",
                   )}
                 >
                   <Icon size={15} strokeWidth={1.5} />
@@ -105,8 +105,8 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                     "flex items-center gap-3 px-5 py-2.5 text-[13px] transition-colors",
                     "border-l-2",
                     active
-                      ? "bg-asphalt text-bone border-track-gold"
-                      : "text-bone-dim border-transparent hover:text-bone hover:bg-asphalt/60",
+                      ? "bg-track-gold-dim/15 text-bone border-track-gold"
+                      : "text-bone-dim border-transparent hover:text-bone hover:bg-graphite/40",
                   )}
                 >
                   <Icon size={15} strokeWidth={1.5} />
@@ -150,8 +150,8 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                     "flex items-center gap-3 px-5 py-2.5 text-[13px] transition-colors",
                     "border-l-2",
                     active
-                      ? "bg-asphalt text-bone border-track-gold"
-                      : "text-bone-dim border-transparent hover:text-bone hover:bg-asphalt/60",
+                      ? "bg-track-gold-dim/15 text-bone border-track-gold"
+                      : "text-bone-dim border-transparent hover:text-bone hover:bg-graphite/40",
                   )}
                 >
                   <Icon size={15} strokeWidth={1.5} />
@@ -164,7 +164,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       </nav>
 
       {/* User chip + sign out */}
-      <div className="px-5 py-4 border-t border-graphite flex items-center justify-between gap-3">
+      <div className="px-5 py-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-7 h-7 rounded-[var(--radius-pill)] bg-track-gold-dim/30 border border-track-gold/40 flex items-center justify-center mono text-[11px] text-track-gold shrink-0">
             {user.initials}
