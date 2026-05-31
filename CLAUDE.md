@@ -160,6 +160,15 @@ Three pathways, ordered by integration depth:
 | Generate Prisma Client | `npx prisma generate` (runs auto on `npm install` via postinstall) |
 | Deploy | Push to `main` — Vercel auto-builds |
 
+### Before every push to `main` — run this checklist
+
+A push auto-deploys to prod. Before pushing, confirm both, and act if the answer is yes:
+
+1. **What's new** — did this change add or alter anything a partner would notice (a new thing they can do, a visible change, a fix)? If so, add an entry to [lib/data/updates.ts](lib/data/updates.ts) (top, dated, plain English, no jargon).
+2. **How it works** — did this change how a process works or add a new one (a new flow, a changed step, a new "what happens when I do X")? If so, update the How-it-works page so the walkthrough stays accurate.
+
+If neither applies (pure refactor/infra), say so in the push summary and move on. Also: `npx tsc --noEmit` + `npm run build` must be clean before pushing.
+
 ---
 
 ## Skills & agents

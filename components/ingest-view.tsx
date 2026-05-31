@@ -29,6 +29,9 @@ import {
   rejectProjectProposal,
   type ProjectExtractedProposal,
 } from "@/app/(app)/projects/[id]/drop-actions";
+import { IngestComposer } from "@/components/ingest/ingest-composer";
+import UnifiedProposalCard from "@/components/ingest/unified-proposal-card";
+import type { IngestTargetKind, UnifiedProposal } from "@/lib/ingest/types";
 
 export type ProposalProp = {
   id: string;
@@ -39,8 +42,13 @@ export type ProposalProp = {
   matchedContactId: string | null;
   matchedClientId: string | null;
   matchedProjectId: string | null;
+  matchedDealId: string | null;
   projectLabel: string | null;
+  // v1 (legacy) shape — read by ProposalCard / ProjectProposalCard.
   proposal: ExtractedProposal;
+  // v2 (unified) — present when schemaVersion === 2; read by UnifiedProposalCard.
+  schemaVersion?: number;
+  data?: UnifiedProposal;
 };
 
 export function IngestView({
@@ -48,29 +56,32 @@ export function IngestView({
   partners,
   contacts,
   clients,
+  projects,
   currentPartnerId,
+  initialFocus,
 }: {
   proposals: ProposalProp[];
   partners: { id: string; name: string }[];
   contacts: { id: string; name: string; company: string }[];
   clients: { id: string; company: string }[];
+  projects: { id: string; name: string }[];
   currentPartnerId?: string;
+  initialFocus?: { kind: IngestTargetKind; id: string } | null;
 }) {
-  const [pasteOpen, setPasteOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(!!initialFocus);
   const [expanded, setExpanded] = useState<string | null>(proposals[0]?.id ?? null);
 
   return (
     <div className="px-8 py-8 flex flex-col gap-8">
       <div className="flex items-start justify-between gap-6">
         <p className="text-[13px] text-bone-mute max-w-[680px] leading-relaxed">
-          Drop in a notes file or paste a transcript — Claude extracts a summary, action items, enrichment facts, and a
-          stage signal, then holds them here as a <span className="text-bone">proposal</span>. Nothing is written until you
-          approve it, item by item. Discovery calls are full of soft claims; the partner is the gate. (Fireflies auto-ingest
-          plugs into this same queue once it&apos;s wired.)
+          Pick a type, point it at the records it touches, and paste the notes, email, or document — Claude proposes
+          changes across <span className="text-bone">every targeted record at once</span> and holds them here. Nothing is
+          written until you approve it: every add is confirmed, every overwrite shows before → after. The partner is the gate.
         </p>
-        <Button variant="primary" size="sm" onClick={() => setPasteOpen(true)}>
+        <Button variant="primary" size="sm" onClick={() => setComposerOpen(true)}>
           <Plus size={13} strokeWidth={1.5} />
-          Add meeting notes
+          Ingest
         </Button>
       </div>
 
@@ -78,14 +89,35 @@ export function IngestView({
         <Card>
           <EmptyState
             icon={<FileText size={28} strokeWidth={1.5} />}
-            title="No pending meetings"
-            hint="Drop in notes or paste a transcript to start."
+            title="Nothing pending"
+            hint="Start an ingest to propose changes across your records."
           />
         </Card>
       ) : (
         <div className="flex flex-col gap-3">
           {proposals.map((p) =>
-            p.source === "drop" && p.matchedProjectId ? (
+            p.schemaVersion === 2 && p.data ? (
+              <UnifiedProposalCard
+                key={p.id}
+                proposal={{
+                  id: p.id,
+                  title: p.title,
+                  ingestType: p.data.ingestType,
+                  summary: p.data.summary,
+                  createdBy: p.createdBy,
+                  matchedContactId: p.matchedContactId,
+                  matchedClientId: p.matchedClientId,
+                  matchedProjectId: p.matchedProjectId,
+                  matchedDealId: p.matchedDealId,
+                  data: p.data,
+                }}
+                partners={partners}
+                contacts={contacts}
+                clients={clients}
+                projects={projects}
+                currentPartnerId={currentPartnerId ?? ""}
+              />
+            ) : p.source === "drop" && p.matchedProjectId ? (
               <ProjectProposalCard
                 key={p.id}
                 p={p}
@@ -108,7 +140,17 @@ export function IngestView({
         </div>
       )}
 
-      {pasteOpen && <PasteModal onClose={() => setPasteOpen(false)} />}
+      {composerOpen && (
+        <IngestComposer
+          partners={partners}
+          contacts={contacts}
+          clients={clients}
+          projects={projects}
+          currentPartnerId={currentPartnerId ?? ""}
+          initialFocus={initialFocus}
+          onClose={() => setComposerOpen(false)}
+        />
+      )}
     </div>
   );
 }

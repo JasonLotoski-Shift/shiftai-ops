@@ -3,10 +3,28 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { IngestView, type ProposalProp } from "@/components/ingest-view";
 import type { ExtractedProposal } from "@/app/(app)/ingest/actions";
+import { isUnifiedProposal, type IngestTargetKind, type UnifiedProposal } from "@/lib/ingest/types";
 
-export default async function IngestPage() {
+const TARGET_KINDS: IngestTargetKind[] = ["contact", "client", "project", "deal"];
+
+export default async function IngestPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ focus?: string }>;
+}) {
   const session = await auth();
   const partnerId = session?.user?.partnerId;
+
+  const { focus } = await searchParams;
+
+  // Parse ?focus=<kind>:<id> into a typed pre-selection for the composer.
+  let initialFocus: { kind: IngestTargetKind; id: string } | null = null;
+  if (focus) {
+    const [kind, id] = focus.split(":");
+    if (id && (TARGET_KINDS as string[]).includes(kind)) {
+      initialFocus = { kind: kind as IngestTargetKind, id };
+    }
+  }
 
   const [pending, partners, contacts, clients, projects] = await Promise.all([
     prisma.ingestProposal.findMany({
@@ -26,28 +44,39 @@ export default async function IngestPage() {
     projects.map((p) => [p.id, `${p.client.company} · ${p.name}`]),
   );
 
-  const proposals: ProposalProp[] = pending.map((p) => ({
-    id: p.id,
-    source: p.source,
-    title: p.title,
-    meetingDate: p.meetingDate.toISOString(),
-    createdBy: p.createdBy,
-    matchedContactId: p.matchedContactId,
-    matchedClientId: p.matchedClientId,
-    matchedProjectId: p.matchedProjectId,
-    projectLabel: p.matchedProjectId ? projectLabels[p.matchedProjectId] ?? null : null,
-    proposal: p.proposal as unknown as ExtractedProposal,
-  }));
+  const proposals: ProposalProp[] = pending.map((p) => {
+    const raw = p.proposal as unknown;
+    const unified = isUnifiedProposal(raw);
+    return {
+      id: p.id,
+      source: p.source,
+      title: p.title,
+      meetingDate: p.meetingDate.toISOString(),
+      createdBy: p.createdBy,
+      matchedContactId: p.matchedContactId,
+      matchedClientId: p.matchedClientId,
+      matchedProjectId: p.matchedProjectId,
+      matchedDealId: p.matchedDealId ?? null,
+      projectLabel: p.matchedProjectId ? projectLabels[p.matchedProjectId] ?? null : null,
+      proposal: raw as ExtractedProposal,
+      schemaVersion: unified ? 2 : undefined,
+      data: unified ? (raw as UnifiedProposal) : undefined,
+    };
+  });
+
+  const projectOpts = projects.map((p) => ({ id: p.id, name: projectLabels[p.id] ?? p.name }));
 
   return (
     <>
-      <Header eyebrow="Firm · Meeting ingest" title="Meeting ingest." />
+      <Header eyebrow="Firm · Ingest" title="Ingest." />
       <IngestView
         proposals={proposals}
         partners={partners}
         contacts={contacts}
         clients={clients}
+        projects={projectOpts}
         currentPartnerId={partnerId}
+        initialFocus={initialFocus}
       />
     </>
   );

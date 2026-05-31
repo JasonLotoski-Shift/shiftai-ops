@@ -6,7 +6,7 @@ import { ClientDetailTabs } from "@/components/client-detail-tabs";
 import { ClientHeaderActions } from "@/components/client-header-actions";
 import { prisma } from "@/lib/prisma";
 import { industryLabels } from "@/lib/data/seed";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileInput } from "lucide-react";
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -37,6 +37,13 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               driveFolderUrl={client.driveFolderUrl}
               workspacePath={client.workspacePath}
             />
+            <Link
+              href={`/ingest?focus=client:${client.id}`}
+              className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
+            >
+              <FileInput size={13} strokeWidth={1.5} />
+              Ingest
+            </Link>
             <Button variant="primary" size="sm">+ New project</Button>
           </>
         }

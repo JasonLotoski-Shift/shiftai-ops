@@ -114,7 +114,9 @@ export async function convertDeal(
         status: "on_track",
         startDate,
         targetEndDate,
-        budgetFee: 0, // partner sets when scoping
+        // Seed the fee from the deal's estimated value so the project doesn't
+        // start at $0; the partner can adjust it on the project page.
+        budgetFee: deal.valueEstimate || 0,
         description: scope,
         clientId: client.id,
         partnerLeadId: deal.partnerLeadId,

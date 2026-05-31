@@ -668,6 +668,10 @@ model IngestProposal {
   transcript  String
   proposal    Json
   status      IngestStatus @default(pending)
+  // Unified ingest (v2): the kind of thing ingested — interaction | meeting |
+  // email | document. Nullable so legacy (v1) proposals stay valid; the value
+  // is also carried in `proposal` JSON. Used for list filtering / labels.
+  ingestType  String?
 
   matchedContactId String?
   matchedClientId  String?

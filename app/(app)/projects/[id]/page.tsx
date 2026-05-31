@@ -6,13 +6,14 @@ import { Card, CardBody, CardHeader, Label, Badge, Button, Avatar, EmptyState } 
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate } from "@/lib/format";
 import { DeliveryTimeline, type TimelineMilestone } from "@/components/delivery-timeline";
+import { ProjectFeeEdit } from "@/components/project-fee-edit";
 import { ManualMilestoneForm } from "@/components/manual-milestone-form";
 import { ManualDeliverableForm } from "@/components/manual-deliverable-form";
 import { DeliverableTasks } from "@/components/deliverable-tasks";
 import { BillingScheduleEditor } from "@/components/billing-schedule-editor";
 import { SendInvoiceModal } from "@/components/send-invoice-modal";
 import { ProjectDropPanel } from "@/components/project-drop-panel";
-import { ArrowLeft, Bot, Check, Circle, AlertTriangle, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink } from "lucide-react";
+import { ArrowLeft, Bot, Check, Circle, AlertTriangle, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink, FileInput } from "lucide-react";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -86,6 +87,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <Terminal size={13} strokeWidth={1.5} />
               Workspace
             </Button>
+            <Link
+              href={`/ingest?focus=project:${project.id}`}
+              className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
+            >
+              <FileInput size={13} strokeWidth={1.5} />
+              Ingest
+            </Link>
           </>
         }
       />
@@ -110,10 +118,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <Card className="p-5">
               <div className="flex flex-col gap-2">
                 <Label>Fee</Label>
-                <span className="mono text-[28px] text-bone tabular-nums">
-                  {formatCAD(project.budgetFee).replace("CA$", "$")}
-                </span>
-                <span className="label text-[10px]">{Math.round(feeBurn)}% billed</span>
+                <ProjectFeeEdit projectId={project.id} budgetFee={project.budgetFee} feeBurnPct={feeBurn} />
               </div>
             </Card>
             <Card className="p-5">
@@ -144,6 +149,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 startDate={project.startDate}
                 targetEndDate={project.targetEndDate}
                 milestones={timelineMilestones}
+                budgetFee={project.budgetFee}
+                installments={projectInstallments.map((i) => ({
+                  id: i.id,
+                  label: i.label,
+                  amount: i.amount,
+                  dueDate: i.dueDate,
+                  status: i.status,
+                }))}
               />
             </CardBody>
           </Card>

@@ -41,6 +41,43 @@ const VALID_ARTIFACT_TYPES: ArtifactType[] = [
 const VALID_PRIORITIES: TaskPriority[] = ["high", "medium", "low"];
 
 // ──────────────────────────────────────────────────────────────────────
+// setProjectFee — edit the project's fixed fee (budgetFee). Converted deals
+// seed this from the deal value; this lets a partner correct it.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function setProjectFee(projectId: string, amount: number) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const fee = Math.round(Number(amount));
+  if (!Number.isFinite(fee) || fee < 0) throw new Error("Enter a valid fee (≥ 0)");
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, name: true, budgetFee: true },
+  });
+  if (!project) throw new Error("Project not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.project.update({ where: { id: projectId }, data: { budgetFee: fee } });
+    await writeAudit(tx, {
+      actor,
+      action: "update.project.fee",
+      targetType: "Project",
+      targetId: projectId,
+      changes: { fee: { before: project.budgetFee, after: fee } },
+    });
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // createMilestone — manual partner entry of a project milestone.
 // ──────────────────────────────────────────────────────────────────────
 

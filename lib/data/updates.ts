@@ -25,6 +25,42 @@ export const updates: Update[] = [
   {
     date: "2026-05-31",
     tag: "new",
+    title: "Ingest, rebuilt — log anything, update the right records",
+    detail: "Meeting ingest is now just Ingest. Hit + Ingest, pick what you're logging (an interaction, meeting, email, or document), choose which records it touches — Claude suggests them or you pick, and you can pick more than one — then paste the content, an email thread, or drop a file. Claude reads it and proposes updates across the contact, client, project, and deal at once. You add a new contact right there if they're not in the tool yet.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "Ingest can correct records — and shows you exactly what changes",
+    detail: "When ingest wants to replace something already on a record, it shows the old value with a line through it next to the new one, and nothing is overwritten until you approve that specific change. Every addition is approved one by one too. It can also reassign an existing task to a different partner. Still: nothing is written until you say so.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
+    title: "Start an ingest from any record",
+    detail: "A + Ingest button on a contact, client, or project opens the composer already focused on that record — so logging a call straight from the person's page takes the content and updates them (and anything related) in one go.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "fixed",
+    title: "Projects show their fee — and you can edit it",
+    detail: "Converted deals now carry their value across as the project fee instead of starting at $0, and you can click to change a project's fee right on the page.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "improved",
+    title: "The fee shows on the delivery timeline",
+    detail: "The project timeline now shows the fee and plots each billing installment along it by its due date, so the money and the schedule line up at a glance.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "fixed",
+    title: "Deal value takes any amount",
+    detail: "The estimated value on a new deal no longer jumps in $1,000 steps — type the exact figure.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "new",
     title: "Claude keeps you posted",
     detail: "Each partner now has a Claude conversation at the top of Messages — your own notice board. When someone hands you a task, a deliverable lands on a project you lead, or something's waiting for your approval, a note shows up here, colour-coded and tagged by type, and you can sort it. It's a read-only inbox; your channels and DMs work the same as before.",
   },

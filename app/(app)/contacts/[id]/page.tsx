@@ -17,6 +17,7 @@ import {
   Calendar,
   Send,
   Inbox,
+  FileInput,
 } from "lucide-react";
 
 // Keys use Prisma enum identifiers (underscored), matching @map'd DB values.
@@ -52,7 +53,18 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       <Header
         eyebrow={contact.title}
         title={contact.name}
-        actions={<ContactActions contact={contact} partnerName={partner?.name} />}
+        actions={
+          <>
+            <ContactActions contact={contact} partnerName={partner?.name} />
+            <Link
+              href={`/ingest?focus=contact:${contact.id}`}
+              className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
+            >
+              <FileInput size={13} strokeWidth={1.5} />
+              Ingest
+            </Link>
+          </>
+        }
       />
 
       <div className="px-8 py-8 flex flex-col gap-8">

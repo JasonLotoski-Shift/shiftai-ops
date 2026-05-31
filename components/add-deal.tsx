@@ -225,7 +225,7 @@ function AddDealModal({
             </div>
             <div className="flex flex-col gap-2">
               <Label>Est. value (CAD)</Label>
-              <Input type="number" min={0} step={1000} value={value} onChange={(e) => setValue(e.target.value)} placeholder="e.g. 250000" disabled={isPending} />
+              <Input type="number" min={0} step={1} value={value} onChange={(e) => setValue(e.target.value)} placeholder="e.g. 250000" disabled={isPending} />
             </div>
             <div className="flex flex-col gap-2">
               <Label>Industry</Label>

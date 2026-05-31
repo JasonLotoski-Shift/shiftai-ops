@@ -439,24 +439,24 @@ type Flow = {
 const flows: Flow[] = [
   {
     icon: <Mic size={16} strokeWidth={1.5} />,
-    title: "Ingest a meeting",
-    blurb: "Turn a raw transcript or notes into a clean, logged record.",
+    title: "Ingest anything",
+    blurb: "One place to log a meeting, email, or document and update the right records.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Paste a transcript or notes on a contact/client" },
-      { tone: "claude", kind: "Claude", label: "Summarizes, pulls action items and key facts" },
-      { tone: "review", kind: "You review", label: "Read the summary, edit anything off" },
-      { tone: "write", kind: "Saved", label: "Interaction + any Tasks + AuditLog · lastTouchAt advances" },
+      { tone: "trigger", kind: "You do", label: "+ Ingest → pick type, target records, paste content/email/files" },
+      { tone: "claude", kind: "Claude", label: "Proposes updates across contact, client, project, deal — incl. overwrites" },
+      { tone: "review", kind: "You review", label: "Approve each addition; every overwrite shows old → new" },
+      { tone: "write", kind: "Saved", label: "Records updated + Interaction/Tasks/Milestones + AuditLog" },
     ],
   },
   {
     icon: <FileUp size={16} strokeWidth={1.5} />,
-    title: "Drop content into a project",
-    blurb: "Add a file to a project and have it land as a tracked deliverable.",
+    title: "Ingest from a record",
+    blurb: "Launch ingest already pointed at the contact, client, or project you're on.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Upload a doc/deck to a project, or save it to Drive" },
-      { tone: "claude", kind: "Claude", label: "Titles it, tags the type, links it to the project" },
-      { tone: "review", kind: "You review", label: "Confirm the title and review status" },
-      { tone: "write", kind: "Saved", label: "Artifact row (driveUrl) + AuditLog" },
+      { tone: "trigger", kind: "You do", label: "+ Ingest on a contact/client/project header" },
+      { tone: "claude", kind: "Claude", label: "Focuses that record, but still flags related updates" },
+      { tone: "review", kind: "You review", label: "Approve adds; uncheck anything you don't want" },
+      { tone: "write", kind: "Saved", label: "Same review queue — nothing writes until you approve" },
     ],
   },
   {
