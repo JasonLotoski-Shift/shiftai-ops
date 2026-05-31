@@ -23,6 +23,18 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-05-31",
+    tag: "improved",
+    title: "A cleaner, calmer look across the tool",
+    detail: "The whole tool got a visual refresh. Cards now lift gently off the page, the hard gridlines between sections are gone, and every screen reads calmer and less boxy. The pipeline board is tidier, buttons and labels are easier to read, and there's a light mode and a dark mode — switch with the toggle at the top right.",
+  },
+  {
+    date: "2026-05-31",
+    tag: "fixed",
+    title: "Empty screens read as calm, not broken",
+    detail: "Right after the new look shipped, Clients, Projects, and Invoices errored when there was nothing in them yet — fixed. Empty lists, boards, and channels now show a short note about what will appear there, and a $0 reads as a quiet \"nothing yet\" instead of looking like a problem.",
+  },
+  {
     date: "2026-05-29",
     tag: "new",
     title: "Add a deal to the pipeline",
