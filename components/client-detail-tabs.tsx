@@ -220,7 +220,7 @@ function CompanyProfile({ client }: { client: Client }) {
           <div className="px-5 py-4 border-b border-graphite"><Label>— Key facts</Label></div>
           <div className="flex flex-col">
             {client.companyKeyFacts.map((f, i) => (
-              <div key={i} className={`flex items-start gap-3 px-5 py-3 ${i < client.companyKeyFacts!.length - 1 ? "border-b border-graphite" : ""}`}>
+              <div key={i} className="flex items-start gap-3 px-5 py-3">
                 <span className="mono text-[11px] text-track-gold mt-0.5 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
                 <p className="text-[13px] text-bone leading-snug">{f}</p>
               </div>
@@ -244,9 +244,9 @@ function CompanyProfile({ client }: { client: Client }) {
           </p>
 
           {enrich === "results" && (
-            <div className="border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+            <div className="rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
               {proposed.map((p, i) => (
-                <div key={i} className={`flex items-start gap-3 px-4 py-3 ${i < proposed.length - 1 ? "border-b border-graphite" : ""}`}>
+                <div key={i} className="flex items-start gap-3 px-4 py-3">
                   <Plus size={13} strokeWidth={2} className="text-diagnostic-steel shrink-0 mt-0.5" />
                   <div>
                     <Label>{p.field}</Label>
@@ -372,7 +372,7 @@ function Engagement({
             <Link
               href={`/projects/${p.id}`}
               key={p.id}
-              className={`grid grid-cols-[2fr_120px_100px] gap-4 px-5 py-4 ${i < clientProjects.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors`}
+              className="grid grid-cols-[2fr_120px_100px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
             >
               <div className="min-w-0">
                 <div className="text-[14px] text-bone truncate">{p.name.split("·")[1]?.trim() ?? p.name}</div>
@@ -400,7 +400,7 @@ function Engagement({
           <Link
             href={`/invoices/${inv.id}`}
             key={inv.id}
-            className={`grid grid-cols-[1fr_140px_140px_100px] gap-4 px-5 py-4 ${i < clientInvoices.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors`}
+            className="grid grid-cols-[1fr_140px_140px_100px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
           >
             <span className="mono text-[13px] text-bone self-center">{inv.number}</span>
             <span className="mono text-[14px] text-bone tabular-nums self-center">{formatCAD(inv.amount).replace("CA$", "$")}</span>
@@ -496,7 +496,7 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
               target="_blank"
               rel="noreferrer"
               key={ar.id}
-              className={`grid grid-cols-[28px_1fr_180px_100px_20px] gap-4 px-5 py-4 ${i < artifacts.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors group`}
+              className="grid grid-cols-[28px_1fr_180px_100px_20px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors group"
             >
               <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
                 <Icon size={16} strokeWidth={1.5} />

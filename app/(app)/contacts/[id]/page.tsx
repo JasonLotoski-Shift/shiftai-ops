@@ -125,7 +125,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
               <div className="px-5 py-4 border-b border-graphite"><Label>— Key facts</Label></div>
               <div className="flex flex-col">
                 {contact.keyFacts.map((f, i) => (
-                  <div key={i} className={`flex items-start gap-3 px-5 py-3 ${i < contact.keyFacts.length - 1 ? "border-b border-graphite" : ""}`}>
+                  <div key={i} className="flex items-start gap-3 px-5 py-3">
                     <span className="mono text-[11px] text-track-gold mt-0.5 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
                     <p className="text-[13px] text-bone leading-snug">{f}</p>
                   </div>
@@ -154,7 +154,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                   const Ic = interactionIcon[it.type] ?? Calendar;
                   const agent = it.loggedBy.startsWith("AGENT");
                   return (
-                    <div key={it.id} className={`flex items-start gap-4 px-5 py-4 ${i < log.length - 1 ? "border-b border-graphite" : ""}`}>
+                    <div key={it.id} className="flex items-start gap-4 px-5 py-4">
                       <div className="w-7 h-7 border border-graphite-2 flex items-center justify-center shrink-0 text-bone-mute rounded-[var(--radius-sm)]">
                         <Ic size={13} strokeWidth={1.5} />
                       </div>
@@ -185,7 +185,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                 <Link
                   href={`/pipeline/${deal.id}`}
                   key={deal.id}
-                  className={`grid grid-cols-[1fr_120px_160px_100px] gap-4 px-5 py-4 ${i < contactDeals.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors`}
+                  className="grid grid-cols-[1fr_120px_160px_100px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
                 >
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[14px] text-bone">{deal.company}</span>

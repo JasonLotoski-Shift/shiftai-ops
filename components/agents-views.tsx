@@ -212,7 +212,7 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-[600px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[600px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
           <div className="flex items-center gap-3">
             <Bot size={14} strokeWidth={1.5} className="text-track-gold" />

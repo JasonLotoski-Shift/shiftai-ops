@@ -117,7 +117,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               ].map((a, i, arr) => (
                 <div
                   key={i}
-                  className={`px-5 py-3 ${i < arr.length - 1 ? "border-b border-graphite" : ""}`}
+                  className="px-5 py-3"
                 >
                   <div className="flex items-baseline justify-between mb-1">
                     <Label>{a.actor}</Label>

@@ -90,7 +90,7 @@ export function MessagesView({
                 key={c.id}
                 onClick={() => selectConversation(c.id)}
                 className={cn(
-                  "w-full text-left px-4 py-3 border-b border-graphite/60 flex items-center gap-3 transition-colors",
+                  "w-full text-left px-4 py-3 flex items-center gap-3 transition-colors",
                   on ? "bg-asphalt" : "hover:bg-asphalt/50",
                 )}
               >
@@ -137,7 +137,7 @@ export function MessagesView({
       {/* New DM picker */}
       {newDMOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-28 px-4 bg-bitumen/85 backdrop-blur-sm" onClick={() => setNewDMOpen(false)}>
-          <div className="w-full max-w-[400px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-[400px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
               <Label gold>— New direct message</Label>
               <button onClick={() => setNewDMOpen(false)} className="text-bone-mute hover:text-bone">
@@ -152,7 +152,7 @@ export function MessagesView({
                   <button
                     key={p.id}
                     onClick={() => startDM(p.id)}
-                    className={cn("w-full text-left px-5 py-3 flex items-center gap-3 hover:bg-graphite/40 transition-colors", i < partners.length - 1 && "border-b border-graphite")}
+                    className="w-full text-left px-5 py-3 flex items-center gap-3 hover:bg-graphite/40 transition-colors"
                   >
                     <span className="w-6 h-6 bg-graphite-2 flex items-center justify-center mono text-[9px] text-bone-dim">{p.initials}</span>
                     <span className="text-[14px] text-bone">{p.name}</span>

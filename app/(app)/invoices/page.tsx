@@ -23,28 +23,28 @@ export default async function InvoicesPage() {
       <Header eyebrow="Finance · AR" title="Invoices." />
 
       <div className="px-8 py-6 border-b border-graphite grid grid-cols-4 gap-3">
-        <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
+        <div className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
           <Label>— Outstanding</Label>
           <span className="mono text-[26px] text-bone tabular-nums">
             {formatCAD(outstandingTotal).replace("CA$", "$")}
           </span>
           <span className="label text-[10px]">{outstanding.length} invoices</span>
         </div>
-        <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
+        <div className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
           <Label>— Overdue</Label>
           <span className="mono text-[26px] text-flag-red tabular-nums">
             {formatCAD(overdueTotal).replace("CA$", "$")}
           </span>
           <span className="label text-[10px]">{overdue.length} invoices</span>
         </div>
-        <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
+        <div className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
           <Label>— Collected · this year</Label>
           <span className="mono text-[26px] text-track-gold tabular-nums">
             {formatCAD(paidTotal).replace("CA$", "$")}
           </span>
           <span className="label text-[10px]">{paid.length} invoices paid</span>
         </div>
-        <div className="bg-bitumen border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
+        <div className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 flex flex-col gap-2">
           <Label>— Avg DSO</Label>
           <span className="mono text-[26px] text-bone tabular-nums">22d</span>
           <span className="label text-[10px]">vs. NET 30 terms</span>
@@ -68,7 +68,7 @@ export default async function InvoicesPage() {
               <Link
                 key={inv.id}
                 href={`/invoices/${inv.id}`}
-                className="grid grid-cols-[140px_1.5fr_1fr_140px_140px_100px] gap-4 px-5 py-4 border-b border-graphite last:border-0 hover:bg-graphite/40 transition-colors"
+                className="grid grid-cols-[140px_1.5fr_1fr_140px_140px_100px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
               >
                 <span className="mono text-[13px] text-bone self-center">{inv.number}</span>
                 <span className="text-[13px] text-bone-dim self-center truncate">{inv.client.company}</span>

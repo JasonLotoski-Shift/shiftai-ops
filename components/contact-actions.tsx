@@ -98,7 +98,7 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className={cn("w-full bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20", wide ? "max-w-[680px]" : "max-w-[520px]")}
+        className={cn("w-full bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20", wide ? "max-w-[680px]" : "max-w-[520px]")}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
@@ -475,7 +475,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
             Web-search enrichment isn&apos;t wired up yet — the ops tool has no server-side web access today, and
             inventing facts about {contact.company} would break the no-hallucination rule.
           </p>
-          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen rounded-[var(--radius-sm)]">
+          <div className="flex items-start gap-2 px-3 py-2 bg-bitumen rounded-[var(--radius-sm)]">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
             <span className="text-[12px] text-bone-dim">
               When connected, it will use the same <span className="text-bone">propose → approve → merge</span> flow as AI enrich —
@@ -499,7 +499,7 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
             Reads {contact.name.split(" ")[0]}&apos;s record and logged interactions, then proposes additions — persona,
             communication style, key facts, background. Grounded only in what&apos;s logged; nothing invented.
           </p>
-          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen rounded-[var(--radius-sm)]">
+          <div className="flex items-start gap-2 px-3 py-2 bg-bitumen rounded-[var(--radius-sm)]">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
             <span className="text-[12px] text-bone-dim">
               Non-destructive: results are <span className="text-bone">proposed</span>. You approve what gets added — existing facts are
@@ -533,11 +533,11 @@ function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "sear
               {additions.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Label gold>— Proposed additions ({additions.length}) · check what to keep</Label>
-                  <div className="border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
+                  <div className="rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
                     {additions.map((a, i) => (
                       <label
                         key={i}
-                        className={`flex items-start gap-3 px-4 py-3 cursor-pointer ${i < additions.length - 1 ? "border-b border-graphite" : ""} ${selected.has(i) ? "" : "opacity-50"}`}
+                        className={`flex items-start gap-3 px-4 py-3 cursor-pointer ${selected.has(i) ? "" : "opacity-50"}`}
                       >
                         <input
                           type="checkbox"

@@ -188,7 +188,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                 }}
                 onDrop={(e) => onDrop(e, stage)}
                 className={cn(
-                  "bg-bitumen flex-1 basis-0 min-w-[172px] flex flex-col transition-colors border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden",
+                  "bg-asphalt flex-1 basis-0 min-w-[172px] flex flex-col transition-colors rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden",
                   isOver && "bg-asphalt ring-1 ring-inset ring-track-gold/50",
                 )}
               >
@@ -215,7 +215,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         onDragEnd={onDragEnd}
                         onClick={() => router.push(`/pipeline/${deal.id}`)}
                         className={cn(
-                          "block bg-asphalt border border-graphite border-l-2 rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-colors cursor-grab active:cursor-grabbing hover:bg-graphite/40",
+                          "block bg-asphalt border-l-2 rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-colors cursor-grab active:cursor-grabbing hover:bg-graphite/40",
                           AGE_ACCENT[tier],
                           dragging && "opacity-40",
                         )}
@@ -240,7 +240,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                             </span>
                           )}
                         </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-graphite">
+                        <div className="flex justify-between items-center pt-2">
                           <span className="text-[11px] text-bone-mute">{deal.contact.name}</span>
                           <div className="w-5 h-5 bg-graphite-2 rounded-[var(--radius-sm)] flex items-center justify-center mono text-[9px] text-bone-dim">
                             {deal.partnerLead.initials}
@@ -259,7 +259,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
             );
           })}
 
-          <div className="bg-bitumen flex-1 basis-0 min-w-[180px] flex flex-col border border-graphite border-l-2 border-l-track-gold rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
+          <div className="bg-asphalt flex-1 basis-0 min-w-[180px] flex flex-col border-l-2 border-l-track-gold rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
             <div className="px-4 py-4 border-b border-graphite">
               <Label gold>— Signed → Convert</Label>
               <span className="block label mt-2 text-[10px] text-bone-mute">

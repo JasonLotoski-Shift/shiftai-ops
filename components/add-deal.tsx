@@ -119,7 +119,7 @@ function AddDealModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-[620px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[620px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
           <div className="flex items-center gap-3">
             <Plus size={14} strokeWidth={1.5} className="text-track-gold" />
@@ -135,7 +135,7 @@ function AddDealModal({
           <div className="flex flex-col gap-2">
             <Label>Contact <span className="text-flag-red">*</span></Label>
             {selected ? (
-              <div className="flex items-center justify-between gap-3 px-3 h-9 border border-graphite bg-bitumen rounded-[var(--radius)]">
+              <div className="flex items-center justify-between gap-3 px-3 h-9 bg-bitumen rounded-[var(--radius)]">
                 <span className="text-[14px] text-bone truncate">{selected.name} · <span className="text-bone-mute">{selected.company}</span></span>
                 <button type="button" onClick={() => setContactId("")} className="text-bone-mute hover:text-bone shrink-0">
                   <X size={14} strokeWidth={1.5} />
@@ -143,7 +143,7 @@ function AddDealModal({
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-2 px-3 h-9 border border-graphite bg-bitumen rounded-[var(--radius)]">
+                <div className="flex items-center gap-2 px-3 h-9 bg-bitumen rounded-[var(--radius)]">
                   <Search size={13} strokeWidth={1.5} className="text-bone-mute shrink-0" />
                   <input
                     autoFocus
@@ -153,7 +153,7 @@ function AddDealModal({
                     className="bg-transparent border-0 text-[14px] text-bone placeholder:text-bone-mute focus:outline-none w-full"
                   />
                 </div>
-                <div className="border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden max-h-[180px] overflow-y-auto">
+                <div className="rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden max-h-[180px] overflow-y-auto">
                   {contacts.length === 0 ? (
                     <a href="/contacts?qa=add" className="flex items-center gap-2 px-4 py-3 text-[13px] text-track-gold hover:bg-graphite/40">
                       <UserPlus size={13} strokeWidth={1.5} /> No contacts yet — add one first
@@ -166,7 +166,7 @@ function AddDealModal({
                         type="button"
                         key={c.id}
                         onClick={() => pickContact(c)}
-                        className={cn("w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-graphite/40", i < filtered.length - 1 && "border-b border-graphite")}
+                        className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-graphite/40"
                       >
                         <span className="text-[13px] text-bone truncate">{c.name}</span>
                         <span className="text-[12px] text-bone-mute truncate">{c.company}</span>

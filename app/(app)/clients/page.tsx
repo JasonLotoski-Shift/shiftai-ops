@@ -55,7 +55,7 @@ export default async function ClientsPage() {
               <Link
                 key={c.id}
                 href={`/clients/${c.id}`}
-                className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_120px] gap-4 px-5 py-4 border-b border-graphite last:border-0 hover:bg-graphite/40 transition-colors"
+                className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_120px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
               >
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <span className="text-[14px] text-bone truncate">{c.company}</span>

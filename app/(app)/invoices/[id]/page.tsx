@@ -91,7 +91,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <span className="label">Description</span>
               <span className="label text-right">Amount</span>
             </div>
-            <div className="grid grid-cols-[1fr_140px] gap-4 px-5 py-4 border-b border-graphite">
+            <div className="grid grid-cols-[1fr_140px] gap-4 px-5 py-4">
               <div className="flex flex-col gap-0.5">
                 <div className="text-[14px] text-bone">{project.name.split("·")[1]?.trim() ?? project.name}</div>
                 <div className="text-[11px] text-bone-mute">Professional services</div>

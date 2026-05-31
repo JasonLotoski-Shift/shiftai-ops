@@ -61,7 +61,7 @@ export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivEl
   return (
     <div
       className={cn(
-        "bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]",
+        "bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow)]",
         className,
       )}
       {...props}

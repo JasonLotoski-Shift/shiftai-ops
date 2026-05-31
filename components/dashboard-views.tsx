@@ -146,7 +146,7 @@ export function DashboardViews({
                   <button
                     key={a.label}
                     onClick={() => openPicker(a)}
-                    className="bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 text-left flex flex-col gap-2 hover:border-bone-mute hover:shadow-[var(--shadow)] transition-all group"
+                    className="bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-5 text-left flex flex-col gap-2 hover:shadow-[var(--shadow)] transition-all group"
                   >
                     <Icon size={16} strokeWidth={1.5} className="text-track-gold" />
                     <span className="text-[14px] text-bone group-hover:text-bone">{a.label}</span>
@@ -163,7 +163,7 @@ export function DashboardViews({
               className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
               onClick={() => setPick(null)}
             >
-              <div className="w-full max-w-[480px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full max-w-[480px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
                   <Label gold>— {pick.label} · pick a {pick.type}</Label>
                   <button onClick={() => setPick(null)} className="text-bone-mute hover:text-bone">
@@ -184,7 +184,7 @@ export function DashboardViews({
                       <button
                         key={r.id}
                         onClick={() => choose(r.id)}
-                        className={`w-full text-left px-5 py-3 flex items-center justify-between gap-3 hover:bg-graphite/40 transition-colors ${i < filtered.length - 1 ? "border-b border-graphite" : ""}`}
+                        className="w-full text-left px-5 py-3 flex items-center justify-between gap-3 hover:bg-graphite/40 transition-colors"
                       >
                         <span className="text-[14px] text-bone">{r.label}</span>
                         {r.sub && <span className="text-[12px] text-bone-mute">{r.sub}</span>}
@@ -205,7 +205,7 @@ export function DashboardViews({
               <Label>— Team updates</Label>
               <Card>
                 {teamUpdates.map((u, i) => (
-                  <div key={u.id} className={`px-5 py-4 ${i < teamUpdates.length - 1 ? "border-b border-graphite" : ""}`}>
+                  <div key={u.id} className="px-5 py-4">
                     <div className="flex items-baseline justify-between gap-3 mb-1">
                       <div className="flex items-center gap-2">
                         <span className={`label ${u.author.startsWith("AGENT") ? "label-gold" : ""}`}>{u.author}</span>
@@ -239,7 +239,7 @@ export function DashboardViews({
                     <Link
                       href={`/projects/${p.id}`}
                       key={p.id}
-                      className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-4 border-b border-graphite last:border-0 hover:bg-graphite/40 transition-colors"
+                      className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors"
                     >
                       <div className="flex flex-col gap-1 min-w-0">
                         <span className="text-[14px] text-bone truncate">{p.client.company}</span>
@@ -269,7 +269,7 @@ export function DashboardViews({
               </div>
               <Card>
                 {news.map((n, i) => (
-                  <div key={n.id} className={`px-5 py-4 ${i < news.length - 1 ? "border-b border-graphite" : ""}`}>
+                  <div key={n.id} className="px-5 py-4">
                     <div className="flex items-baseline justify-between gap-2 mb-1">
                       <Label>{n.source}</Label>
                       <span className="label text-[9px]">{formatDate(n.ts)}</span>
@@ -285,7 +285,7 @@ export function DashboardViews({
               <Label>— Activity · 48h</Label>
               <Card>
                 {activities.map((a, i) => {
-                  const rowClass = `block px-5 py-3 ${i < activities.length - 1 ? "border-b border-graphite" : ""}`;
+                  const rowClass = `block px-5 py-3`;
                   const inner = (
                     <>
                       <div className="flex items-baseline justify-between gap-3 mb-1">

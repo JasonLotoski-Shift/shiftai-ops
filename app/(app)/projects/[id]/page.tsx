@@ -103,7 +103,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               {projectMilestones.map((m, i) => (
                 <div
                   key={m.id}
-                  className={`flex items-center gap-4 px-5 py-4 ${i < projectMilestones.length - 1 ? "border-b border-graphite" : ""}`}
+                  className="flex items-center gap-4 px-5 py-4"
                 >
                   <div className="shrink-0">
                     {m.status === "complete" ? (
@@ -162,7 +162,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                       target="_blank"
                       rel="noreferrer"
                       key={ar.id}
-                      className={`grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 ${i < projectArtifacts.length - 1 ? "border-b border-graphite" : ""} hover:bg-graphite/40 transition-colors group`}
+                      className="grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 hover:bg-graphite/40 transition-colors group"
                     >
                       <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
                         <Icon size={16} strokeWidth={1.5} />

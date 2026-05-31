@@ -214,7 +214,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
           tasks.map((t, i) => (
             <div
               key={t.id}
-              className={`grid grid-cols-[24px_1fr_120px_140px] gap-4 items-start px-5 py-4 ${i < tasks.length - 1 ? "border-b border-graphite" : ""}`}
+              className="grid grid-cols-[24px_1fr_120px_140px] gap-4 items-start px-5 py-4"
             >
               <button
                 onClick={() => toggleTask(t.id)}

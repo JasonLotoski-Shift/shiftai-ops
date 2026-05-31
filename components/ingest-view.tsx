@@ -151,7 +151,7 @@ function PasteModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-[680px] bg-asphalt border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-graphite">
           <div className="flex items-center gap-3">
             <FileText size={14} strokeWidth={1.5} className="text-track-gold" />
@@ -207,7 +207,7 @@ function PasteModal({ onClose }: { onClose: () => void }) {
             <Label>Transcript / notes <span className="text-flag-red">*</span></Label>
             <Textarea rows={10} value={transcript} onChange={(e) => { setTranscript(e.target.value); if (fileName) setFileName(null); }} placeholder="Paste the notes or transcript here — or drop a file above…" required disabled={isPending} />
           </div>
-          <div className="flex items-start gap-2 px-3 py-2 border border-graphite bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+          <div className="flex items-start gap-2 px-3 py-2 bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
             <span className="text-[12px] text-bone-dim">Extraction proposes records for your review — nothing is written to a contact, deal, or task until you approve it.</span>
           </div>
@@ -391,7 +391,7 @@ function ProposalCard({
               <Label gold>— Action items → tasks ({items.filter((i) => i.keep).length} kept)</Label>
               <div className="flex flex-col gap-2">
                 {items.map((it, i) => (
-                  <div key={i} className={cn("border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2", !it.keep && "opacity-50")}>
+                  <div key={i} className={cn("rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2", !it.keep && "opacity-50")}>
                     <div className="flex items-center gap-3">
                       <input type="checkbox" checked={it.keep} onChange={() => setItems((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="accent-track-gold" />
                       <Input value={it.title} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} className="flex-1 h-8" disabled={isPending} />
@@ -471,9 +471,9 @@ function EnrichGroup({
         <Label>— {label}</Label>
         {disabledNote && <span className="text-[11px] text-flag-red">{disabledNote}</span>}
       </div>
-      <div className="border border-graphite rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
+      <div className="rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] overflow-hidden">
         {items.map((a, i) => (
-          <label key={i} className={cn("flex items-start gap-3 px-4 py-2.5 cursor-pointer", i < items.length - 1 && "border-b border-graphite", (disabled || !keep[i]) && "opacity-50")}>
+          <label key={i} className={cn("flex items-start gap-3 px-4 py-2.5 cursor-pointer", (disabled || !keep[i]) && "opacity-50")}>
             <input type="checkbox" checked={!disabled && keep[i]} disabled={disabled} onChange={() => setKeep(keep.map((k, j) => (j === i ? !k : k)))} className="mt-1 accent-track-gold" />
             <span className="min-w-0">
               <span className="label">{ENRICH_LABELS[a.field] ?? a.field}</span>
