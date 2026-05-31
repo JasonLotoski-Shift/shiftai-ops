@@ -50,7 +50,7 @@ export default async function ContactsPage() {
         <Card>
           {contacts.length === 0 ? (
             <EmptyState
-              icon={Users}
+              icon={<Users size={28} strokeWidth={1.5} />}
               title="No contacts yet"
               hint="Add your first contact to start tracking relationships."
             />

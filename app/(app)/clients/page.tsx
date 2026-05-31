@@ -38,7 +38,7 @@ export default async function ClientsPage() {
         <Card>
           {clients.length === 0 ? (
             <EmptyState
-              icon={Briefcase}
+              icon={<Briefcase size={28} strokeWidth={1.5} />}
               title="No active clients"
               hint="Converted deals show up here as engagements."
             />

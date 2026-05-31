@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type ButtonHTMLAttributes, type ComponentType, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -272,14 +272,14 @@ export function Tabs({
    ────────────────────────────────────────────────────────────────────── */
 
 export function EmptyState({
-  icon: Icon,
+  icon,
   title,
   hint,
   action,
   compact = false,
   className,
 }: {
-  icon?: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  icon?: ReactNode;
   title: string;
   hint?: string;
   action?: ReactNode;
@@ -288,7 +288,7 @@ export function EmptyState({
 }) {
   return (
     <div className={cn("flex flex-col items-center text-center gap-2", compact ? "py-10" : "py-16", className)}>
-      {Icon && <Icon size={compact ? 22 : 28} strokeWidth={1.5} className="text-bone-mute mb-1" />}
+      {icon && <span className="text-bone-mute mb-1 inline-flex">{icon}</span>}
       <span className="title-md">{title}</span>
       {hint && <span className="text-[13px] text-bone-dim max-w-[42ch] leading-relaxed">{hint}</span>}
       {action && <div className="mt-3">{action}</div>}

@@ -437,7 +437,7 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
     return (
       <Card>
         <EmptyState
-          icon={FileText}
+          icon={<FileText size={28} strokeWidth={1.5} />}
           title="No deliverables yet"
           hint="AI-generated artifacts (proposals, decks, emails) and partner uploads will appear here as the engagement runs."
         />

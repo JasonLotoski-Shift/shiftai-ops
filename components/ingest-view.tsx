@@ -68,7 +68,7 @@ export function IngestView({
       {proposals.length === 0 ? (
         <Card>
           <EmptyState
-            icon={FileText}
+            icon={<FileText size={28} strokeWidth={1.5} />}
             title="No pending meetings"
             hint="Drop in notes or paste a transcript to start."
           />

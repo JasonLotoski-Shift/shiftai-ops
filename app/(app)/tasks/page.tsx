@@ -44,7 +44,7 @@ export default async function TasksPage() {
 
         {tasks.length === 0 ? (
           <EmptyState
-            icon={CheckSquare}
+            icon={<CheckSquare size={28} strokeWidth={1.5} />}
             title="No tasks yet"
             hint="Tasks you create or get assigned will show up here."
           />

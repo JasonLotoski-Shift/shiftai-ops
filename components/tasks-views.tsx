@@ -206,7 +206,7 @@ export function TasksViews({ initialTasks, partners, currentPartnerId }: TasksVi
       <Card>
         {tasks.length === 0 ? (
           <EmptyState
-            icon={ListChecks}
+            icon={<ListChecks size={28} strokeWidth={1.5} />}
             title="No tasks yet"
             hint="Create a task to start tracking work."
           />

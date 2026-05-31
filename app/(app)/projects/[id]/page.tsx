@@ -104,7 +104,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <h2 className="title-md">Milestones</h2>
             </CardHeader>
             {projectMilestones.length === 0 ? (
-              <EmptyState icon={Check} title="No milestones yet" hint="Milestones added to this project will appear here." compact />
+              <EmptyState icon={<Check size={22} strokeWidth={1.5} />} title="No milestones yet" hint="Milestones added to this project will appear here." compact />
             ) : (
             <div className="flex flex-col">
               {projectMilestones.map((m, i) => (
@@ -156,7 +156,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <span className="label">{projectArtifacts.length} {projectArtifacts.length === 1 ? "artifact" : "artifacts"}</span>
             </CardHeader>
             {projectArtifacts.length === 0 ? (
-              <EmptyState icon={FileText} title="No deliverables yet" hint="AI-generated drafts and partner uploads appear here." compact />
+              <EmptyState icon={<FileText size={22} strokeWidth={1.5} />} title="No deliverables yet" hint="AI-generated drafts and partner uploads appear here." compact />
             ) : (
               <div className="flex flex-col">
                 {projectArtifacts.map((ar, i) => {

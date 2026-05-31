@@ -112,7 +112,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                 if (activity.length === 0) {
                   return (
                     <EmptyState
-                      icon={Activity}
+                      icon={<Activity size={22} strokeWidth={1.5} />}
                       title="No activity yet"
                       hint="Logged touches and stage changes will appear here."
                       compact

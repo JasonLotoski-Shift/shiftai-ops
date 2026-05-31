@@ -157,7 +157,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                 <span className="label">{log.length} logged</span>
               </div>
               {log.length === 0 ? (
-                <EmptyState icon={Calendar} title="No interactions logged yet" compact />
+                <EmptyState icon={<Calendar size={22} strokeWidth={1.5} />} title="No interactions logged yet" compact />
               ) : (
                 <div className="flex flex-col">
                   {log.map((it, i) => {
@@ -189,7 +189,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             <CardBody className="flex flex-col gap-3">
               <h2 className="title-md text-bone">Deals ({contactDeals.length})</h2>
               {contactDeals.length === 0 ? (
-                <EmptyState icon={Building2} title="No open deals" compact />
+                <EmptyState icon={<Building2 size={22} strokeWidth={1.5} />} title="No open deals" compact />
               ) : (
                 <div className="flex flex-col">
                   {contactDeals.map((deal, i) => (

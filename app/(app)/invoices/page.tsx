@@ -59,7 +59,7 @@ export default async function InvoicesPage() {
         <Card>
           {invoices.length === 0 ? (
             <EmptyState
-              icon={Receipt}
+              icon={<Receipt size={28} strokeWidth={1.5} />}
               title="No invoices yet"
               hint="Invoices you issue to clients will show up here once you raise the first one."
             />

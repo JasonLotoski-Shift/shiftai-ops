@@ -125,7 +125,7 @@ export function MessagesView({
         />
       ) : (
         <Card className="flex-1 flex items-center justify-center">
-          <EmptyState icon={MessageSquare} title="No conversations yet" />
+          <EmptyState icon={<MessageSquare size={28} strokeWidth={1.5} />} title="No conversations yet" />
         </Card>
       )}
 
@@ -141,7 +141,7 @@ export function MessagesView({
             </div>
             <div>
               {partners.length === 0 ? (
-                <EmptyState icon={MessageSquare} title="No other partners" compact />
+                <EmptyState icon={<MessageSquare size={22} strokeWidth={1.5} />} title="No other partners" compact />
               ) : (
                 partners.map((p, i) => (
                   <button
@@ -269,9 +269,9 @@ function ChannelPane({
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-3">
         {loading ? (
-          <EmptyState icon={MessageSquare} title="Loading…" compact />
+          <EmptyState icon={<MessageSquare size={22} strokeWidth={1.5} />} title="Loading…" compact />
         ) : messages.length === 0 ? (
-          <EmptyState icon={MessageSquare} title="No messages yet" hint="Say something." compact />
+          <EmptyState icon={<MessageSquare size={22} strokeWidth={1.5} />} title="No messages yet" hint="Say something." compact />
         ) : (
           messages.map((m) => (
             <MessageRow key={m.id} m={m} mine={m.authorId === currentPartnerId} onTaskToggle={onTaskToggle} />

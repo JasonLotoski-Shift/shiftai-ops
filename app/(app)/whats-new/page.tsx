@@ -51,7 +51,7 @@ export default function UpdatesPage() {
 
         {groups.length === 0 && (
           <EmptyState
-            icon={Sparkles}
+            icon={<Sparkles size={22} strokeWidth={1.5} />}
             title="No updates yet"
             hint="Changes to the tool will show up here as they ship."
             compact

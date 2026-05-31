@@ -84,7 +84,7 @@ export function AgentsViews({
 
           {plans.length === 0 ? (
             <EmptyState
-              icon={Bot}
+              icon={<Bot size={28} strokeWidth={1.5} />}
               title="No agent plans yet"
               hint="Draft the first one."
               action={
@@ -297,7 +297,7 @@ function LiveSkills({ skills, firmContext }: { skills: SkillDoc[]; firmContext: 
       )}
 
       {skills.length === 0 ? (
-        <EmptyState icon={FileCode} title="No skills found on disk" />
+        <EmptyState icon={<FileCode size={28} strokeWidth={1.5} />} title="No skills found on disk" />
       ) : (
         skills.map((s) => <SkillBlock key={s.name} name={s.name} title={s.title} body={s.body} defaultOpen={false} />)
       )}

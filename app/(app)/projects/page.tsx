@@ -31,7 +31,7 @@ export default async function ProjectsPage() {
         <Card>
           {projects.length === 0 ? (
             <EmptyState
-              icon={FolderKanban}
+              icon={<FolderKanban size={28} strokeWidth={1.5} />}
               title="No projects yet"
               hint="Active builds will appear here once a deal is converted into a project."
             />

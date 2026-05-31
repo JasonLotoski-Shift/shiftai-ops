@@ -204,7 +204,7 @@ export function DashboardViews({
               <h2 className="title-md">Team updates</h2>
               <Card>
                 {teamUpdates.length === 0 ? (
-                  <EmptyState compact icon={Megaphone} title="No team updates yet" />
+                  <EmptyState compact icon={<Megaphone size={22} strokeWidth={1.5} />} title="No team updates yet" />
                 ) : (
                   teamUpdates.map((u, i) => (
                   <div key={u.id} className="px-5 py-4">
@@ -233,7 +233,7 @@ export function DashboardViews({
               </div>
               <Card>
                 {activeProjects.length === 0 ? (
-                  <EmptyState compact icon={Briefcase} title="No active engagements" />
+                  <EmptyState compact icon={<Briefcase size={22} strokeWidth={1.5} />} title="No active engagements" />
                 ) : (
                 <>
                 <div className="grid grid-cols-[1fr_140px_120px] gap-4 px-5 py-3">
@@ -278,7 +278,7 @@ export function DashboardViews({
               </div>
               <Card>
                 {news.length === 0 ? (
-                  <EmptyState compact icon={Newspaper} title="No industry news yet" />
+                  <EmptyState compact icon={<Newspaper size={22} strokeWidth={1.5} />} title="No industry news yet" />
                 ) : (
                   news.map((n, i) => (
                   <div key={n.id} className="px-5 py-4">
@@ -298,7 +298,7 @@ export function DashboardViews({
               <h2 className="title-md">Activity · 48h</h2>
               <Card>
                 {activities.length === 0 ? (
-                  <EmptyState compact icon={ActivityIcon} title="No activity in the last 48h" />
+                  <EmptyState compact icon={<ActivityIcon size={22} strokeWidth={1.5} />} title="No activity in the last 48h" />
                 ) : (
                 activities.map((a, i) => {
                   const rowClass = `block px-5 py-3`;
