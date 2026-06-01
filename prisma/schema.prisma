@@ -432,6 +432,10 @@ model Milestone {
   // Nullable: a milestone may be undated (then it doesn't appear on the timeline).
   dueDate DateTime?
   status  MilestoneStatus
+  // Board column (To Do / In Progress / In Review / Done). The milestone CARD
+  // moves through the funnel on the Task Board; `status` above stays for the
+  // timeline and is synced from this on the board.
+  boardStatus TaskStatus @default(todo)
 
   // Universal parent: a milestone may be tied to a project, a deal/client, or
   // nothing (firm-level BD/Admin). All scope FKs are nullable.
@@ -529,11 +533,11 @@ model Task {
   // No task is a bare button: this is the payload API agents will read (Phase 4+).
   context   String?
 
-  // The owner IS the assignee. assignedBy records who handed it over
-  // (null = self-created / firm task). Two relations to Partner, so both
-  // must be named.
-  owner        Partner  @relation("TaskOwner", fields: [ownerId], references: [id])
-  ownerId      String
+  // The owner IS the assignee. Nullable — a task can sit UNASSIGNED (drives the
+  // milestone's orange "sub-task not assigned" state). assignedBy records who
+  // handed it over (null = self-created / firm / unassigned).
+  owner        Partner? @relation("TaskOwner", fields: [ownerId], references: [id])
+  ownerId      String?
   assignedBy   Partner? @relation("TaskAssignedBy", fields: [assignedById], references: [id])
   assignedById String?
 

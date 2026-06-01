@@ -24,6 +24,12 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-01",
+    tag: "improved",
+    title: "The board runs on milestones now",
+    detail: "The Tasks tab is the Task Board. Milestones are cards on it — open one to see its sub-tasks, who's on each, the overall owner, and a bar showing how done it is; set each sub-task's stage from there. A milestone with no owner shows red until you assign it; one with an unassigned sub-task shows amber. Tasks that don't belong to a milestone are the only ones that move across the columns on their own. A milestone or task tied to a project, client, or deal shows a link icon you can click to jump straight there. Every column has an Add task at the bottom.",
+  },
+  {
+    date: "2026-06-01",
     tag: "new",
     title: "Tasks are now a board",
     detail: "The Tasks page is a board — To Do, In Progress, In Review, Done. Drag a card to move it. Each card is coloured by category (Firm, Projects, Pipeline, Other), shows the milestone it belongs to and the project or client it's tied to, and who it's assigned to. Filter by partner or category. Everyone sees every task and milestone. You can add a firm milestone (BD, Admin) right from here, not just on a project.",

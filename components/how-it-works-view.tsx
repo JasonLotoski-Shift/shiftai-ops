@@ -530,12 +530,12 @@ const flows: Flow[] = [
   {
     icon: <KanbanSquare size={16} strokeWidth={1.5} />,
     title: "Work the task board",
-    blurb: "One board for every milestone and task across the firm.",
+    blurb: "Milestone cards hold their sub-tasks; loose tasks move on their own.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Add a task (or firm milestone) · assign a partner" },
-      { tone: "claude", kind: "System", label: "Drops a typed note in that partner's Claude inbox" },
-      { tone: "review", kind: "They work", label: "Drag the card To Do → In Progress → Review → Done" },
-      { tone: "write", kind: "Saved", label: "Status + assignee + category + AuditLog · everyone sees it" },
+      { tone: "trigger", kind: "You do", label: "Milestones are cards · open one for its sub-tasks + owners" },
+      { tone: "review", kind: "Shown", label: "Red if a milestone has no owner · amber if a sub-task doesn't" },
+      { tone: "trigger", kind: "You do", label: "Drag milestones + loose tasks across the columns · set sub-task stage inside" },
+      { tone: "write", kind: "Saved", label: "Status + assignee + AuditLog · link icon jumps to the tied record" },
     ],
   },
 ];

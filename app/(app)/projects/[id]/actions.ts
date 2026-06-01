@@ -21,7 +21,19 @@ import type {
   TaskPriority,
   ProjectType,
   WorkCategory,
+  TaskStatus,
 } from "@/lib/generated/prisma/enums";
+
+const VALID_TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "in_review", "done"];
+
+// Board column → milestone health status, so the timeline stays coherent when
+// a milestone card is dragged through the funnel.
+const BOARD_TO_MILESTONE_STATUS: Record<TaskStatus, MilestoneStatus> = {
+  todo: "pending",
+  in_progress: "in_progress",
+  in_review: "in_progress",
+  done: "complete",
+};
 
 const VALID_MILESTONE_STATUSES: MilestoneStatus[] = [
   "pending",
@@ -298,6 +310,52 @@ export async function updateMilestone(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// updateMilestoneBoardStatus — move a milestone CARD across the Task Board's
+// columns (To Do / In Progress / In Review / Done). Syncs the milestone's
+// health status so the project timeline stays coherent.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function updateMilestoneBoardStatus(milestoneId: string, boardStatus: string) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  if (!VALID_TASK_STATUSES.includes(boardStatus as TaskStatus)) {
+    throw new Error(`Invalid board status: ${boardStatus}`);
+  }
+
+  const before = await prisma.milestone.findUnique({
+    where: { id: milestoneId },
+    select: { id: true, projectId: true, boardStatus: true },
+  });
+  if (!before) throw new Error("Milestone not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.milestone.update({
+      where: { id: milestoneId },
+      data: {
+        boardStatus: boardStatus as TaskStatus,
+        status: BOARD_TO_MILESTONE_STATUS[boardStatus as TaskStatus],
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "update.milestone.boardStatus",
+      targetType: "Milestone",
+      targetId: milestoneId,
+      changes: { boardStatus: { before: before.boardStatus, after: boardStatus } },
+    });
+  });
+
+  revalidatePath("/tasks");
+  if (before.projectId) revalidatePath(`/projects/${before.projectId}`);
+  return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // createMilestoneTask — a Task hung off a milestone (epic → sub-task).
 // Mirrors createDeliverableTask (assign-to-partner + system notification).
 // ──────────────────────────────────────────────────────────────────────
@@ -305,7 +363,7 @@ export async function updateMilestone(
 export async function createMilestoneTask(input: {
   milestoneId: string;
   title: string;
-  ownerId: string;
+  ownerId?: string; // optional — a sub-task can sit unassigned
   priority: string;
   due: string; // ISO date "YYYY-MM-DD"
   context?: string;
@@ -330,13 +388,12 @@ export async function createMilestoneTask(input: {
   });
   if (!milestone) throw new Error("Milestone not found");
 
-  const owner = await prisma.partner.findUnique({
-    where: { id: input.ownerId },
-    select: { id: true, name: true },
-  });
-  if (!owner) throw new Error("Assignee not found");
+  const owner = input.ownerId
+    ? await prisma.partner.findUnique({ where: { id: input.ownerId }, select: { id: true, name: true } })
+    : null;
+  if (input.ownerId && !owner) throw new Error("Assignee not found");
 
-  const assignedById = owner.id === creatorId ? null : creatorId;
+  const assignedById = owner && owner.id !== creatorId ? creatorId : null;
   const context = input.context?.trim() || null;
 
   const task = await prisma.$transaction(async (tx) => {
@@ -346,7 +403,7 @@ export async function createMilestoneTask(input: {
         priority: input.priority as TaskPriority,
         due,
         context,
-        ownerId: owner.id,
+        ownerId: owner?.id ?? null,
         assignedById,
         milestoneId: milestone.id,
         projectId: milestone.projectId,
@@ -360,18 +417,18 @@ export async function createMilestoneTask(input: {
       action: "create.task.milestone",
       targetType: "Task",
       targetId: created.id,
-      changes: { title, milestoneId: milestone.id, ownerId: owner.id, assignedById, priority: input.priority },
+      changes: { title, milestoneId: milestone.id, ownerId: owner?.id ?? null, assignedById, priority: input.priority },
     });
 
     await writeActivity(tx, {
       actor,
       type: "status",
       target: milestone.title,
-      detail: assignedById ? `Assigned task to ${owner.name}` : "Added task",
+      detail: assignedById && owner ? `Assigned task to ${owner.name}` : "Added task",
       link: milestone.projectId ? `/projects/${milestone.projectId}` : "/tasks",
     });
 
-    if (assignedById) {
+    if (assignedById && owner) {
       await notifyPartner(
         tx,
         owner.id,

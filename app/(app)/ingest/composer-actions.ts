@@ -501,7 +501,7 @@ export async function approveUnified(
             data: { ownerId: t.ownerId, assignedById: partnerId },
           });
           tasksReassigned++;
-          replaceDetail.push({ field: "task.owner", before: existing.ownerId, after: t.ownerId });
+          replaceDetail.push({ field: "task.owner", before: existing.ownerId ?? "", after: t.ownerId });
           continue;
         }
         // The task vanished since extract — fall through and create a new one.

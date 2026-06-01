@@ -31,7 +31,7 @@ function deriveTaskCategory(scope: { projectId?: string | null; clientId?: strin
  */
 export async function createTask(input: {
   title: string;
-  ownerId: string; // the assignee
+  ownerId?: string; // the assignee — optional (a task can sit unassigned)
   priority: string;
   due: string; // ISO date "YYYY-MM-DD"
   context?: string;
@@ -64,11 +64,11 @@ export async function createTask(input: {
     ? (input.category as WorkCategory)
     : deriveTaskCategory(input);
 
-  const owner = await prisma.partner.findUnique({
-    where: { id: input.ownerId },
-    select: { id: true, name: true },
-  });
-  if (!owner) throw new Error("Assignee not found");
+  // Owner is optional — a task can be created unassigned.
+  const owner = input.ownerId
+    ? await prisma.partner.findUnique({ where: { id: input.ownerId }, select: { id: true, name: true } })
+    : null;
+  if (input.ownerId && !owner) throw new Error("Assignee not found");
 
   const projectId = input.projectId || null;
   const artifactId = input.artifactId || null;
@@ -92,8 +92,8 @@ export async function createTask(input: {
     if (!m) throw new Error("Milestone not found");
   }
 
-  // A hand-off records the assigner; a self-created task leaves it null.
-  const assignedById = owner.id === creatorId ? null : creatorId;
+  // A hand-off records the assigner; self-created / unassigned leaves it null.
+  const assignedById = owner && owner.id !== creatorId ? creatorId : null;
   const context = input.context?.trim() || null;
 
   const task = await prisma.$transaction(async (tx) => {
@@ -107,7 +107,7 @@ export async function createTask(input: {
         done: status === "done",
         category,
         categoryLabel: input.categoryLabel?.trim() || null,
-        ownerId: owner.id,
+        ownerId: owner?.id ?? null,
         assignedById,
         relatedTo: input.relatedTo?.trim() || null,
         clientId: input.clientId || null,
@@ -124,7 +124,7 @@ export async function createTask(input: {
       targetId: created.id,
       changes: {
         title,
-        ownerId: owner.id,
+        ownerId: owner?.id ?? null,
         assignedById,
         priority: input.priority,
         due: due.toISOString(),
@@ -141,14 +141,14 @@ export async function createTask(input: {
       actor,
       type: "status",
       target: title,
-      detail: assignedById ? `Assigned task to ${owner.name}` : "Created task",
+      detail: assignedById && owner ? `Assigned task to ${owner.name}` : "Created task",
       link: "/tasks",
     });
 
     // Hand-off: notify the assignee in their "Claude" system chat. One Task
     // row, surfaced in the system inbox + Tasks tab + feed. The note renders as
     // an inline task card (taskId) and clicks through to /tasks.
-    if (assignedById) {
+    if (assignedById && owner) {
       await notifyPartner(
         tx,
         owner.id,
@@ -220,7 +220,7 @@ export async function updateTask(
   taskId: string,
   input: {
     title?: string;
-    ownerId?: string;
+    ownerId?: string | null; // null/"" unassigns
     status?: string;
     priority?: string;
     due?: string;
@@ -249,12 +249,19 @@ export async function updateTask(
     data.title = t;
   }
   let notifyNewOwner: string | null = null;
-  if (input.ownerId !== undefined && input.ownerId !== before.ownerId) {
-    const owner = await prisma.partner.findUnique({ where: { id: input.ownerId }, select: { id: true } });
-    if (!owner) throw new Error("Assignee not found");
-    data.ownerId = input.ownerId;
-    data.assignedById = input.ownerId === creatorId ? null : creatorId;
-    if (input.ownerId !== creatorId) notifyNewOwner = input.ownerId;
+  if (input.ownerId !== undefined) {
+    const nextOwnerId = input.ownerId || null; // "" / null → unassign
+    if (nextOwnerId !== before.ownerId) {
+      if (nextOwnerId) {
+        const owner = await prisma.partner.findUnique({ where: { id: nextOwnerId }, select: { id: true } });
+        if (!owner) throw new Error("Assignee not found");
+        data.assignedById = nextOwnerId === creatorId ? null : creatorId;
+        if (nextOwnerId !== creatorId) notifyNewOwner = nextOwnerId;
+      } else {
+        data.assignedById = null;
+      }
+      data.ownerId = nextOwnerId;
+    }
   }
   if (input.status !== undefined) {
     if (!VALID_TASK_STATUSES.includes(input.status as TaskStatus)) throw new Error(`Invalid status: ${input.status}`);

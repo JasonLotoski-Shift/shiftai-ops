@@ -10,6 +10,7 @@
 // milestone's title / status / owner / date.
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Label, Button, Input, Textarea, Select, Avatar, Badge } from "@/components/ui";
 import { formatDate } from "@/lib/format";
@@ -27,6 +28,7 @@ import {
   ChevronRight,
   AlertTriangle,
   Circle,
+  Link2,
 } from "lucide-react";
 
 const PRIORITIES = ["high", "medium", "low"] as const;
@@ -69,7 +71,7 @@ type EpicTask = {
   status: string;
   done: boolean;
   due: string | Date;
-  owner: { name: string; initials: string };
+  owner: { name: string; initials: string } | null;
 };
 
 type PartnerOption = { id: string; name: string; initials: string };
@@ -313,6 +315,16 @@ export function MilestoneEpic({
           </div>
         </button>
 
+        {/* This milestone also lives on the Task Board — jump to it. */}
+        <Link
+          href="/tasks"
+          onClick={(e) => e.stopPropagation()}
+          title="On the Task Board"
+          className="text-bone-mute hover:text-track-gold shrink-0"
+        >
+          <Link2 size={13} strokeWidth={1.5} />
+        </Link>
+
         {milestone.owner ? (
           <span title={milestone.owner.name} className="inline-flex shrink-0">
             <Avatar initials={milestone.owner.initials} size="sm" />
@@ -488,9 +500,13 @@ export function MilestoneEpic({
                   </div>
                   <div className="flex items-center justify-end gap-2 pt-0.5">
                     <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
-                    <span title={t.owner.name} className="inline-flex">
-                      <Avatar initials={t.owner.initials} size="sm" />
-                    </span>
+                    {t.owner ? (
+                      <span title={t.owner.name} className="inline-flex">
+                        <Avatar initials={t.owner.initials} size="sm" />
+                      </span>
+                    ) : (
+                      <span className="w-5 h-5 rounded-full border border-dashed border-bone-mute/50 inline-flex items-center justify-center text-[9px] text-bone-mute shrink-0" title="Unassigned">—</span>
+                    )}
                   </div>
                 </div>
               ))}

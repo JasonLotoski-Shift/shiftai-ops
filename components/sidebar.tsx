@@ -29,7 +29,7 @@ const nav = [
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/clients", label: "Clients", icon: Briefcase },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/tasks", label: "Task Board", icon: CheckSquare },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/ingest", label: "Ingest", icon: FileInput },
   { href: "/invoices", label: "Invoices", icon: Receipt },

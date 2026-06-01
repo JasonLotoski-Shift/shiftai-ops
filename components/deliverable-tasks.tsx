@@ -17,7 +17,7 @@ import type {
 } from "@/lib/generated/prisma/models";
 import { Check, Plus, X } from "lucide-react";
 
-type DeliverableTask = Task & { owner: Partner };
+type DeliverableTask = Task & { owner: Partner | null };
 type PartnerOption = Pick<Partner, "id" | "name" | "initials">;
 
 interface DeliverableTasksProps {
@@ -131,9 +131,13 @@ export function DeliverableTasks({
               </div>
               <div className="flex items-center justify-end gap-2 pt-0.5">
                 <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
-                <span title={t.owner.name} className="inline-flex">
-                  <Avatar initials={t.owner.initials} size="sm" />
-                </span>
+                {t.owner ? (
+                  <span title={t.owner.name} className="inline-flex">
+                    <Avatar initials={t.owner.initials} size="sm" />
+                  </span>
+                ) : (
+                  <span className="w-5 h-5 rounded-full border border-dashed border-bone-mute/50 inline-flex items-center justify-center text-[9px] text-bone-mute shrink-0" title="Unassigned">—</span>
+                )}
               </div>
             </div>
           ))}
