@@ -1,6 +1,6 @@
 # Financials & Billing Restructure — Build Plan
 
-> **Status:** Plan approved for authoring 2026-06-01. Not yet built.
+> **Status:** BUILT & shipped to `main` 2026-06-01 (commit `513ccb5`). All 5 phases landed in one migration (`20260601173025_financials_restructure`). Acceptance checks pass — `npx tsx lib/billing/economics.check.ts`.
 > **Owner:** Jason. **Scope:** ~5 phases / 5+ commits. Each phase ends green (`npx tsc --noEmit` + `npm run build`) and is independently shippable.
 > **Source of truth:** MASTER INFO (primary) + shiftai-firm `firm-economics.md` / `comp-structure.md` (secondary). This doc reconciles the two; where they conflict, the decision is recorded below.
 
