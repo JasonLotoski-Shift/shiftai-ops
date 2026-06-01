@@ -23,6 +23,36 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-01",
+    tag: "new",
+    title: "Tasks are now a board",
+    detail: "The Tasks page is a board — To Do, In Progress, In Review, Done. Drag a card to move it. Each card is coloured by category (Firm, Projects, Pipeline, Other), shows the milestone it belongs to and the project or client it's tied to, and who it's assigned to. Filter by partner or category. Everyone sees every task and milestone. You can add a firm milestone (BD, Admin) right from here, not just on a project.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "new",
+    title: "Milestones hold their own tasks",
+    detail: "A milestone is now an epic you can open up: assign it to a partner, give it a date (or leave it undated), and add tasks under it that you hand out to the team. Edit a milestone's title, owner, status, or date right in place.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "new",
+    title: "Set a project's type",
+    detail: "Each project now has a type — Discovery Report, Pilot Project, Monthly Project, or Full Build — shown by the title and changeable any time. New projects from a converted deal start as a Discovery Report; pick a different type during convert if it fits.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "improved",
+    title: "A real delivery timeline",
+    detail: "The project timeline runs full-width across the top, with milestones numbered M1, M2… and billing dates B1, B2… in date order, plus dots for when each invoice was sent and paid. Hover any marker for the detail; click a date to change it. Anything without a date is listed below instead of on the bar.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "improved",
+    title: "A clearer money picture on every project",
+    detail: "The project shows its value and what's been received up top, and expands to invoiced, invoices missing (a billing date has passed with nothing sent), remaining to bill, and extras. Mark a billing line as an Extra (out-of-scope work) and it's tracked separately instead of eating into what's left to bill. The billing schedule lives in this same panel.",
+  },
+  {
     date: "2026-05-31",
     tag: "new",
     title: "Ingest, rebuilt — log anything, update the right records",

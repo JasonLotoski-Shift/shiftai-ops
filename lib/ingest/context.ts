@@ -31,7 +31,7 @@ export type TargetData =
       id: string;
       label: string;
       data: Record<string, unknown>;
-      milestones: { title: string; status: string }[];
+      milestones: { id: string; title: string; status: string }[];
       deliverables: string[];
       openTasks: { id: string; title: string; owner: string; due: string }[];
     }
@@ -81,7 +81,7 @@ export async function fetchTargetData(ref: TargetRef): Promise<TargetData | null
       where: { id: ref.id },
       select: {
         name: true, phase: true, status: true, description: true,
-        milestones: { select: { title: true, status: true }, orderBy: { dueDate: "asc" } },
+        milestones: { select: { id: true, title: true, status: true }, orderBy: { dueDate: "asc" } },
         artifacts: { select: { title: true }, orderBy: { createdAt: "desc" }, take: 20 },
         tasks: {
           where: { done: false },
@@ -96,7 +96,7 @@ export async function fetchTargetData(ref: TargetRef): Promise<TargetData | null
       id: ref.id,
       label: p.name,
       data: { phase: p.phase, status: p.status, description: p.description },
-      milestones: p.milestones.map((m) => ({ title: m.title, status: m.status })),
+      milestones: p.milestones.map((m) => ({ id: m.id, title: m.title, status: m.status })),
       deliverables: p.artifacts.map((a) => a.title),
       openTasks: p.tasks.map((t) => ({
         id: t.id,
@@ -155,8 +155,8 @@ export function buildIngestContext(args: BuildIngestContextArgs): string {
       for (const f of CLIENT_LIST_FIELDS) lines.push(`${f}: ${display(t.data[f])}`);
     } else if (t.kind === "project") {
       lines.push(`phase: ${display(t.data.phase)}`, `status: ${display(t.data.status)}`, `description: ${display(t.data.description)}`);
-      lines.push(t.milestones.length ? "Current milestones:" : "Current milestones: (none)");
-      for (const m of t.milestones) lines.push(`  - "${m.title}" — ${display(m.status)}`);
+      lines.push(t.milestones.length ? "Current milestones (a task may attach to one via milestoneId):" : "Current milestones: (none)");
+      for (const m of t.milestones) lines.push(`  - [${m.id}] "${m.title}" — ${display(m.status)}`);
       lines.push(t.deliverables.length ? "Current deliverables:" : "Current deliverables: (none)");
       for (const d of t.deliverables) lines.push(`  - "${d}"`);
       lines.push(t.openTasks.length ? "Open tasks (use the id for reassignTaskId):" : "Open tasks: (none)");

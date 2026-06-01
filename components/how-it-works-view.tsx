@@ -20,6 +20,8 @@ import {
   Search,
   Receipt,
   ListTodo,
+  KanbanSquare,
+  Flag,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -515,14 +517,25 @@ const flows: Flow[] = [
     ],
   },
   {
-    icon: <ListTodo size={16} strokeWidth={1.5} />,
-    title: "Assign a task",
-    blurb: "Hand a to-do to a partner and notify them in their inbox.",
+    icon: <Flag size={16} strokeWidth={1.5} />,
+    title: "Shape a project's delivery",
+    blurb: "Set the type, break work into milestones, plan the money.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Add a task · pick the owner and due date" },
+      { tone: "trigger", kind: "You do", label: "Set the project type · add milestones (dated or not)" },
+      { tone: "trigger", kind: "You do", label: "Add tasks under each milestone · set the billing schedule" },
+      { tone: "review", kind: "Shown", label: "Timeline plots milestones, billing dates, sent/paid dots" },
+      { tone: "write", kind: "Tracked", label: "Value, invoiced, received, missing, remaining, extras" },
+    ],
+  },
+  {
+    icon: <KanbanSquare size={16} strokeWidth={1.5} />,
+    title: "Work the task board",
+    blurb: "One board for every milestone and task across the firm.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Add a task (or firm milestone) · assign a partner" },
       { tone: "claude", kind: "System", label: "Drops a typed note in that partner's Claude inbox" },
-      { tone: "review", kind: "They review", label: "Owner sees it, works it, marks it done" },
-      { tone: "write", kind: "Saved", label: "Task row + system notification + AuditLog" },
+      { tone: "review", kind: "They work", label: "Drag the card To Do → In Progress → Review → Done" },
+      { tone: "write", kind: "Saved", label: "Status + assignee + category + AuditLog · everyone sees it" },
     ],
   },
 ];

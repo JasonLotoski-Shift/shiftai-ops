@@ -198,8 +198,12 @@ export async function extractUnified(input: {
 
   // Build the set of valid open-task ids (project targets only) for reassign validation.
   const openTaskIds = new Set<string>();
+  const milestoneIds = new Set<string>();
   for (const t of loaded) {
-    if (t.kind === "project") for (const ot of t.openTasks) openTaskIds.add(ot.id);
+    if (t.kind === "project") {
+      for (const ot of t.openTasks) openTaskIds.add(ot.id);
+      for (const m of t.milestones) if (m.id) milestoneIds.add(m.id);
+    }
   }
 
   // ── Stamp the diff: re-read each record's live overwritable values and set
@@ -260,6 +264,7 @@ export async function extractUnified(input: {
     ownerHint: t.ownerHint,
     clientId: t.clientId,
     projectId: t.projectId,
+    milestoneId: t.milestoneId && milestoneIds.has(t.milestoneId) ? t.milestoneId : null,
     reassignTaskId: t.reassignTaskId && openTaskIds.has(t.reassignTaskId) ? t.reassignTaskId : null,
   }));
 
@@ -434,16 +439,17 @@ export async function approveUnified(
         totalReplaces += res.replaces.length;
         replaceDetail.push(...res.replaces);
 
-        // Approved milestones.
+        // Approved milestones. Undated stays null (off the timeline).
         for (const m of r.milestones ?? []) {
           if (!m.title?.trim()) continue;
           const d = m.dueDate ? new Date(m.dueDate) : null;
           await tx.milestone.create({
             data: {
               title: m.title.trim(),
-              dueDate: d && !Number.isNaN(d.getTime()) ? d : new Date(),
+              dueDate: d && !Number.isNaN(d.getTime()) ? d : null,
               status: (m.status as MilestoneStatus) ?? ("pending" as MilestoneStatus),
               projectId: r.recordId,
+              category: "project",
             },
           });
           milestonesCreated++;
@@ -511,6 +517,9 @@ export async function approveUnified(
           assignedById: partnerId,
           clientId: t.clientId,
           projectId: t.projectId,
+          milestoneId: t.milestoneId,
+          // Derive the board category from scope (project/client → project, else firm).
+          category: t.projectId || t.clientId ? "project" : "firm",
         },
       });
       tasksCreated++;

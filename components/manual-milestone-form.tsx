@@ -11,24 +11,33 @@ import { Plus, X } from "lucide-react";
 
 const STATUSES = ["pending", "in_progress", "complete", "at_risk"] as const;
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+type PartnerOption = { id: string; name: string; initials: string };
 
-export function ManualMilestoneForm({ projectId }: { projectId: string }) {
+export function ManualMilestoneForm({
+  projectId,
+  partners,
+  currentPartnerId,
+}: {
+  projectId: string;
+  partners: PartnerOption[];
+  currentPartnerId?: string;
+}) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
-  const [dueDate, setDueDate] = useState(todayISO());
+  // Date is optional — blank means an undated milestone (off the timeline).
+  const [dueDate, setDueDate] = useState("");
   const [status, setStatus] = useState<(typeof STATUSES)[number]>("pending");
+  const [ownerId, setOwnerId] = useState(currentPartnerId ?? "");
 
   function resetForm() {
     setTitle("");
-    setDueDate(todayISO());
+    setDueDate("");
     setStatus("pending");
+    setOwnerId(currentPartnerId ?? "");
     setError(null);
   }
 
@@ -40,7 +49,14 @@ export function ManualMilestoneForm({ projectId }: { projectId: string }) {
     setSaving(true);
     setError(null);
     try {
-      await createMilestone(projectId, { title, dueDate, status });
+      // category auto-defaults to "project" server-side (scope-derived) — don't set it.
+      await createMilestone({
+        projectId,
+        title,
+        dueDate: dueDate || null,
+        status,
+        ownerId: ownerId || null,
+      });
       resetForm();
       setShowForm(false);
       router.refresh();
@@ -83,9 +99,21 @@ export function ManualMilestoneForm({ projectId }: { projectId: string }) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Due</Label>
+          <Label>Owner</Label>
+          <Select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+            <option value="">Unassigned</option>
+            {partners.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.id === currentPartnerId ? " (you)" : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Due (optional)</Label>
           <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">

@@ -9,7 +9,7 @@ import { Readable } from "node:stream";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { drive } from "@/lib/drive";
+import { drive, seedClientSubfolders } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
@@ -35,9 +35,11 @@ import { formatCAD, formatDate } from "@/lib/format";
  * — workspace + engagement charter + per-client CLAUDE.md). For Phase 3
  * this is the minimum that flips the deal and creates the records.
  */
+const VALID_PROJECT_TYPES_CONVERT = ["discovery_report", "pilot_project", "monthly_project", "full_build"];
+
 export async function convertDeal(
   dealId: string,
-  input: { scope: string },
+  input: { scope: string; projectType?: string },
 ) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
@@ -81,12 +83,22 @@ export async function convertDeal(
     throw new Error("Drive folder creation returned no ID");
   }
 
+  // Seed the standard subfolder structure (best-effort — never blocks the
+  // Client/Project create if a subfolder hiccups).
+  await seedClientSubfolders(folderId);
+
   // Sensible defaults for fields not collected by the modal — partners
   // can edit on the Client / Project pages after convert.
   const workspacePath = `C:\\Users\\jason\\Desktop\\Shift\\03-Clients\\${deal.company.replace(/\s+/g, "")}`;
   const startDate = new Date();
   const targetEndDate = new Date(startDate);
   targetEndDate.setDate(targetEndDate.getDate() + 28); // ~4 weeks for Discovery
+
+  // Engagement type — defaults to a discovery report (matches the seeded
+  // "Phase 1 — Discovery" project); the partner can change it on the project.
+  const projectType = (input.projectType && VALID_PROJECT_TYPES_CONVERT.includes(input.projectType))
+    ? input.projectType
+    : "discovery_report";
 
   const result = await prisma.$transaction(async (tx) => {
     const client = await tx.client.create({
@@ -111,6 +123,7 @@ export async function convertDeal(
       data: {
         name: `${deal.company} · Phase 1 — Discovery`,
         phase: "discovery",
+        projectType: projectType as never,
         status: "on_track",
         startDate,
         targetEndDate,

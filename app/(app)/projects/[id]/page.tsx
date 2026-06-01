@@ -5,15 +5,17 @@ import { Header } from "@/components/header";
 import { Card, CardBody, CardHeader, Label, Badge, Button, Avatar, EmptyState } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate } from "@/lib/format";
-import { DeliveryTimeline, type TimelineMilestone } from "@/components/delivery-timeline";
+import { ProjectTimeline } from "@/components/project-timeline";
+import { ProjectTypeEdit } from "@/components/project-type-edit";
+import { MilestoneEpic } from "@/components/milestone-epic";
+import { ProjectFinancials } from "@/components/project-financials";
 import { ProjectFeeEdit } from "@/components/project-fee-edit";
 import { ManualMilestoneForm } from "@/components/manual-milestone-form";
 import { ManualDeliverableForm } from "@/components/manual-deliverable-form";
 import { DeliverableTasks } from "@/components/deliverable-tasks";
-import { BillingScheduleEditor } from "@/components/billing-schedule-editor";
 import { SendInvoiceModal } from "@/components/send-invoice-modal";
 import { ProjectDropPanel } from "@/components/project-drop-panel";
-import { ArrowLeft, Bot, Check, Circle, AlertTriangle, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink, FileInput } from "lucide-react";
+import { ArrowLeft, Bot, Check, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink, FileInput } from "lucide-react";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -25,7 +27,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         client: true,
         partnerLead: true,
         consultants: true,
-        milestones: { orderBy: { dueDate: "asc" } },
+        milestones: {
+          orderBy: { dueDate: "asc" },
+          include: {
+            owner: { select: { id: true, name: true, initials: true } },
+            tasks: { include: { owner: { select: { name: true, initials: true } } } },
+          },
+        },
         invoices: true,
         installments: { orderBy: { sortOrder: "asc" } },
         artifacts: {
@@ -60,17 +68,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const feeBurn = project.budgetFee > 0 ? (invoicedTotal / project.budgetFee) * 100 : 0;
   const remainingFee = project.budgetFee - invoicedTotal;
 
-  const timelineMilestones: TimelineMilestone[] = projectMilestones.map((m) => ({
-    id: m.id,
-    title: m.title,
-    dueDate: m.dueDate,
-    status: m.status,
-  }));
-
   return (
     <>
       <Header
-        eyebrow={`${client.company} · ${project.phase}`}
+        eyebrow={client.company}
         title={project.name.split("·")[1]?.trim() ?? project.name}
         actions={
           <>
@@ -98,11 +99,40 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         }
       />
 
-      <div className="px-8 py-6">
+      <div className="px-8 py-6 flex items-center justify-between gap-4">
         <Link href="/projects" className="label hover:text-bone flex items-center gap-2">
           <ArrowLeft size={12} strokeWidth={1.5} />
           Back to projects
         </Link>
+        <ProjectTypeEdit projectId={project.id} projectType={project.projectType} />
+      </div>
+
+      {/* Delivery timeline — full-width, outside the 2/3 column grid */}
+      <div className="px-8 pb-8">
+        <ProjectTimeline
+          startDate={project.startDate}
+          targetEndDate={project.targetEndDate}
+          milestones={projectMilestones.map((m) => ({
+            id: m.id,
+            title: m.title,
+            status: m.status,
+            dueDate: m.dueDate,
+          }))}
+          installments={projectInstallments.map((i) => ({
+            id: i.id,
+            label: i.label,
+            amount: i.amount,
+            status: i.status,
+            dueDate: i.dueDate,
+          }))}
+          invoices={projectInvoices.map((i) => ({
+            id: i.id,
+            number: i.number,
+            status: i.status,
+            issuedAt: i.issuedAt,
+            paidAt: i.paidAt,
+          }))}
+        />
       </div>
 
       <div className="px-8 pb-12 grid grid-cols-3 gap-8">
@@ -142,75 +172,28 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
           <Card>
             <CardHeader>
-              <h2 className="title-md">Delivery timeline</h2>
-            </CardHeader>
-            <CardBody>
-              <DeliveryTimeline
-                startDate={project.startDate}
-                targetEndDate={project.targetEndDate}
-                milestones={timelineMilestones}
-                budgetFee={project.budgetFee}
-                installments={projectInstallments.map((i) => ({
-                  id: i.id,
-                  label: i.label,
-                  amount: i.amount,
-                  dueDate: i.dueDate,
-                  status: i.status,
-                }))}
-              />
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader>
               <h2 className="title-md">Milestones</h2>
             </CardHeader>
             {projectMilestones.length === 0 ? (
               <EmptyState icon={<Check size={22} strokeWidth={1.5} />} title="No milestones yet" hint="Milestones added to this project will appear here." compact />
             ) : (
-            <div className="flex flex-col">
-              {projectMilestones.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center gap-4 px-5 py-4"
-                >
-                  <div className="shrink-0">
-                    {m.status === "complete" ? (
-                      <div className="w-6 h-6 bg-diagnostic-steel/20 border border-diagnostic-steel/50 rounded-[var(--radius-sm)] flex items-center justify-center">
-                        <Check size={12} strokeWidth={2} className="text-diagnostic-steel" />
-                      </div>
-                    ) : m.status === "at_risk" ? (
-                      <div className="w-6 h-6 bg-flag-red/20 border border-flag-red/50 rounded-[var(--radius-sm)] flex items-center justify-center">
-                        <AlertTriangle size={12} strokeWidth={2} className="text-flag-red" />
-                      </div>
-                    ) : m.status === "in_progress" ? (
-                      <div className="w-6 h-6 bg-track-gold-dim/30 border border-track-gold rounded-[var(--radius-sm)] flex items-center justify-center mono text-[10px] text-track-gold">
-                        <Circle size={8} strokeWidth={3} className="text-track-gold animate-pulse" fill="currentColor" />
-                      </div>
-                    ) : (
-                      <div className="w-6 h-6 border border-graphite-2 rounded-[var(--radius-sm)] flex items-center justify-center">
-                        <Circle size={8} strokeWidth={1.5} className="text-bone-mute" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[14px] text-bone">{m.title}</div>
-                    <div className="label mt-0.5">Due {formatDate(m.dueDate)}</div>
-                  </div>
-                  <Badge
-                    tone={
-                      m.status === "complete" ? "steel" :
-                      m.status === "at_risk" ? "red" :
-                      m.status === "in_progress" ? "gold" : "neutral"
-                    }
-                  >
-                    {m.status.replace("_", "-")}
-                  </Badge>
-                </div>
-              ))}
-            </div>
+              <div className="flex flex-col">
+                {projectMilestones.map((m) => (
+                  <MilestoneEpic
+                    key={m.id}
+                    milestone={m}
+                    projectId={project.id}
+                    partners={partners}
+                    currentPartnerId={currentPartnerId}
+                  />
+                ))}
+              </div>
             )}
-            <ManualMilestoneForm projectId={project.id} />
+            <ManualMilestoneForm
+              projectId={project.id}
+              partners={partners}
+              currentPartnerId={currentPartnerId}
+            />
           </Card>
 
           <Card>
@@ -277,10 +260,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </Card>
 
           <Card>
-            <BillingScheduleEditor
+            <ProjectFinancials
               projectId={project.id}
-              installments={projectInstallments}
               budgetFee={project.budgetFee}
+              invoices={projectInvoices}
+              installments={projectInstallments}
             />
           </Card>
         </div>

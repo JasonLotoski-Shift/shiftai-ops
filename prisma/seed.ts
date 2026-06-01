@@ -172,7 +172,7 @@ async function main() {
       data: {
         id: m.id,
         title: m.title,
-        dueDate: new Date(m.dueDate),
+        dueDate: m.dueDate ? new Date(m.dueDate) : null,
         status: toEnum(m.status) as any,
         projectId: m.projectId,
       },

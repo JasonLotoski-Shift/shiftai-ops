@@ -36,3 +36,42 @@ export function folderIdFromUrl(url: string): string {
   if (!m) throw new Error(`Could not extract folder ID from URL: ${url}`);
   return m[1];
 }
+
+// The standard subfolder structure seeded inside every new client folder.
+// Mirrors the onboard-client skill's scaffold (skills/onboard-client/SKILL.md).
+export const CLIENT_SUBFOLDERS = [
+  "01-Discovery",
+  "02-Proposals-SOW",
+  "03-Build",
+  "04-Deliverables",
+  "05-Admin",
+] as const;
+
+// Create the standard client subfolders inside a freshly created client folder.
+// Best-effort: a hiccup here must NOT block client creation (the bare folder +
+// Client row is the critical path; subfolders are scaffold). Failures are logged
+// and the IDs of whatever was created are returned for auditing.
+export async function seedClientSubfolders(
+  parentId: string,
+): Promise<{ created: string[]; failed: string[] }> {
+  const created: string[] = [];
+  const failed: string[] = [];
+  for (const name of CLIENT_SUBFOLDERS) {
+    try {
+      await drive.files.create({
+        requestBody: {
+          name,
+          mimeType: "application/vnd.google-apps.folder",
+          parents: [parentId],
+        },
+        fields: "id",
+        supportsAllDrives: true,
+      });
+      created.push(name);
+    } catch (e) {
+      console.warn(`seedClientSubfolders: failed to create "${name}" in ${parentId}:`, e);
+      failed.push(name);
+    }
+  }
+  return { created, failed };
+}

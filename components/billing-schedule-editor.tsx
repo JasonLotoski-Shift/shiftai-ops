@@ -31,6 +31,8 @@ export type ScheduleInstallment = {
   dueDate: Date | string | null;
   sortOrder: number;
   status: InstallmentStatus;
+  isExtra: boolean;
+  invoiceId?: string | null;
 };
 
 const TRIGGER_LABELS: Record<Trigger, string> = {
@@ -52,9 +54,9 @@ function statusLabel(s: InstallmentStatus) {
   return s.replace("_", "-");
 }
 
-type DraftRow = { label: string; amount: string; trigger: Trigger; dueDate: string };
+type DraftRow = { label: string; amount: string; trigger: Trigger; dueDate: string; isExtra: boolean };
 
-const EMPTY_DRAFT: DraftRow = { label: "", amount: "", trigger: "manual", dueDate: "" };
+const EMPTY_DRAFT: DraftRow = { label: "", amount: "", trigger: "manual", dueDate: "", isExtra: false };
 
 export function BillingScheduleEditor({
   projectId,
@@ -102,6 +104,7 @@ export function BillingScheduleEditor({
       amount: String(row.amount),
       trigger: row.trigger,
       dueDate: row.dueDate ? new Date(row.dueDate).toISOString().slice(0, 10) : "",
+      isExtra: row.isExtra,
     });
     setError(null);
   }
@@ -121,6 +124,7 @@ export function BillingScheduleEditor({
           amount: Number(draft.amount),
           trigger: draft.trigger,
           dueDate: draft.dueDate || null,
+          isExtra: draft.isExtra,
         }),
       cancel,
     );
@@ -134,6 +138,7 @@ export function BillingScheduleEditor({
           amount: Number(draft.amount),
           trigger: draft.trigger,
           dueDate: draft.dueDate || null,
+          isExtra: draft.isExtra,
         }),
       cancel,
     );
@@ -218,7 +223,14 @@ export function BillingScheduleEditor({
             className="grid grid-cols-[1fr_120px_120px_120px_80px] gap-4 px-5 py-3 items-center"
           >
             <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-[14px] text-bone truncate">{row.label}</span>
+              <span className="text-[14px] text-bone truncate flex items-center gap-2">
+                <span className="truncate">{row.label}</span>
+                {row.isExtra && (
+                  <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] font-medium rounded-[var(--radius-pill)] border border-track-gold/40 bg-track-gold-dim/20 text-track-gold">
+                    Extra
+                  </span>
+                )}
+              </span>
               {row.dueDate && (
                 <span className="text-[11px] text-bone-mute tabular-nums">
                   Due {formatDate(row.dueDate)}
@@ -306,6 +318,15 @@ function DraftRowEditor({
           value={draft.dueDate}
           onChange={(e) => setDraft({ ...draft, dueDate: e.target.value })}
         />
+        <label className="flex items-center gap-2 text-[12px] text-bone-dim cursor-pointer select-none pt-0.5">
+          <input
+            type="checkbox"
+            checked={draft.isExtra}
+            onChange={(e) => setDraft({ ...draft, isExtra: e.target.checked })}
+            className="accent-track-gold w-3.5 h-3.5"
+          />
+          Out-of-scope extra
+        </label>
       </div>
       <Select
         value={draft.trigger}

@@ -45,6 +45,7 @@ export type ParsedTask = {
   ownerHint: string | null;
   clientId: string | null;
   projectId: string | null;
+  milestoneId: string | null;
   reassignTaskId: string | null;
 };
 
@@ -201,6 +202,7 @@ function parseTasks(v: unknown): ParsedTask[] {
       ownerHint: str(t.ownerHint) || null,
       clientId: str(t.clientId) || null,
       projectId: str(t.projectId) || null,
+      milestoneId: str(t.milestoneId) || null,
       reassignTaskId: str(t.reassignTaskId) || null,
     }));
 }

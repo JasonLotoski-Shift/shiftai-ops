@@ -155,6 +155,34 @@ enum IngestStatus {
   rejected
 }
 
+// Project type — the kind of engagement (replaces the discovery/build/run
+// `phase` in the UI; phase column is retained for back-compat).
+enum ProjectType {
+  discovery_report @map("discovery-report")
+  pilot_project    @map("pilot-project")
+  monthly_project  @map("monthly-project")
+  full_build       @map("full-build")
+}
+
+// Work category — colours/tags a milestone or task on the board. Defaults from
+// what it's tied to (project → project, deal → pipeline, else firm/other) and
+// is editable. Firm items can carry a free sub-label (BD, Admin).
+enum WorkCategory {
+  firm
+  project
+  pipeline
+  other
+}
+
+// Task board status — the Kanban columns. `done` boolean is kept in sync
+// (done === status "done") so existing dashboard widgets keep working.
+enum TaskStatus {
+  todo
+  in_progress @map("in-progress")
+  in_review   @map("in-review")
+  done
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Partner — firm members. Doubles as the actor reference for owner /
 // lead fields. NextAuth tables will be added when SSO is wired —
@@ -175,6 +203,7 @@ model Partner {
   projectsConsult Project[] @relation("ProjectConsultants")
   tasksOwned      Task[]    @relation("TaskOwner")
   tasksAssigned   Task[]    @relation("TaskAssignedBy")
+  milestonesOwned Milestone[] @relation("MilestoneOwner")
   agentPlans      AgentPlan[] @relation("AgentPlanCreatedBy")
   channelMemberships ChannelMember[]
   messagesAuthored   Message[]
@@ -268,7 +297,8 @@ model Deal {
   partnerLead   Partner @relation("PartnerDealLead", fields: [partnerLeadId], references: [id])
   partnerLeadId String
 
-  artifacts Artifact[]
+  artifacts  Artifact[]
+  milestones Milestone[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -314,10 +344,11 @@ model Client {
   billingContact   Contact?  @relation("ClientBillingContact", fields: [billingContactId], references: [id])
   billingContactId String?
 
-  projects  Project[]
-  invoices  Invoice[]
-  tasks     Task[]
-  artifacts Artifact[]
+  projects   Project[]
+  invoices   Invoice[]
+  tasks      Task[]
+  artifacts  Artifact[]
+  milestones Milestone[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -331,6 +362,9 @@ model Project {
   id            String           @id @default(cuid())
   name          String
   phase         ProjectPhase
+  // Engagement type — shown in the UI in place of `phase` (which is retained
+  // for back-compat). Nullable so existing rows need no backfill.
+  projectType   ProjectType?
   status        EngagementStatus
   startDate     DateTime
   targetEndDate DateTime
@@ -371,6 +405,9 @@ model BillingInstallment {
   dueDate   DateTime?
   sortOrder Int                @default(0)
   status    InstallmentStatus  @default(planned)
+  // Out-of-scope billing line (change order / add-on). Summed as "Extras";
+  // does not count against "Remaining to be billed".
+  isExtra   Boolean            @default(false)
 
   project   Project @relation(fields: [projectId], references: [id])
   projectId String
@@ -392,14 +429,35 @@ model BillingInstallment {
 model Milestone {
   id      String          @id @default(cuid())
   title   String
-  dueDate DateTime
+  // Nullable: a milestone may be undated (then it doesn't appear on the timeline).
+  dueDate DateTime?
   status  MilestoneStatus
 
-  project   Project @relation(fields: [projectId], references: [id])
-  projectId String
+  // Universal parent: a milestone may be tied to a project, a deal/client, or
+  // nothing (firm-level BD/Admin). All scope FKs are nullable.
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  deal      Deal?    @relation(fields: [dealId], references: [id])
+  dealId    String?
+
+  // Assigned partner (the milestone owner).
+  owner   Partner? @relation("MilestoneOwner", fields: [ownerId], references: [id])
+  ownerId String?
+
+  // Board categorisation — colour/tag. Defaults from scope; editable.
+  category      WorkCategory @default(other)
+  categoryLabel String? // free sub-tag for firm work (e.g. "BD", "Admin")
+
+  // Sub-tasks under this milestone (epic → tasks).
+  tasks Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([ownerId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -460,7 +518,13 @@ model Task {
   due       DateTime
   priority  TaskPriority
   relatedTo String?
+  // Board column. `done` is kept in sync (done === status "done") so existing
+  // dashboard widgets and toggleTaskDone keep working.
+  status    TaskStatus   @default(todo)
   done      Boolean      @default(false)
+  // Board categorisation — colour/tag. Defaults from scope; editable.
+  category      WorkCategory @default(other)
+  categoryLabel String?
   // Free-text context for the task — manual notes and/or suggested context.
   // No task is a bare button: this is the payload API agents will read (Phase 4+).
   context   String?
@@ -482,6 +546,9 @@ model Task {
   // The deliverable this task hangs off, if any (deliverable card → add task).
   artifact   Artifact? @relation(fields: [artifactId], references: [id])
   artifactId String?
+  // The milestone (epic) this task is a sub-task of, if any.
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id])
+  milestoneId String?
 
   // Messages that reference this task render as inline task cards in chat.
   // One Task row, surfaced in three places (chat card, Tasks tab, feed).
@@ -493,6 +560,8 @@ model Task {
   @@index([clientId])
   @@index([projectId])
   @@index([artifactId])
+  @@index([milestoneId])
+  @@index([status])
 }
 
 // ──────────────────────────────────────────────────────────────────────

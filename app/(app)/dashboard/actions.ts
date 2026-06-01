@@ -34,7 +34,9 @@ export async function toggleTaskDone(taskId: string) {
   await prisma.$transaction(async (tx) => {
     await tx.task.update({
       where: { id: taskId },
-      data: { done: nextDone },
+      // Keep the board status in sync. Completing → "done"; reopening returns
+      // it to "todo" (the board's first column).
+      data: { done: nextDone, status: nextDone ? "done" : "todo" },
     });
     await writeAudit(tx, {
       actor,

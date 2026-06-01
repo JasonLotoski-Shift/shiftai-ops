@@ -255,6 +255,7 @@ export default function UnifiedProposalCard({
         ownerId: st.ownerId,
         clientId: t.clientId,
         projectId: t.projectId,
+        milestoneId: t.milestoneId,
         reassignTaskId: t.reassignTaskId,
       }));
 

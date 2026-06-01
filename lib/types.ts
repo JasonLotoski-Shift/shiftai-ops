@@ -110,6 +110,7 @@ export type Project = {
   clientId: string;
   name: string;
   phase: "discovery" | "build" | "run";
+  projectType?: ProjectType; // shown in the UI in place of phase
   status: EngagementStatus;
   startDate: string;
   targetEndDate: string;
@@ -119,12 +120,22 @@ export type Project = {
   description: string;
 };
 
+export type ProjectType = "discovery-report" | "pilot-project" | "monthly-project" | "full-build";
+export type WorkCategory = "firm" | "project" | "pipeline" | "other";
+export type TaskStatus = "todo" | "in-progress" | "in-review" | "done";
+
 export type Milestone = {
   id: string;
-  projectId: string;
+  // Universal parent — any scope FK may be null (firm-level milestone).
+  projectId?: string;
+  clientId?: string;
+  dealId?: string;
+  ownerId?: string; // assigned partner
   title: string;
-  dueDate: string;
+  dueDate?: string; // optional — undated milestones don't show on the timeline
   status: "pending" | "in-progress" | "complete" | "at-risk";
+  category?: WorkCategory; // DB-defaulted; optional in the fixture subset
+  categoryLabel?: string;
 };
 
 export type Invoice = {
@@ -156,6 +167,7 @@ export type BillingInstallment = {
   sortOrder: number;
   status: InstallmentStatus;
   invoiceId?: string; // set once billed
+  isExtra?: boolean; // out-of-scope billing line
 };
 
 export type Activity = {
@@ -183,7 +195,11 @@ export type Task = {
   clientId?: string;
   projectId?: string;
   artifactId?: string; // deliverable this task hangs off, if any
-  done: boolean;
+  milestoneId?: string; // milestone (epic) this task is a sub-task of, if any
+  status?: TaskStatus; // board column (DB-defaulted; optional in the fixture subset)
+  category?: WorkCategory; // card colour/tag (DB-defaulted)
+  categoryLabel?: string;
+  done: boolean; // kept in sync with status === "done"
 };
 
 /* Artifact — first-class deliverable tracking.

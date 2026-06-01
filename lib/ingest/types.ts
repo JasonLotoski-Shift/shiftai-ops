@@ -63,6 +63,7 @@ export type TaskProposal = {
   ownerHint: string | null; // name the model parsed; UI maps to a partnerId
   clientId: string | null;
   projectId: string | null;
+  milestoneId: string | null; // attach to an existing milestone (epic) by id, else null
   reassignTaskId: string | null; // non-null => re-own an existing open task
 };
 
@@ -106,6 +107,7 @@ export type ApprovedTask = {
   ownerId: string; // resolved partner id
   clientId: string | null;
   projectId: string | null;
+  milestoneId: string | null;
   reassignTaskId: string | null;
 };
 

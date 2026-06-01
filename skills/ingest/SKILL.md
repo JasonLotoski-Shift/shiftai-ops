@@ -32,7 +32,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
       "stageSignal": { "suggestion": "e.g. proposal", "rationale": "Why the content implies it" }
     }
   ],
-  "tasks": [ { "title": "Short imperative task", "context": "1–2 sentences", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "ownerHint": "a roster name or null", "clientId": "id or null", "projectId": "id or null", "reassignTaskId": "an OPEN-TASK id or null" } ]
+  "tasks": [ { "title": "Short imperative task", "context": "1–2 sentences", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "ownerHint": "a roster name or null", "clientId": "id or null", "projectId": "id or null", "milestoneId": "a listed milestone id or null", "reassignTaskId": "an OPEN-TASK id or null" } ]
 }
 ```
 
@@ -47,6 +47,6 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 - **Dates only if stated.** Use a date only when the content names one. Otherwise `null`.
 - **Scope to the named targets.** Only propose changes for the records supplied in the context block. Don't invent records for other clients/projects.
 - **Never assert a stage moved.** `stageSignal` is a suggestion the partner acts on, nothing more.
-- **Tasks:** imperative and assignable ("Send the pilot scope to Heather by Fri"). Set `ownerHint` only to a roster name that's actually named in the content. Set `reassignTaskId` ONLY to a supplied open-task id, and ONLY when the content explicitly hands that exact task to a different named owner — otherwise `null` (it's a new task).
+- **Tasks:** imperative and assignable ("Send the pilot scope to Heather by Fri"). Set `ownerHint` only to a roster name that's actually named in the content. Set `milestoneId` ONLY to a milestone id listed under the project's Current milestones, and ONLY when the content ties the task to that milestone — otherwise `null`. Set `reassignTaskId` ONLY to a supplied open-task id, and ONLY when the content explicitly hands that exact task to a different named owner — otherwise `null` (it's a new task).
 - **Mark gaps, never guess.** Where a needed detail is genuinely unknown, write `[NEEDS INPUT]` inline rather than inventing a value.
 - If the content is too thin to extract anything, return the object with empty arrays and a one-line `summary`.

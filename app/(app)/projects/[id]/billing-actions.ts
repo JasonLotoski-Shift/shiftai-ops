@@ -51,7 +51,7 @@ function validAmount(raw: number): number {
 
 export async function createInstallment(
   projectId: string,
-  input: { label: string; amount: number; trigger?: string; dueDate?: string | null },
+  input: { label: string; amount: number; trigger?: string; dueDate?: string | null; isExtra?: boolean },
 ) {
   const { actor } = await getActor();
 
@@ -78,7 +78,7 @@ export async function createInstallment(
 
   const created = await prisma.$transaction(async (tx) => {
     const row = await tx.billingInstallment.create({
-      data: { projectId, label, amount, trigger, dueDate, sortOrder, status: "planned" },
+      data: { projectId, label, amount, trigger, dueDate, sortOrder, status: "planned", isExtra: input.isExtra ?? false },
     });
     await writeAudit(tx, {
       actor,
@@ -96,7 +96,7 @@ export async function createInstallment(
 
 export async function updateInstallment(
   installmentId: string,
-  input: { label?: string; amount?: number; trigger?: string; dueDate?: string | null },
+  input: { label?: string; amount?: number; trigger?: string; dueDate?: string | null; isExtra?: boolean },
 ) {
   const { actor } = await getActor();
 
@@ -109,7 +109,8 @@ export async function updateInstallment(
     throw new Error(`Can't edit an installment once it's ${before.status} — it's been invoiced`);
   }
 
-  const data: { label?: string; amount?: number; trigger?: InstallmentTrigger; dueDate?: Date | null } = {};
+  const data: { label?: string; amount?: number; trigger?: InstallmentTrigger; dueDate?: Date | null; isExtra?: boolean } = {};
+  if (input.isExtra !== undefined) data.isExtra = input.isExtra;
   if (input.label !== undefined) {
     const label = input.label.trim();
     if (!label) throw new Error("Give the installment a label");

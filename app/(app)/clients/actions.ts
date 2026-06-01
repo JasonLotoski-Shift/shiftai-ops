@@ -10,7 +10,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { drive } from "@/lib/drive";
+import { drive, seedClientSubfolders } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import type { Industry } from "@/lib/generated/prisma/enums";
 
@@ -100,6 +100,10 @@ export async function createClient(input: CreateClientInput) {
   if (!folderId || !folderUrl) {
     throw new Error("Drive folder creation returned no ID");
   }
+
+  // Seed the standard subfolder structure (best-effort — never blocks the
+  // Client create if a subfolder hiccups).
+  await seedClientSubfolders(folderId);
 
   const workspacePath = `C:\\Users\\jason\\Desktop\\Shift\\03-Clients\\${company.replace(/\s+/g, "")}`;
 

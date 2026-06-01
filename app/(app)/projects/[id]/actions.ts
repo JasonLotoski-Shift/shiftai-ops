@@ -19,6 +19,8 @@ import type {
   MilestoneStatus,
   ArtifactType,
   TaskPriority,
+  ProjectType,
+  WorkCategory,
 } from "@/lib/generated/prisma/enums";
 
 const VALID_MILESTONE_STATUSES: MilestoneStatus[] = [
@@ -39,6 +41,23 @@ const VALID_ARTIFACT_TYPES: ArtifactType[] = [
 ];
 
 const VALID_PRIORITIES: TaskPriority[] = ["high", "medium", "low"];
+
+const VALID_PROJECT_TYPES: ProjectType[] = [
+  "discovery_report",
+  "pilot_project",
+  "monthly_project",
+  "full_build",
+];
+
+const VALID_CATEGORIES: WorkCategory[] = ["firm", "project", "pipeline", "other"];
+
+// Default a work category from what the item is tied to.
+function deriveCategory(scope: { projectId?: string | null; dealId?: string | null; clientId?: string | null }): WorkCategory {
+  if (scope.projectId) return "project";
+  if (scope.dealId) return "pipeline";
+  if (scope.clientId) return "project";
+  return "firm";
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // setProjectFee — edit the project's fixed fee (budgetFee). Converted deals
@@ -78,17 +97,60 @@ export async function setProjectFee(projectId: string, amount: number) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// createMilestone — manual partner entry of a project milestone.
+// setProjectType — set/change the engagement type (shown in place of phase).
 // ──────────────────────────────────────────────────────────────────────
 
-export async function createMilestone(
-  projectId: string,
-  input: {
-    title: string;
-    dueDate: string; // ISO date "YYYY-MM-DD"
-    status: string; // underscored Prisma identifier (e.g. "in_progress")
-  },
-) {
+export async function setProjectType(projectId: string, projectType: string) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  if (!VALID_PROJECT_TYPES.includes(projectType as ProjectType)) {
+    throw new Error(`Invalid project type: ${projectType}`);
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, projectType: true },
+  });
+  if (!project) throw new Error("Project not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.project.update({ where: { id: projectId }, data: { projectType: projectType as ProjectType } });
+    await writeAudit(tx, {
+      actor,
+      action: "update.project.type",
+      targetType: "Project",
+      targetId: projectId,
+      changes: { type: { before: project.projectType, after: projectType } },
+    });
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/projects");
+  return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// createMilestone — a milestone is the firm's universal unit of work. It may
+// be tied to a project, a deal/client, or nothing (firm-level BD/Admin). Has
+// an optional owner + a category (defaulted from scope). Date is optional.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function createMilestone(input: {
+  title: string;
+  status?: string; // default "pending"
+  dueDate?: string | null; // optional — undated milestones aren't on the timeline
+  ownerId?: string | null;
+  category?: string; // default derived from scope
+  categoryLabel?: string | null;
+  projectId?: string | null;
+  clientId?: string | null;
+  dealId?: string | null;
+}) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const actor = partnerActor(
@@ -98,25 +160,40 @@ export async function createMilestone(
 
   const title = input.title.trim();
   if (!title) throw new Error("Milestone title is required");
-  if (!VALID_MILESTONE_STATUSES.includes(input.status as MilestoneStatus)) {
+
+  const status = (input.status as MilestoneStatus) ?? "pending";
+  if (!VALID_MILESTONE_STATUSES.includes(status)) {
     throw new Error(`Invalid milestone status: ${input.status}`);
   }
-  const dueDate = new Date(input.dueDate);
-  if (Number.isNaN(dueDate.getTime())) throw new Error(`Invalid due date: ${input.dueDate}`);
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { id: true, name: true },
-  });
-  if (!project) throw new Error("Project not found");
+  let dueDate: Date | null = null;
+  if (input.dueDate) {
+    dueDate = new Date(input.dueDate);
+    if (Number.isNaN(dueDate.getTime())) throw new Error(`Invalid due date: ${input.dueDate}`);
+  }
+
+  const category = (input.category && VALID_CATEGORIES.includes(input.category as WorkCategory)
+    ? (input.category as WorkCategory)
+    : deriveCategory(input));
+
+  // Validate the project (if scoped) so we can name it in the activity feed.
+  const project = input.projectId
+    ? await prisma.project.findUnique({ where: { id: input.projectId }, select: { id: true, name: true } })
+    : null;
+  if (input.projectId && !project) throw new Error("Project not found");
 
   const milestone = await prisma.$transaction(async (tx) => {
     const created = await tx.milestone.create({
       data: {
-        projectId,
         title,
         dueDate,
-        status: input.status as MilestoneStatus,
+        status,
+        category,
+        categoryLabel: input.categoryLabel?.trim() || null,
+        ownerId: input.ownerId || null,
+        projectId: input.projectId || null,
+        clientId: input.clientId || null,
+        dealId: input.dealId || null,
       },
     });
 
@@ -125,28 +202,192 @@ export async function createMilestone(
       action: "create.milestone",
       targetType: "Milestone",
       targetId: created.id,
-      changes: {
-        projectId,
-        title,
-        dueDate: dueDate.toISOString(),
-        status: input.status,
-      },
+      changes: { title, status, category, projectId: input.projectId ?? null, ownerId: input.ownerId ?? null },
     });
 
     await writeActivity(tx, {
       actor,
       type: "status",
-      target: project.name,
+      target: project?.name ?? "Firm",
       detail: `Added milestone — ${title}`,
-      link: `/projects/${projectId}`,
+      link: project ? `/projects/${project.id}` : "/tasks",
     });
 
     return created;
   });
 
-  revalidatePath(`/projects/${projectId}`);
+  if (input.projectId) revalidatePath(`/projects/${input.projectId}`);
   revalidatePath("/projects");
+  revalidatePath("/tasks");
   return { id: milestone.id };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// updateMilestone — edit a milestone's title / date / status / owner /
+// category. dueDate: null clears the date (drops it off the timeline).
+// ──────────────────────────────────────────────────────────────────────
+
+export async function updateMilestone(
+  milestoneId: string,
+  input: {
+    title?: string;
+    dueDate?: string | null;
+    status?: string;
+    ownerId?: string | null;
+    category?: string;
+    categoryLabel?: string | null;
+  },
+) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const before = await prisma.milestone.findUnique({
+    where: { id: milestoneId },
+    select: { id: true, projectId: true, title: true, status: true, dueDate: true, ownerId: true, category: true },
+  });
+  if (!before) throw new Error("Milestone not found");
+
+  const data: Record<string, unknown> = {};
+  if (input.title !== undefined) {
+    const t = input.title.trim();
+    if (!t) throw new Error("Milestone title is required");
+    data.title = t;
+  }
+  if (input.status !== undefined) {
+    if (!VALID_MILESTONE_STATUSES.includes(input.status as MilestoneStatus)) {
+      throw new Error(`Invalid milestone status: ${input.status}`);
+    }
+    data.status = input.status as MilestoneStatus;
+  }
+  if (input.dueDate !== undefined) {
+    if (input.dueDate === null || input.dueDate === "") {
+      data.dueDate = null;
+    } else {
+      const d = new Date(input.dueDate);
+      if (Number.isNaN(d.getTime())) throw new Error(`Invalid due date: ${input.dueDate}`);
+      data.dueDate = d;
+    }
+  }
+  if (input.ownerId !== undefined) data.ownerId = input.ownerId || null;
+  if (input.category !== undefined) {
+    if (!VALID_CATEGORIES.includes(input.category as WorkCategory)) {
+      throw new Error(`Invalid category: ${input.category}`);
+    }
+    data.category = input.category as WorkCategory;
+  }
+  if (input.categoryLabel !== undefined) data.categoryLabel = input.categoryLabel?.trim() || null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.milestone.update({ where: { id: milestoneId }, data });
+    await writeAudit(tx, {
+      actor,
+      action: "update.milestone",
+      targetType: "Milestone",
+      targetId: milestoneId,
+      changes: { fields: Object.keys(data) },
+    });
+  });
+
+  if (before.projectId) revalidatePath(`/projects/${before.projectId}`);
+  revalidatePath("/tasks");
+  return { id: milestoneId };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// createMilestoneTask — a Task hung off a milestone (epic → sub-task).
+// Mirrors createDeliverableTask (assign-to-partner + system notification).
+// ──────────────────────────────────────────────────────────────────────
+
+export async function createMilestoneTask(input: {
+  milestoneId: string;
+  title: string;
+  ownerId: string;
+  priority: string;
+  due: string; // ISO date "YYYY-MM-DD"
+  context?: string;
+}) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const creatorId = session.user.partnerId;
+  const assignerName = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(creatorId, assignerName);
+
+  const title = input.title.trim();
+  if (!title) throw new Error("Task title is required");
+  if (!VALID_PRIORITIES.includes(input.priority as TaskPriority)) {
+    throw new Error(`Invalid priority: ${input.priority}`);
+  }
+  const due = new Date(input.due);
+  if (Number.isNaN(due.getTime())) throw new Error(`Invalid due date: ${input.due}`);
+
+  const milestone = await prisma.milestone.findUnique({
+    where: { id: input.milestoneId },
+    select: { id: true, title: true, projectId: true, clientId: true, category: true },
+  });
+  if (!milestone) throw new Error("Milestone not found");
+
+  const owner = await prisma.partner.findUnique({
+    where: { id: input.ownerId },
+    select: { id: true, name: true },
+  });
+  if (!owner) throw new Error("Assignee not found");
+
+  const assignedById = owner.id === creatorId ? null : creatorId;
+  const context = input.context?.trim() || null;
+
+  const task = await prisma.$transaction(async (tx) => {
+    const created = await tx.task.create({
+      data: {
+        title,
+        priority: input.priority as TaskPriority,
+        due,
+        context,
+        ownerId: owner.id,
+        assignedById,
+        milestoneId: milestone.id,
+        projectId: milestone.projectId,
+        clientId: milestone.clientId,
+        category: milestone.category,
+      },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "create.task.milestone",
+      targetType: "Task",
+      targetId: created.id,
+      changes: { title, milestoneId: milestone.id, ownerId: owner.id, assignedById, priority: input.priority },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: milestone.title,
+      detail: assignedById ? `Assigned task to ${owner.name}` : "Added task",
+      link: milestone.projectId ? `/projects/${milestone.projectId}` : "/tasks",
+    });
+
+    if (assignedById) {
+      await notifyPartner(
+        tx,
+        owner.id,
+        "task_assigned",
+        `${assignerName} assigned you a task: ${title}`,
+        { taskId: created.id, link: "/tasks" },
+      );
+    }
+
+    return created;
+  });
+
+  if (milestone.projectId) revalidatePath(`/projects/${milestone.projectId}`);
+  revalidatePath("/tasks");
+  revalidatePath("/messages");
+  return { id: task.id };
 }
 
 // ──────────────────────────────────────────────────────────────────────

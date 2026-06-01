@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X, ArrowRight, Check, FolderPlus, ShieldAlert } from "lucide-react";
-import { Button, Textarea, Label } from "@/components/ui";
+import { Button, Textarea, Label, Select } from "@/components/ui";
 import { Wordmark } from "@/components/wordmark";
+import { TYPE_LABELS } from "@/components/project-type-edit";
 import type {
   DealModel as Deal,
   PartnerModel as Partner,
@@ -36,6 +37,7 @@ export function ConvertDealModal({
   const [scope, setScope] = useState(
     `Discovery (4 weeks) → Build (12 weeks) → Run (open-ended).\n\nScope: custom internal ops platform with AI layer, integrating with existing systems. Specifics confirmed during discovery embed.`,
   );
+  const [projectType, setProjectType] = useState<string>("discovery_report");
   const [error, setError] = useState<string | null>(null);
   const [createdIds, setCreatedIds] = useState<{ clientId: string; projectId: string } | null>(null);
   const [, startTransition] = useTransition();
@@ -45,7 +47,7 @@ export function ConvertDealModal({
     setStep("scaffolding");
     startTransition(async () => {
       try {
-        const res = await convertDeal(deal.id, { scope });
+        const res = await convertDeal(deal.id, { scope, projectType });
         setCreatedIds(res);
         setStep("done");
       } catch (err) {
@@ -107,6 +109,20 @@ export function ConvertDealModal({
                   <Label>Primary contact</Label>
                   <div className="text-[14px] text-bone mt-2">{contact?.name ?? "—"}</div>
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label>Project type</Label>
+                <Select
+                  value={projectType}
+                  onChange={(e) => setProjectType(e.target.value)}
+                >
+                  {(["discovery_report", "pilot_project", "monthly_project", "full_build"] as const).map((t) => (
+                    <option key={t} value={t}>
+                      {TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                </Select>
               </div>
 
               <div className="flex flex-col gap-2">
