@@ -6,6 +6,7 @@
 // collision-stacking, and hover tooltips. The interactive wrapper that builds
 // the marker list + the edit legend lives in project-timeline.tsx.
 
+import { Check } from "lucide-react";
 import { formatDate } from "@/lib/format";
 
 export type TimelineMarkerKind = "milestone" | "installment" | "invoice-sent" | "invoice-paid";
@@ -14,10 +15,13 @@ export type TimelineMarkerKind = "milestone" | "installment" | "invoice-sent" | 
 // doesn't hard-code colour classes.
 export type TimelineMarkerTone =
   | "steel" // diagnostic-steel — complete / paid
-  | "gold" // track-gold — in-progress / invoiced / invoice-sent
+  | "gold" // track-gold — milestones
   | "red" // flag-red — at-risk
   | "bone-mute" // muted — planned
-  | "neutral"; // graphite — pending
+  | "neutral" // graphite — pending
+  | "orange" // signal-warming — installments
+  | "green-light" // invoice-sent — invoice sent
+  | "green-deep"; // invoice-paid — invoice paid
 
 export type TimelineMarker = {
   id: string;
@@ -61,6 +65,9 @@ const TONE_DOT: Record<TimelineMarkerTone, string> = {
   red: "bg-flag-red border-flag-red",
   "bone-mute": "bg-bone-mute border-bone-mute",
   neutral: "bg-graphite-2 border-graphite-2",
+  orange: "bg-signal-warming border-signal-warming",
+  "green-light": "bg-invoice-sent border-invoice-sent",
+  "green-deep": "bg-invoice-paid border-invoice-paid",
 };
 
 const TONE_TEXT: Record<TimelineMarkerTone, string> = {
@@ -69,6 +76,9 @@ const TONE_TEXT: Record<TimelineMarkerTone, string> = {
   red: "text-flag-red",
   "bone-mute": "text-bone-mute",
   neutral: "text-bone-mute",
+  orange: "text-signal-warming",
+  "green-light": "text-invoice-sent",
+  "green-deep": "text-invoice-paid",
 };
 
 type PlacedMarker = TimelineMarker & { pct: number; stackIndex: number };
@@ -163,8 +173,9 @@ export function DeliveryTimeline({ startDate, targetEndDate, markers }: Delivery
                     {m.numberLabel}
                   </span>
                 )}
-                {/* glyph — milestone = filled dot; installment = thin tick;
-                    invoice-sent = ring (check); invoice-paid = solid small dot */}
+                {/* glyph — milestone = filled gold dot; installment = orange tick;
+                    invoice-sent = light-green ring; invoice-paid = deep-green
+                    disc with a check inside */}
                 {m.kind === "milestone" && (
                   <span className={`w-3 h-3 rounded-[var(--radius-pill)] border ${TONE_DOT[m.tone]}`} />
                 )}
@@ -175,7 +186,9 @@ export function DeliveryTimeline({ startDate, targetEndDate, markers }: Delivery
                   <span className={`w-3 h-3 rounded-[var(--radius-pill)] border-2 bg-transparent ${TONE_DOT[m.tone].split(" ")[1]}`} />
                 )}
                 {m.kind === "invoice-paid" && (
-                  <span className={`w-2.5 h-2.5 rounded-[var(--radius-pill)] ${TONE_DOT[m.tone]}`} />
+                  <span className={`flex items-center justify-center w-4 h-4 rounded-[var(--radius-pill)] text-bone ${TONE_DOT[m.tone]}`}>
+                    <Check size={10} strokeWidth={2.5} />
+                  </span>
                 )}
               </div>
 
@@ -194,19 +207,21 @@ export function DeliveryTimeline({ startDate, targetEndDate, markers }: Delivery
 
       <div className="flex items-center gap-4 flex-wrap">
         <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
-          <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] border bg-graphite-2 border-graphite-2" />
+          <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] border bg-track-gold border-track-gold" />
           milestone
         </span>
         <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
-          <span className="w-[3px] h-3 rounded-[var(--radius-pill)] bg-bone-mute" />
+          <span className="w-[3px] h-3 rounded-[var(--radius-pill)] bg-signal-warming" />
           installment
         </span>
         <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
-          <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] border-2 border-track-gold" />
+          <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] border-2 border-invoice-sent" />
           invoice sent
         </span>
         <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
-          <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] bg-diagnostic-steel" />
+          <span className="flex items-center justify-center w-3.5 h-3.5 rounded-[var(--radius-pill)] bg-invoice-paid text-bone">
+            <Check size={9} strokeWidth={2.5} />
+          </span>
           invoice paid
         </span>
       </div>

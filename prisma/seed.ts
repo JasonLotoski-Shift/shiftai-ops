@@ -10,6 +10,7 @@ import {
   activities,
   artifacts,
   clients,
+  consultants,
   contacts,
   deals,
   interactions,
@@ -44,12 +45,27 @@ async function main() {
   await prisma.project.deleteMany();
   await prisma.client.deleteMany();
   await prisma.contact.deleteMany();
+  await prisma.consultant.deleteMany();
   await prisma.partner.deleteMany();
 
   console.log(`Inserting ${partners.length} partners…`);
   for (const p of partners) {
     await prisma.partner.create({
       data: { id: p.id, name: p.name, initials: p.initials, role: p.role, email: p.email },
+    });
+  }
+
+  console.log(`Inserting ${consultants.length} consultants…`);
+  for (const co of consultants) {
+    await prisma.consultant.create({
+      data: {
+        id: co.id,
+        name: co.name,
+        role: co.role,
+        defaultPayRateCents: co.defaultPayRateCents,
+        email: co.email,
+        partnerId: co.partnerId,
+      },
     });
   }
 

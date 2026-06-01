@@ -18,6 +18,9 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { applyStandardScheduleTx } from "@/lib/billing/apply";
+import { recomputePayoutsTx } from "@/lib/billing/payouts";
+import { DEFAULT_BILLABLE_RATE_CENTS } from "@/lib/billing/schedule";
 import type { InstallmentTrigger } from "@/lib/generated/prisma/enums";
 
 async function getActor() {
@@ -205,6 +208,233 @@ export async function reorderInstallments(projectId: string, orderedIds: string[
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// FEATURE 4 — Generate the standard 50/25/25 client schedule
+// ──────────────────────────────────────────────────────────────────────
+
+// Produce (or regenerate) the firm's standard 50/25/25 billing schedule from
+// the project's value + delivery window. With force=false it won't overwrite
+// an existing schedule; with force=true it replaces only the planned rows and
+// never touches invoiced/paid installments or extras.
+export async function generateStandardSchedule(projectId: string, opts?: { force?: boolean }) {
+  const { actor } = await getActor();
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, budgetFee: true, startDate: true, targetEndDate: true },
+  });
+  if (!project) throw new Error("Project not found");
+  if (project.budgetFee <= 0) throw new Error("Set a project value before generating a schedule");
+
+  const result = await prisma.$transaction(async (tx) => {
+    const r = await applyStandardScheduleTx(tx, {
+      projectId,
+      value: project.budgetFee,
+      startDate: project.startDate,
+      targetEndDate: project.targetEndDate,
+      force: opts?.force,
+    });
+    if (!r.skipped) {
+      await writeAudit(tx, {
+        actor,
+        action: "generate.schedule",
+        targetType: "Project",
+        targetId: projectId,
+        changes: { value: project.budgetFee, created: r.created, deleted: r.deleted, force: !!opts?.force },
+      });
+    }
+    return r;
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/invoices");
+  return result;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FEATURE 4b — Project economics lines (firm economics)
+//
+// Each line is a person/role on the project with hours + pay rate (cost) +
+// billable rate. Adding a line for a roster consultant auto-applies firm
+// defaults (their pay rate; the firm default billable rate) — that IS "apply
+// firm economics". Overriding a rate flips fromFirmDefault → false. Reconcile
+// math lives in lib/billing/economics.ts; this file only persists + audits.
+// ──────────────────────────────────────────────────────────────────────
+
+function validRateCents(raw: number | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const cents = Math.round(Number(raw));
+  if (!Number.isFinite(cents) || cents < 0) throw new Error("Enter a valid rate (≥ 0)");
+  return cents;
+}
+
+function validHours(raw: number): number {
+  const hours = Number(raw);
+  if (!Number.isFinite(hours) || hours < 0) throw new Error("Enter valid hours (≥ 0)");
+  return Math.round(hours * 100) / 100; // 2dp
+}
+
+export async function createEconomicsLine(
+  projectId: string,
+  input: {
+    consultantId?: string | null;
+    role?: string;
+    hours: number;
+    payRateCents?: number;
+    billRateCents?: number;
+    isExtra?: boolean;
+  },
+) {
+  const { actor } = await getActor();
+
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+  if (!project) throw new Error("Project not found");
+
+  // A line is tied to a roster consultant (preferred) OR a free-text role.
+  let consultant: { id: string; role: string; defaultPayRateCents: number } | null = null;
+  if (input.consultantId) {
+    const found = await prisma.consultant.findUnique({
+      where: { id: input.consultantId },
+      select: { id: true, role: true, defaultPayRateCents: true },
+    });
+    if (!found) throw new Error("Consultant not found");
+    consultant = found;
+  }
+
+  const role = (input.role?.trim() || consultant?.role || "").trim();
+  if (!role) throw new Error("Give the line a role (or pick a consultant)");
+
+  const hours = validHours(input.hours);
+  // Firm defaults: pay rate from the consultant's roster rate; billable from the
+  // firm default. Supplying either explicitly counts as an override.
+  const payRateCents = validRateCents(input.payRateCents, consultant?.defaultPayRateCents ?? 0);
+  const billRateCents = validRateCents(input.billRateCents, DEFAULT_BILLABLE_RATE_CENTS);
+  const fromFirmDefault = input.payRateCents === undefined && input.billRateCents === undefined;
+
+  const last = await prisma.projectEconomicsLine.findFirst({
+    where: { projectId },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+  const sortOrder = (last?.sortOrder ?? -1) + 1;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.projectEconomicsLine.create({
+      data: {
+        projectId,
+        consultantId: consultant?.id ?? null,
+        role,
+        hours,
+        payRateCents,
+        billRateCents,
+        isExtra: input.isExtra ?? false,
+        sortOrder,
+        fromFirmDefault,
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.economicsLine",
+      targetType: "ProjectEconomicsLine",
+      targetId: row.id,
+      changes: { projectId, consultantId: consultant?.id ?? null, role, hours, payRateCents, billRateCents, isExtra: input.isExtra ?? false },
+    });
+    return row;
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/invoices");
+  return { id: created.id };
+}
+
+export async function updateEconomicsLine(
+  lineId: string,
+  input: {
+    consultantId?: string | null;
+    role?: string;
+    hours?: number;
+    payRateCents?: number;
+    billRateCents?: number;
+    isExtra?: boolean;
+  },
+) {
+  const { actor } = await getActor();
+
+  const before = await prisma.projectEconomicsLine.findUnique({
+    where: { id: lineId },
+    select: { id: true, projectId: true, role: true, hours: true, payRateCents: true, billRateCents: true, isExtra: true, consultantId: true },
+  });
+  if (!before) throw new Error("Economics line not found");
+
+  const data: {
+    consultantId?: string | null;
+    role?: string;
+    hours?: number;
+    payRateCents?: number;
+    billRateCents?: number;
+    isExtra?: boolean;
+    fromFirmDefault?: boolean;
+  } = {};
+  if (input.consultantId !== undefined) data.consultantId = input.consultantId || null;
+  if (input.role !== undefined) {
+    const role = input.role.trim();
+    if (!role) throw new Error("Role can't be empty");
+    data.role = role;
+  }
+  if (input.hours !== undefined) data.hours = validHours(input.hours);
+  if (input.payRateCents !== undefined) data.payRateCents = validRateCents(input.payRateCents, 0);
+  if (input.billRateCents !== undefined) data.billRateCents = validRateCents(input.billRateCents, 0);
+  if (input.isExtra !== undefined) data.isExtra = input.isExtra;
+  // Any edit to a rate is a manual override of the firm default.
+  if (input.payRateCents !== undefined || input.billRateCents !== undefined) data.fromFirmDefault = false;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectEconomicsLine.update({ where: { id: lineId }, data });
+    await writeAudit(tx, {
+      actor,
+      action: "update.economicsLine",
+      targetType: "ProjectEconomicsLine",
+      targetId: lineId,
+      changes: {
+        role: data.role !== undefined ? { before: before.role, after: data.role } : undefined,
+        hours: data.hours !== undefined ? { before: Number(before.hours), after: data.hours } : undefined,
+        payRateCents: data.payRateCents !== undefined ? { before: before.payRateCents, after: data.payRateCents } : undefined,
+        billRateCents: data.billRateCents !== undefined ? { before: before.billRateCents, after: data.billRateCents } : undefined,
+        isExtra: data.isExtra !== undefined ? { before: before.isExtra, after: data.isExtra } : undefined,
+      },
+    });
+  });
+
+  revalidatePath(`/projects/${before.projectId}`);
+  revalidatePath("/invoices");
+  return { id: lineId };
+}
+
+export async function deleteEconomicsLine(lineId: string) {
+  const { actor } = await getActor();
+
+  const before = await prisma.projectEconomicsLine.findUnique({
+    where: { id: lineId },
+    select: { id: true, projectId: true, role: true },
+  });
+  if (!before) throw new Error("Economics line not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectEconomicsLine.delete({ where: { id: lineId } });
+    await writeAudit(tx, {
+      actor,
+      action: "delete.economicsLine",
+      targetType: "ProjectEconomicsLine",
+      targetId: lineId,
+      changes: { projectId: before.projectId, role: before.role },
+    });
+  });
+
+  revalidatePath(`/projects/${before.projectId}`);
+  revalidatePath("/invoices");
+  return { id: lineId };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // FEATURE 5 — Raise a draft Invoice from a project
 // ──────────────────────────────────────────────────────────────────────
 
@@ -281,6 +511,8 @@ export async function createInvoiceFromProject(
         where: { id: installment.id },
         data: { status: "invoiced", invoiceId: invoice.id },
       });
+      // A stage is now in flight — (re)compute the consultant payouts owed.
+      await recomputePayoutsTx(tx, project.id);
     }
 
     await writeAudit(tx, {

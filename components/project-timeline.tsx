@@ -76,19 +76,20 @@ function toInputValue(d: string | Date | null): string {
   return toDate(d).toISOString().slice(0, 10);
 }
 
-// Milestone tone by status (complete→steel, in_progress→gold, at_risk→red, pending→neutral).
+// Milestones are gold on the timeline regardless of status — colour denotes
+// the kind of marker, not its state (status is shown as a text label).
 const MILESTONE_TONE: Record<MilestoneStatus, TimelineMarkerTone> = {
-  complete: "steel",
+  complete: "gold",
   in_progress: "gold",
-  at_risk: "red",
-  pending: "neutral",
+  at_risk: "gold",
+  pending: "gold",
 };
 
-// Installment tone by status (paid→steel, invoiced→gold, planned→bone-mute).
+// Installments are orange on the timeline regardless of status.
 const INSTALLMENT_TONE: Record<InstallmentStatus, TimelineMarkerTone> = {
-  paid: "steel",
-  invoiced: "gold",
-  planned: "bone-mute",
+  paid: "orange",
+  invoiced: "orange",
+  planned: "orange",
 };
 
 const cad = (n: number) => formatCAD(n).replace("CA$", "$");
@@ -164,7 +165,7 @@ export function ProjectTimeline({
           date: toDate(inv.issuedAt),
           title: `Invoice ${inv.number} sent`,
           detail: statusLabel(inv.status),
-          tone: "gold",
+          tone: "green-light",
         });
       }
       if (inv.paidAt) {
@@ -173,7 +174,7 @@ export function ProjectTimeline({
           kind: "invoice-paid",
           date: toDate(inv.paidAt),
           title: `Invoice ${inv.number} paid`,
-          tone: "steel",
+          tone: "green-deep",
         });
       }
     }
@@ -396,6 +397,12 @@ function toneText(tone: TimelineMarkerTone): string {
       return "text-track-gold";
     case "red":
       return "text-flag-red";
+    case "orange":
+      return "text-signal-warming";
+    case "green-light":
+      return "text-invoice-sent";
+    case "green-deep":
+      return "text-invoice-paid";
     default:
       return "text-bone-mute";
   }

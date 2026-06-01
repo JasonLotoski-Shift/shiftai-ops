@@ -5,10 +5,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui";
 import { formatCAD } from "@/lib/format";
 import { setProjectFee } from "@/app/(app)/projects/[id]/actions";
+import { generateStandardSchedule } from "@/app/(app)/projects/[id]/billing-actions";
 
 export function ProjectFeeEdit({
   projectId,
@@ -23,17 +24,32 @@ export function ProjectFeeEdit({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(budgetFee));
   const [error, setError] = useState<string | null>(null);
+  // After a fee change, prompt to regenerate the 50/25/25 schedule.
+  const [regen, setRegen] = useState<null | { blocked: boolean }>(null);
   const [isPending, startTransition] = useTransition();
 
   function save() {
     setError(null);
     startTransition(async () => {
       try {
-        await setProjectFee(projectId, Number(value || 0));
+        const res = await setProjectFee(projectId, Number(value || 0));
         setEditing(false);
+        setRegen(res.scheduleSuggestRegen ? { blocked: res.scheduleBlocked } : null);
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to save fee");
+      }
+    });
+  }
+
+  function regenerate() {
+    startTransition(async () => {
+      try {
+        await generateStandardSchedule(projectId, { force: true });
+        setRegen(null);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to regenerate schedule");
       }
     });
   }
@@ -81,6 +97,36 @@ export function ProjectFeeEdit({
         </button>
       </span>
       <span className="label text-[10px]">{Math.round(feeBurnPct)}% billed</span>
+      {regen && (
+        <div className="flex flex-col gap-1.5 mt-1 p-2 rounded-[var(--radius-sm)] border border-track-gold/30 bg-track-gold-dim/10">
+          <span className="text-[11px] text-bone-dim leading-snug">
+            {regen.blocked
+              ? "Value changed, but some installments are already invoiced — adjust the schedule manually."
+              : "Value changed. Regenerate the 50/25/25 schedule to match?"}
+          </span>
+          {!regen.blocked && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={regenerate}
+                disabled={isPending}
+                className="inline-flex items-center gap-1.5 text-[11px] text-track-gold hover:text-bone disabled:opacity-40"
+              >
+                <RefreshCw size={11} strokeWidth={1.5} />
+                Regenerate
+              </button>
+              <button onClick={() => setRegen(null)} disabled={isPending} className="text-[11px] text-bone-mute hover:text-bone">
+                Dismiss
+              </button>
+            </div>
+          )}
+          {regen.blocked && (
+            <button onClick={() => setRegen(null)} className="text-[11px] text-bone-mute hover:text-bone self-start">
+              Dismiss
+            </button>
+          )}
+          {error && <span className="text-[11px] text-flag-red">{error}</span>}
+        </div>
+      )}
     </div>
   );
 }

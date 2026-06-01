@@ -9,6 +9,12 @@ import { ProjectTimeline } from "@/components/project-timeline";
 import { ProjectTypeEdit } from "@/components/project-type-edit";
 import { MilestoneEpic } from "@/components/milestone-epic";
 import { ProjectFinancials } from "@/components/project-financials";
+import { EconomicsEditor } from "@/components/billing/economics-editor";
+import { ScopePricingPanel } from "@/components/billing/scope-pricing-panel";
+import { TeamLedger } from "@/components/billing/team-ledger";
+import { ChangeThread } from "@/components/billing/change-thread";
+import { isScopePricingProposal } from "@/lib/ingest/scope-pricing-types";
+import { getProjectBillingThread } from "@/lib/audit-read";
 import { ProjectFeeEdit } from "@/components/project-fee-edit";
 import { ProjectNameEdit } from "@/components/project-name-edit";
 import { ProjectDatesEdit } from "@/components/project-dates-edit";
@@ -38,6 +44,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         },
         invoices: true,
         installments: { orderBy: { sortOrder: "asc" } },
+        economicsLines: {
+          orderBy: { sortOrder: "asc" },
+          include: { consultant: { select: { id: true, name: true } } },
+        },
+        payouts: {
+          include: { consultant: { select: { name: true } } },
+        },
         artifacts: {
           orderBy: { createdAt: "desc" },
           include: { tasks: { include: { owner: true } } },
@@ -50,6 +63,57 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     }),
     auth(),
   ]);
+  const rosterConsultantsRaw = await prisma.consultant.findMany({
+    where: { active: true },
+    select: { id: true, name: true, role: true, defaultPayRateCents: true },
+    orderBy: { name: "asc" },
+  });
+  const rosterConsultants = rosterConsultantsRaw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    role: c.role,
+    payRateCents: c.defaultPayRateCents,
+  }));
+
+  // Latest pending scope-pricing proposal for this project (review surface).
+  const pendingScope = await prisma.ingestProposal.findFirst({
+    where: { matchedProjectId: id, ingestType: "scope-pricing", status: "pending" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, proposal: true },
+  });
+  let pendingScopeProp: {
+    id: string;
+    total: number | null;
+    notes: string[];
+    lines: {
+      role: string;
+      consultantId: string | null;
+      consultantHint: string | null;
+      hours: number;
+      payRateCents: number | null;
+      billRateCents: number;
+      isExtra: boolean;
+    }[];
+  } | null = null;
+  if (pendingScope && isScopePricingProposal(pendingScope.proposal)) {
+    const sp = pendingScope.proposal;
+    // Resolve each line's consultantHint → a roster id by case-insensitive name.
+    const byName = new Map(rosterConsultantsRaw.map((c) => [c.name.toLowerCase(), c.id]));
+    pendingScopeProp = {
+      id: pendingScope.id,
+      total: sp.total,
+      notes: sp.notes ?? [],
+      lines: sp.lines.map((l) => ({
+        role: l.role,
+        consultantId: l.consultantHint ? byName.get(l.consultantHint.toLowerCase()) ?? null : null,
+        consultantHint: l.consultantHint,
+        hours: l.hours,
+        payRateCents: l.payRateCents,
+        billRateCents: l.billRateCents,
+        isExtra: l.isExtra,
+      })),
+    };
+  }
   if (!project) notFound();
 
   const currentPartnerId = session?.user?.partnerId ?? "";
@@ -61,6 +125,43 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const projectInvoices = project.invoices;
   const projectArtifacts = project.artifacts;
   const projectInstallments = project.installments;
+
+  // Team payout ledger — group payouts by client stage (non-extra installment).
+  const invoiceStatusById = new Map(projectInvoices.map((inv) => [inv.id, inv.status]));
+  const payoutStages = projectInstallments
+    .filter((i) => !i.isExtra)
+    .map((inst) => ({
+      installmentId: inst.id,
+      label: inst.label,
+      amount: inst.amount,
+      invoiceStatus: inst.invoiceId ? invoiceStatusById.get(inst.invoiceId) ?? null : null,
+      payouts: project.payouts
+        .filter((p) => p.installmentId === inst.id)
+        .map((p) => ({
+          id: p.id,
+          consultantName: p.consultant.name,
+          amount: p.amount,
+          status: p.status as "owed" | "paid" | "confirmed",
+          method: p.method,
+          clientPaidFirst: p.clientPaidFirst,
+        })),
+    }));
+  const hasPayouts = project.payouts.length > 0;
+
+  const billingThread = await getProjectBillingThread(id);
+
+  // Economics lines → client-safe shape (Decimal hours → number).
+  const economicsRows = project.economicsLines.map((l) => ({
+    id: l.id,
+    role: l.role,
+    hours: Number(l.hours),
+    payRateCents: l.payRateCents,
+    billRateCents: l.billRateCents,
+    isExtra: l.isExtra,
+    fromFirmDefault: l.fromFirmDefault,
+    consultantId: l.consultantId,
+    consultantName: l.consultant?.name ?? null,
+  }));
 
   const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, invoice: FileText, report: FileText, other: FileText } as const;
   const reviewTone = { draft: "neutral", approved: "steel", sent: "gold", archived: "bone" } as const;
@@ -277,6 +378,25 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               installments={projectInstallments}
             />
           </Card>
+
+          <EconomicsEditor
+            projectId={project.id}
+            value={project.budgetFee}
+            lines={economicsRows}
+            consultants={rosterConsultants}
+          />
+
+          <ScopePricingPanel
+            projectId={project.id}
+            consultants={rosterConsultants}
+            pending={pendingScopeProp}
+          />
+
+          {(hasPayouts || payoutStages.length > 0) && (
+            <TeamLedger projectId={project.id} stages={payoutStages} />
+          )}
+
+          <ChangeThread entries={billingThread} title="Billing change log" />
         </div>
 
         <div className="flex flex-col gap-8">

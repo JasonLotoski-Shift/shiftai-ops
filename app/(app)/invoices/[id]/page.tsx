@@ -3,7 +3,10 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Button, Hairline, Avatar } from "@/components/ui";
 import { InvoiceStatusActions } from "@/components/invoice-status-actions";
+import { InvoiceDraftEdit } from "@/components/billing/invoice-draft-edit";
+import { ChangeThread } from "@/components/billing/change-thread";
 import { prisma } from "@/lib/prisma";
+import { getInvoiceThread } from "@/lib/audit-read";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { ArrowLeft, Download, FileOutput } from "lucide-react";
 
@@ -27,6 +30,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const project = invoice.project;
   const partner = project.partnerLead;
   const overdueDays = invoice.status === "overdue" ? daysSince(invoice.dueAt) : 0;
+  const thread = await getInvoiceThread(invoice.id);
 
   return (
     <>
@@ -47,7 +51,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       <div className="px-8 py-8 flex flex-col gap-8">
         <Link href="/invoices" className="label hover:text-bone flex items-center gap-2">
           <ArrowLeft size={12} strokeWidth={1.5} />
-          Back to invoices
+          Back to billing
         </Link>
 
         {invoice.status === "draft" && (
@@ -94,6 +98,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 </span>
               </div>
             </div>
+            {invoice.status === "draft" && (
+              <div className="px-6 pb-5">
+                <InvoiceDraftEdit invoiceId={invoice.id} amount={invoice.amount} dueAt={invoice.dueAt.toISOString()} />
+              </div>
+            )}
           </Card>
 
           <Card>
@@ -195,6 +204,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           )}
           </div>
         </div>
+
+        <ChangeThread entries={thread} title="Invoice change log" />
       </div>
     </>
   );

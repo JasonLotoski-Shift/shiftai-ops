@@ -467,9 +467,9 @@ const flows: Flow[] = [
     blurb: "A signed deal becomes a live engagement with everything scaffolded.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Pipeline → Deal → Convert to client" },
-      { tone: "claude", kind: "System", label: "Creates the Drive folder + starter Discovery project" },
+      { tone: "claude", kind: "System", label: "Creates the Drive folder + starter Discovery project + 50/25/25 schedule" },
       { tone: "review", kind: "You review", label: "Confirm contract value, terms, partner lead" },
-      { tone: "write", kind: "Saved", label: "Client + Project + kickoff Tasks + AuditLog" },
+      { tone: "write", kind: "Saved", label: "Client + Project + billing schedule + kickoff Tasks + AuditLog" },
     ],
   },
   {
@@ -510,10 +510,32 @@ const flows: Flow[] = [
     title: "Raise & generate an invoice",
     blurb: "Build an invoice off the engagement and track it to paid.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Client → New invoice · pick amount + due date" },
+      { tone: "trigger", kind: "You do", label: "Client → New invoice · pick a stage or amount + due date" },
       { tone: "claude", kind: "Claude", label: "Generates the invoice doc from the engagement" },
-      { tone: "review", kind: "You review", label: "Check the lines, mark Sent when it goes out" },
-      { tone: "write", kind: "Saved", label: "Invoice (draft→sent→paid) + Artifact + AuditLog" },
+      { tone: "review", kind: "You review", label: "Edit a draft's amount/due, mark Sent when it goes out" },
+      { tone: "write", kind: "Saved", label: "Invoice (draft→sent→paid) + Artifact + change log + AuditLog" },
+    ],
+  },
+  {
+    icon: <FileCheck2 size={16} strokeWidth={1.5} />,
+    title: "Set up a project's economics & payouts",
+    blurb: "Track what you bill vs. what you pay the team — and who's been paid.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Project → Economics · add a line per person (hours, pay, bill)" },
+      { tone: "claude", kind: "Shown", label: "Cost vs. billable, margin, and a flag if it drifts from the value" },
+      { tone: "review", kind: "You do", label: "Team payouts split per stage · mark paid (e-transfer) + confirm" },
+      { tone: "write", kind: "Tracked", label: "Owed vs. paid per consultant + change log + AuditLog" },
+    ],
+  },
+  {
+    icon: <FileUp size={16} strokeWidth={1.5} />,
+    title: "Ingest scope pricing",
+    blurb: "Turn a scoping doc's pricing into project economics, for review.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Project → Scope-pricing ingest · paste the doc" },
+      { tone: "claude", kind: "Claude", label: "Reads only the pricing — people, hours, rates" },
+      { tone: "review", kind: "You review", label: "Adjust lines, match consultants, approve (or reject)" },
+      { tone: "write", kind: "Saved", label: "Economics lines (+ optional 50/25/25 schedule) + AuditLog" },
     ],
   },
   {

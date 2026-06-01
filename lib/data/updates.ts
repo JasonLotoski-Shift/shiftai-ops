@@ -25,6 +25,48 @@ export const updates: Update[] = [
   {
     date: "2026-06-01",
     tag: "new",
+    title: "Invoices is now Billing — money in and money out",
+    detail: "The Invoices tab is now Billing. It tracks both sides: what you invoice the client, and what you owe the team. The landing page shows every active project with its value, invoiced, received, owed to the team, and paid out — click through to a project to act on it.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "new",
+    title: "Projects auto-generate a 50/25/25 payment schedule",
+    detail: "When you convert a deal, the project opens with the firm's standard billing schedule already in place — 50% on signing, 25% at the mid-point, 25% on delivery — adding up to the project value. Change the value later and you're offered a one-click regenerate (already-invoiced stages are never touched).",
+  },
+  {
+    date: "2026-06-01",
+    tag: "new",
+    title: "Consultant roster + project economics",
+    detail: "Keep a roster of the people you pay (name, role, fixed pay rate) under Billing → Consultant roster. On each project, add economics lines — who's on it, their hours, what we pay them, and what we bill the client. It totals cost vs. billable and shows the margin, and flags when the billable total drifts from the project value.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "new",
+    title: "Drop in a scope doc, get the pricing",
+    detail: "On a project, paste a scope/pricing document into Scope-pricing ingest. It reads only the pricing — people, hours, rates — and proposes economics lines for you to review and approve. Nothing is saved until you say so.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "new",
+    title: "Track who's been paid",
+    detail: "Each project has a team-payout ledger: what each consultant is owed per billing stage, split from their cost. Mark a payout paid (e-transfer, wire, cheque) and confirm receipt. It flags when you've paid someone before the client paid that stage.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "new",
+    title: "Billing change log",
+    detail: "Every change to an invoice, the schedule, economics, or a payout is recorded — who did it, what changed, and when — and shown as a thread on the invoice and the project. Edit a draft invoice's amount or due date right on the invoice.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "improved",
+    title: "Clearer colours on the delivery timeline",
+    detail: "Milestones are gold, billing installments are orange, an invoice sent shows a light-green ring, and an invoice paid shows a deeper-green dot with a check in it — so you can read the timeline at a glance.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "new",
     title: "Rename a project and change its dates",
     detail: "On a project page, hover the title to rename it — the new name shows up everywhere the project appears (projects list, task board, invoices, the client page). Hover the timeline dates to change the start or target-end date in place.",
   },

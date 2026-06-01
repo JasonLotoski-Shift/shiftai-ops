@@ -32,6 +32,18 @@ export const partners: Partner[] = [
 ];
 
 /* ──────────────────────────────────────────────────────────────────────
+   Consultants — PLACEHOLDER pay roster (example rates; edit in-app).
+   defaultPayRateCents = what we pay per hour, in cents ($150/hr = 15000).
+   Not the real rate card — replace via the Consultants roster UI.
+   ────────────────────────────────────────────────────────────────────── */
+
+export const consultants = [
+  { id: "co-1", name: "Jack Mercer", role: "Senior Engineer", defaultPayRateCents: 15000, email: "jack@example.com", partnerId: null },
+  { id: "co-2", name: "Maya Okafor", role: "Solutions Designer", defaultPayRateCents: 12500, email: "maya@example.com", partnerId: null },
+  { id: "co-3", name: "Priya Nair", role: "Data Engineer", defaultPayRateCents: 14000, email: "priya@example.com", partnerId: null },
+];
+
+/* ──────────────────────────────────────────────────────────────────────
    Contacts
    ────────────────────────────────────────────────────────────────────── */
 

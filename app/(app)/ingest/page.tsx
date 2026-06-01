@@ -28,7 +28,8 @@ export default async function IngestPage({
 
   const [pending, partners, contacts, clients, projects] = await Promise.all([
     prisma.ingestProposal.findMany({
-      where: { status: "pending" },
+      // Scope-pricing proposals are reviewed on their project page, not here.
+      where: { status: "pending", NOT: { ingestType: "scope-pricing" } },
       orderBy: { createdAt: "desc" },
     }),
     prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),

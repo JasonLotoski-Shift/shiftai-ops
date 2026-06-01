@@ -104,8 +104,24 @@ export async function setProjectFee(projectId: string, amount: number) {
     });
   });
 
+  // Does the standard 50/25/25 schedule now drift from the new value? If so the
+  // UI offers a regenerate (unless an installment is already invoiced — then we
+  // never clobber it and the partner adjusts manually).
+  const base = await prisma.billingInstallment.findMany({
+    where: { projectId, isExtra: false },
+    select: { amount: true, status: true },
+  });
+  const scheduledSum = base.reduce((s, i) => s + i.amount, 0);
+  const anyInvoiced = base.some((i) => i.status !== "planned");
+  const scheduleSuggestRegen = base.length > 0 && scheduledSum !== fee;
+
   revalidatePath(`/projects/${projectId}`);
-  return { ok: true as const };
+  revalidatePath("/invoices");
+  return {
+    ok: true as const,
+    scheduleSuggestRegen,
+    scheduleBlocked: scheduleSuggestRegen && anyInvoiced,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────

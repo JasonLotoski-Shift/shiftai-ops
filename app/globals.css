@@ -25,6 +25,10 @@
   --color-signal-fresh: #5a8a5f;
   --color-signal-warming: #cc8a3a;
 
+  /* Invoice timeline greens — sent = lighter, paid = deeper (project timeline) */
+  --color-invoice-sent: #6fae74;
+  --color-invoice-paid: #3f7a48;
+
   /* Ink — text that sits on the gold fill (primary button, selection).
      Stays dark in BOTH themes so gold never loses contrast. Do not theme-flip. */
   --color-ink: #0a0a0b;
@@ -103,6 +107,8 @@
     --color-flag-red: #a82a26;
     --color-signal-fresh: #46734c;
     --color-signal-warming: #9a6526;
+    --color-invoice-sent: #4f9455; /* light green — darkened to read on white */
+    --color-invoice-paid: #2f6238; /* deep green */
     /* --color-ink stays #0a0a0b — text on gold must remain dark */
 
     /* Shadows — softer, gray-tinted (not black) so elevation reads on light */

@@ -149,6 +149,21 @@ enum InstallmentStatus {
   paid
 }
 
+// Consultant payout lifecycle: owed → paid (e-transfer/wire sent) → confirmed
+// (consultant acknowledged receipt).
+enum PayoutStatus {
+  owed
+  paid
+  confirmed
+}
+
+enum PayoutMethod {
+  etransfer @map("e-transfer")
+  wire
+  cheque
+  other
+}
+
 enum IngestStatus {
   pending
   approved
@@ -207,6 +222,10 @@ model Partner {
   agentPlans      AgentPlan[] @relation("AgentPlanCreatedBy")
   channelMemberships ChannelMember[]
   messagesAuthored   Message[]
+
+  // Optional link to a Consultant roster entry — a partner who is ALSO paid as
+  // a consultant on projects (rare). Externals (sub-consultants) have no Partner.
+  consultantProfile Consultant? @relation("PartnerConsultant")
 
   // Last time this partner opened What's new — drives the unread dot + bolding.
   whatsNewSeenAt DateTime?
@@ -379,11 +398,13 @@ model Project {
 
   consultants Partner[] @relation("ProjectConsultants")
 
-  milestones   Milestone[]
-  invoices     Invoice[]
-  tasks        Task[]
-  artifacts    Artifact[]
-  installments BillingInstallment[]
+  milestones     Milestone[]
+  invoices       Invoice[]
+  tasks          Task[]
+  artifacts      Artifact[]
+  installments   BillingInstallment[]
+  economicsLines ProjectEconomicsLine[]
+  payouts        ConsultantPayout[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -416,10 +437,124 @@ model BillingInstallment {
   invoice   Invoice? @relation(fields: [invoiceId], references: [id])
   invoiceId String?  @unique
 
+  // Consultant payouts owed for this stage.
+  payouts ConsultantPayout[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([projectId, sortOrder])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Consultant — the firm's pay roster / rate card. A person we PAY on a
+// project (team member or external sub-consultant). NOT a login (that's
+// Partner). `defaultPayRateCents` is what we pay them per hour (cost); it's
+// usually fixed per person and seeds each project economics line, which can
+// then be overridden. A Partner who is also paid as a consultant links via
+// `partnerId` (optional 1:1). Soft-deleted via `active=false`.
+// economicsLines / payouts back-relations are added with their models
+// (Phase 2 / Phase 3 migrations).
+// ──────────────────────────────────────────────────────────────────────
+
+model Consultant {
+  id                  String  @id @default(cuid())
+  name                String
+  role                String
+  // What we pay them per hour, in CENTS (e.g. $150/hr = 15000). Rates are
+  // cents (not whole-CAD) for sub-dollar precision; line totals round to CAD.
+  defaultPayRateCents Int     @default(0)
+  email               String? // for the e-transfer; NOT unique (loose-coupling)
+  active              Boolean @default(true)
+  notes               String?
+
+  partner   Partner? @relation("PartnerConsultant", fields: [partnerId], references: [id])
+  partnerId String?  @unique
+
+  economicsLines ProjectEconomicsLine[]
+  payouts        ConsultantPayout[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ProjectEconomicsLine — the per-project firm economics breakdown. One row
+// per person/role working the project: their estimated hours, what we PAY
+// them (payRateCents = cost) and what we BILL the client (billRateCents).
+// Σ(hours × billRateCents) of non-extra lines should ≈ the project value;
+// Σ(hours × payRateCents) is the firm's cost (what's owed out). `role` is a
+// snapshot (the consultant's role may drift). `fromFirmDefault` flags a line
+// seeded from the roster vs. overridden by a partner. Rates are CENTS.
+// payouts back-relation lands with ConsultantPayout (Phase 3 migration).
+// ──────────────────────────────────────────────────────────────────────
+
+model ProjectEconomicsLine {
+  id              String  @id @default(cuid())
+  role            String
+  hours           Decimal @db.Decimal(7, 2)
+  payRateCents    Int
+  billRateCents   Int
+  isExtra         Boolean @default(false)
+  sortOrder       Int     @default(0)
+  fromFirmDefault Boolean @default(true)
+  notes           String?
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  consultant   Consultant? @relation(fields: [consultantId], references: [id])
+  consultantId String?
+
+  payouts ConsultantPayout[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, sortOrder])
+  @@index([consultantId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ConsultantPayout — the money-OUT ledger (parallel to Invoice). One row per
+// consultant per client STAGE (BillingInstallment): what they're owed for that
+// stage, and whether we've paid them. `amount` auto-defaults to (stage share ×
+// the consultant's project cost) and is editable to the actual e-transferred
+// amount. `clientPaidFirst` snapshots, at pay time, whether the client invoice
+// for that stage was already paid — so we can see if we fronted money.
+// ──────────────────────────────────────────────────────────────────────
+
+model ConsultantPayout {
+  id              String        @id @default(cuid())
+  amount          Int
+  status          PayoutStatus  @default(owed)
+  method          PayoutMethod?
+  paidAt          DateTime?
+  confirmedAt     DateTime?
+  clientPaidFirst Boolean?
+  notes           String?
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  consultant   Consultant @relation(fields: [consultantId], references: [id])
+  consultantId String
+
+  // The client stage this payout maps to (the installment IS the stage).
+  installment   BillingInstallment @relation(fields: [installmentId], references: [id])
+  installmentId String
+
+  economicsLine   ProjectEconomicsLine? @relation(fields: [economicsLineId], references: [id])
+  economicsLineId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([installmentId, consultantId])
+  @@index([projectId, status])
+  @@index([consultantId, status])
 }
 
 // ──────────────────────────────────────────────────────────────────────

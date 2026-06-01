@@ -13,6 +13,7 @@ import { drive, seedClientSubfolders } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
+import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { formatCAD, formatDate } from "@/lib/format";
 
 /**
@@ -141,6 +142,19 @@ export async function convertDeal(
       data: { stage: "signed", lastTouchAt: new Date(), stageEnteredAt: new Date() },
     });
 
+    // Auto-generate the firm's standard 50/25/25 client schedule from the
+    // seeded project value, so the new project opens with a billing plan.
+    let scheduleCreated = 0;
+    if (project.budgetFee > 0) {
+      const sched = await applyStandardScheduleTx(tx, {
+        projectId: project.id,
+        value: project.budgetFee,
+        startDate,
+        targetEndDate,
+      });
+      scheduleCreated = sched.created;
+    }
+
     await writeAudit(tx, {
       actor,
       action: "convert.deal.signed",
@@ -150,6 +164,7 @@ export async function convertDeal(
         stage: { before: deal.stage, after: "signed" },
         createdClientId: client.id,
         createdProjectId: project.id,
+        installmentsCreated: scheduleCreated,
         driveFolderId: folderId,
       },
     });
