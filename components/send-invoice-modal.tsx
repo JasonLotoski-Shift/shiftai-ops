@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { Receipt, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Select } from "@/components/ui";
 import { formatCAD } from "@/lib/format";
-import { createInvoiceFromProject } from "@/app/(app)/projects/[id]/billing-actions";
+import { createInvoiceFromProject, markInvoiceManual } from "@/app/(app)/projects/[id]/billing-actions";
 
 export type InvoiceableInstallment = {
   id: string;
@@ -42,6 +42,9 @@ export function SendInvoiceModal({
   const [presetId, setPresetId] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
   const [dueInDays, setDueInDays] = useState<string>("30");
+  // false = raise a draft through the tool; true = log an invoice already sent
+  // manually (Shane Nolan case) — creates a SENT invoice, no generated doc.
+  const [manual, setManual] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -49,6 +52,7 @@ export function SendInvoiceModal({
     setPresetId("");
     setAmount("");
     setDueInDays("30");
+    setManual(false);
     setError(null);
   }
 
@@ -67,11 +71,17 @@ export function SendInvoiceModal({
     setError(null);
     startTransition(async () => {
       try {
-        const res = await createInvoiceFromProject(projectId, {
-          installmentId: presetId || undefined,
-          amount: Number(amount),
-          dueInDays: Number(dueInDays),
-        });
+        const res = manual
+          ? await markInvoiceManual(projectId, {
+              installmentId: presetId || undefined,
+              amount: Number(amount),
+              dueInDays: Number(dueInDays),
+            })
+          : await createInvoiceFromProject(projectId, {
+              installmentId: presetId || undefined,
+              amount: Number(amount),
+              dueInDays: Number(dueInDays),
+            });
         close();
         router.push(`/invoices/${res.id}`);
       } catch (err) {
@@ -110,10 +120,15 @@ export function SendInvoiceModal({
 
             <div className="px-6 py-6 flex flex-col gap-5">
               <p className="text-[13px] text-bone-dim leading-relaxed">
-                Raises a draft invoice for this project. Pick a planned installment to preset the
-                amount, or enter a custom amount. It lands in the Invoices tab as a draft you can
-                review and send.
+                {manual
+                  ? "Logs an invoice you already sent outside the tool — no document is generated. It records as sent and updates the ledger."
+                  : "Raises a draft invoice for this project. Pick a planned installment to preset the amount, or enter a custom amount. It lands in the Invoices tab as a draft you can review and send."}
               </p>
+
+              <label className="flex items-center gap-2 text-[12px] text-bone-dim cursor-pointer">
+                <input type="checkbox" checked={manual} onChange={(e) => setManual(e.target.checked)} className="accent-track-gold" />
+                I already sent this invoice manually (just log it)
+              </label>
 
               {presets.length > 0 && (
                 <div className="flex flex-col gap-2">
@@ -185,7 +200,7 @@ export function SendInvoiceModal({
                 onClick={submit}
                 disabled={isPending || !amountValid}
               >
-                {isPending ? "Raising…" : "Raise draft invoice"}
+                {isPending ? "Saving…" : manual ? "Log manual invoice" : "Raise draft invoice"}
               </Button>
             </div>
           </div>

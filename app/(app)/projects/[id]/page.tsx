@@ -10,9 +10,14 @@ import { ProjectTypeEdit } from "@/components/project-type-edit";
 import { MilestoneEpic } from "@/components/milestone-epic";
 import { ProjectFinancials } from "@/components/project-financials";
 import { EconomicsEditor } from "@/components/billing/economics-editor";
+import { DirectCostsEditor } from "@/components/billing/direct-costs-editor";
+import { OriginationEditor } from "@/components/billing/origination-editor";
+import { FirmEconomicsSummary } from "@/components/billing/firm-economics-summary";
+import { BillingSummaryCard } from "@/components/billing/billing-summary-card";
 import { ScopePricingPanel } from "@/components/billing/scope-pricing-panel";
 import { TeamLedger } from "@/components/billing/team-ledger";
 import { ChangeThread } from "@/components/billing/change-thread";
+import { economicsTotals, allocateLaborRevenue } from "@/lib/billing/economics";
 import { isScopePricingProposal } from "@/lib/ingest/scope-pricing-types";
 import { getProjectBillingThread } from "@/lib/audit-read";
 import { ProjectFeeEdit } from "@/components/project-fee-edit";
@@ -25,8 +30,16 @@ import { SendInvoiceModal } from "@/components/send-invoice-modal";
 import { ProjectDropPanel } from "@/components/project-drop-panel";
 import { ArrowLeft, Bot, Check, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink, FileInput } from "lucide-react";
 
-export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProjectDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const { id } = await params;
+  const { tab: tabParam } = await searchParams;
+  const tab = tabParam === "financials" ? "financials" : "overview";
 
   const [project, partners, session] = await Promise.all([
     prisma.project.findUnique({
@@ -48,6 +61,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           orderBy: { sortOrder: "asc" },
           include: { consultant: { select: { id: true, name: true } } },
         },
+        directCosts: { orderBy: { sortOrder: "asc" } },
+        originations: { include: { partner: { select: { id: true, name: true } } } },
         payouts: {
           include: { consultant: { select: { name: true } } },
         },
@@ -161,7 +176,36 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     fromFirmDefault: l.fromFirmDefault,
     consultantId: l.consultantId,
     consultantName: l.consultant?.name ?? null,
+    rateTierId: l.rateTierId,
   }));
+
+  // Rate card (firm tiers) for the economics line tier picker.
+  const tiers = await prisma.rateTier.findMany({
+    where: { active: true },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true, name: true, billRateCents: true, payRateCents: true },
+  });
+
+  // Direct costs + origination rows for the Financials tab.
+  const directCostRows = project.directCosts.map((c) => ({ id: c.id, label: c.label, amount: c.amount, notes: c.notes }));
+  const directCostsTotal = directCostRows.reduce((s, c) => s + c.amount, 0);
+  const originationRows = project.originations.map((o) => ({
+    id: o.id,
+    partnerId: o.partnerId,
+    partnerName: o.partner.name,
+    sharePct: Number(o.sharePct),
+    notes: o.notes,
+  }));
+
+  // The 10/15/75 internal allocation of labour revenue (server-side compute).
+  const econTotals = economicsTotals(economicsRows);
+  const allocation = allocateLaborRevenue({
+    laborBillable: econTotals.billableTotal,
+    takeHome: econTotals.costTotal,
+    directCosts: directCostsTotal,
+    originationPct: Number(project.originationPct) / 100,
+    isFirstContract: project.isFirstContract,
+  });
 
   const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, invoice: FileText, report: FileText, other: FileText } as const;
   const reviewTone = { draft: "neutral", approved: "steel", sent: "gold", archived: "bone" } as const;
@@ -170,6 +214,21 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const invoicedTotal = projectInvoices.reduce((s, i) => s + i.amount, 0);
   const feeBurn = project.budgetFee > 0 ? (invoicedTotal / project.budgetFee) * 100 : 0;
   const remainingFee = project.budgetFee - invoicedTotal;
+  const receivedTotal = projectInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amount, 0);
+
+  // Per-stage "invoice sent / not sent" glance for the Overview billing card.
+  const stageGlance = projectInstallments
+    .filter((i) => !i.isExtra)
+    .map((inst) => {
+      const st = inst.invoiceId ? invoiceStatusById.get(inst.invoiceId) ?? null : null;
+      return {
+        id: inst.id,
+        label: inst.label,
+        amount: inst.amount,
+        invoiced: st !== null && st !== "draft",
+        paid: st === "paid",
+      };
+    });
 
   return (
     <>
@@ -246,8 +305,32 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         />
       </div>
 
-      <div className="px-8 pb-12 grid grid-cols-3 gap-8">
+      {/* Project tabs — URL-routed so the Overview billing card can deep-link
+          into Financials. Overview = scope/milestones/deliverables; Financials
+          = the full billing breakdown. */}
+      <div className="px-8 pb-2 flex items-center gap-1 border-b border-graphite">
+        {([
+          { key: "overview", label: "Overview" },
+          { key: "financials", label: "Financials" },
+        ] as const).map((t) => (
+          <Link
+            key={t.key}
+            href={`/projects/${project.id}${t.key === "financials" ? "?tab=financials" : ""}`}
+            className={`px-4 py-2.5 text-[13px] border-b-2 -mb-px transition-colors ${
+              tab === t.key
+                ? "border-track-gold text-bone"
+                : "border-transparent text-bone-dim hover:text-bone"
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
+
+      <div className="px-8 pt-6 pb-12 grid grid-cols-3 gap-8">
         <div className="col-span-2 flex flex-col gap-8">
+          {tab === "overview" && (
+          <>
           <Card>
             <CardBody>
               <h2 className="title-md">Scope</h2>
@@ -370,6 +453,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <ManualDeliverableForm projectId={project.id} />
           </Card>
 
+          <BillingSummaryCard
+            projectId={project.id}
+            budgetFee={project.budgetFee}
+            received={receivedTotal}
+            stages={stageGlance}
+          />
+          </>
+          )}
+
+          {tab === "financials" && (
+          <>
           <Card>
             <ProjectFinancials
               projectId={project.id}
@@ -379,12 +473,26 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             />
           </Card>
 
+          <OriginationEditor
+            projectId={project.id}
+            originationPct={Number(project.originationPct)}
+            isFirstContract={project.isFirstContract}
+            scheduleType={project.scheduleType}
+            rows={originationRows}
+            partners={partners}
+          />
+
           <EconomicsEditor
             projectId={project.id}
             value={project.budgetFee}
             lines={economicsRows}
             consultants={rosterConsultants}
+            tiers={tiers}
           />
+
+          <DirectCostsEditor projectId={project.id} costs={directCostRows} />
+
+          <FirmEconomicsSummary alloc={allocation} />
 
           <ScopePricingPanel
             projectId={project.id}
@@ -397,6 +505,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           )}
 
           <ChangeThread entries={billingThread} title="Billing change log" />
+          </>
+          )}
         </div>
 
         <div className="flex flex-col gap-8">

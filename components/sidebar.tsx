@@ -32,7 +32,7 @@ const nav = [
   { href: "/tasks", label: "Task Board", icon: CheckSquare },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/ingest", label: "Ingest", icon: FileInput },
-  { href: "/invoices", label: "Billing", icon: Receipt },
+  { href: "/financials", label: "Financials", icon: Receipt },
 ];
 
 const reference = [

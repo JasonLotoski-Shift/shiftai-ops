@@ -22,6 +22,7 @@ import {
   tasks,
   teamUpdates,
 } from "../lib/data/seed";
+import { RATE_CARD } from "../lib/billing/rate-card";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -33,6 +34,15 @@ const toEnum = (s: string) => s.replace(/-/g, "_");
 async function main() {
   console.log("Clearing existing data…");
   await prisma.auditLog.deleteMany();
+  // Billing/economics children first (FK order) — before invoice/project/deal.
+  await prisma.consultantPayout.deleteMany();
+  await prisma.billingInstallment.deleteMany();
+  await prisma.projectEconomicsLine.deleteMany();
+  await prisma.projectDirectCost.deleteMany();
+  await prisma.origination.deleteMany();
+  await prisma.estimateLine.deleteMany();
+  await prisma.estimate.deleteMany();
+  await prisma.rateTier.deleteMany();
   await prisma.artifact.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.milestone.deleteMany();
@@ -52,6 +62,13 @@ async function main() {
   for (const p of partners) {
     await prisma.partner.create({
       data: { id: p.id, name: p.name, initials: p.initials, role: p.role, email: p.email },
+    });
+  }
+
+  console.log(`Inserting ${RATE_CARD.length} rate tiers…`);
+  for (const t of RATE_CARD) {
+    await prisma.rateTier.create({
+      data: { key: t.key, name: t.name, billRateCents: t.billRateCents, payRateCents: t.payRateCents, sortOrder: t.sortOrder },
     });
   }
 

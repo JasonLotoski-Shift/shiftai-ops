@@ -63,6 +63,13 @@ export async function convertDeal(
     throw new Error("Deal is already signed");
   }
 
+  // Accepted estimate (if any) → seeds the new project's economics + fee.
+  const acceptedEstimate = await prisma.estimate.findFirst({
+    where: { dealId, status: "accepted" },
+    orderBy: { version: "desc" },
+    include: { lines: { orderBy: { sortOrder: "asc" } } },
+  });
+
   // Create the Drive folder BEFORE the DB transaction so we have its ID
   // to store on the Client row. If this fails, no DB writes happen.
   const sharedDriveFolderId = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
@@ -128,14 +135,35 @@ export async function convertDeal(
         status: "on_track",
         startDate,
         targetEndDate,
-        // Seed the fee from the deal's estimated value so the project doesn't
-        // start at $0; the partner can adjust it on the project page.
-        budgetFee: deal.valueEstimate || 0,
+        // Seed the fee from the accepted estimate if present, else the deal's
+        // estimated value, so the project doesn't start at $0; editable later.
+        budgetFee: acceptedEstimate && acceptedEstimate.totalValue > 0 ? acceptedEstimate.totalValue : deal.valueEstimate || 0,
         description: scope,
         clientId: client.id,
         partnerLeadId: deal.partnerLeadId,
       },
     });
+
+    // Convert the accepted estimate's lines into the project's economics lines,
+    // carrying the tier + rate snapshots over (Phase 5).
+    if (acceptedEstimate && acceptedEstimate.lines.length > 0) {
+      for (let i = 0; i < acceptedEstimate.lines.length; i++) {
+        const l = acceptedEstimate.lines[i];
+        await tx.projectEconomicsLine.create({
+          data: {
+            projectId: project.id,
+            role: l.role,
+            hours: l.hours,
+            payRateCents: l.payRateCents,
+            billRateCents: l.billRateCents,
+            isExtra: l.isExtra,
+            sortOrder: i,
+            rateTierId: l.rateTierId,
+            fromFirmDefault: false,
+          },
+        });
+      }
+    }
 
     await tx.deal.update({
       where: { id: dealId },

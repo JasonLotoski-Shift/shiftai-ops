@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 
-// The billing surface lives at /invoices (kept as the canonical route — many
-// links and revalidatePath calls reference it). /billing is the vocabulary
-// alias so the new tab name works as a URL/bookmark.
+// The firm-wide money surface now lives at /financials (the firm revenue
+// rollup); the raw invoice register stays at /invoices. /billing is kept as a
+// vocabulary alias for old links/bookmarks and points at the new hub.
 export default function BillingPage() {
-  redirect("/invoices");
+  redirect("/financials");
 }

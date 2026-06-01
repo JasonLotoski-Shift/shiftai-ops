@@ -149,6 +149,25 @@ enum InstallmentStatus {
   paid
 }
 
+// How a project's standard client billing schedule is generated.
+//   fifty_twenty_five — 50% on signing / 25% mid / 25% delivery (pilots/projects, default)
+//   monthly_even      — total value split evenly across the contract months (retainers)
+//   custom            — partner-built schedule; the generator leaves it alone
+enum ScheduleType {
+  fifty_twenty_five @map("fifty-twenty-five")
+  monthly_even      @map("monthly-even")
+  custom
+}
+
+// Estimate lifecycle (pre-proposal scoping). A sent estimate that's edited is
+// superseded by a new version; an accepted estimate converts to project economics.
+enum EstimateStatus {
+  draft
+  sent
+  accepted
+  superseded
+}
+
 // Consultant payout lifecycle: owed → paid (e-transfer/wire sent) → confirmed
 // (consultant acknowledged receipt).
 enum PayoutStatus {
@@ -211,17 +230,18 @@ model Partner {
   role     String
   email    String @unique
 
-  contactsLed     Contact[] @relation("PartnerContactLead")
-  dealsLed        Deal[]    @relation("PartnerDealLead")
-  clientsLed      Client[]  @relation("PartnerClientLead")
-  projectsLed     Project[] @relation("PartnerProjectLead")
-  projectsConsult Project[] @relation("ProjectConsultants")
-  tasksOwned      Task[]    @relation("TaskOwner")
-  tasksAssigned   Task[]    @relation("TaskAssignedBy")
-  milestonesOwned Milestone[] @relation("MilestoneOwner")
-  agentPlans      AgentPlan[] @relation("AgentPlanCreatedBy")
+  contactsLed        Contact[]       @relation("PartnerContactLead")
+  dealsLed           Deal[]          @relation("PartnerDealLead")
+  clientsLed         Client[]        @relation("PartnerClientLead")
+  projectsLed        Project[]       @relation("PartnerProjectLead")
+  projectsConsult    Project[]       @relation("ProjectConsultants")
+  tasksOwned         Task[]          @relation("TaskOwner")
+  tasksAssigned      Task[]          @relation("TaskAssignedBy")
+  milestonesOwned    Milestone[]     @relation("MilestoneOwner")
+  agentPlans         AgentPlan[]     @relation("AgentPlanCreatedBy")
   channelMemberships ChannelMember[]
   messagesAuthored   Message[]
+  originations       Origination[]
 
   // Optional link to a Consultant roster entry — a partner who is ALSO paid as
   // a consultant on projects (rare). Externals (sub-consultants) have no Partner.
@@ -318,6 +338,7 @@ model Deal {
 
   artifacts  Artifact[]
   milestones Milestone[]
+  estimates  Estimate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -404,7 +425,20 @@ model Project {
   artifacts      Artifact[]
   installments   BillingInstallment[]
   economicsLines ProjectEconomicsLine[]
+  directCosts    ProjectDirectCost[]
   payouts        ConsultantPayout[]
+  originations   Origination[]
+
+  // How the standard client billing schedule is generated (Phase 4):
+  // fifty_twenty_five (default, pilots/projects) or monthly_even (retainers).
+  scheduleType ScheduleType @default(fifty_twenty_five)
+
+  // Commission/origination (Phase 2). originationPct is the % of LABOUR
+  // revenue paid to whoever sourced the contract — first contract per client
+  // only. isFirstContract snapshots eligibility at signing (no retroactive
+  // renegotiation); when false the origination slot rolls into the firm pool.
+  originationPct  Decimal @default(10.00) @db.Decimal(5, 2)
+  isFirstContract Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -508,6 +542,11 @@ model ProjectEconomicsLine {
   consultant   Consultant? @relation(fields: [consultantId], references: [id])
   consultantId String?
 
+  // The firm rate tier this line was seeded from (Phase 1). Rates are still
+  // snapshotted on the line above and overridable; this records the source.
+  rateTier   RateTier? @relation(fields: [rateTierId], references: [id])
+  rateTierId String?
+
   payouts ConsultantPayout[]
 
   createdAt DateTime @default(now())
@@ -562,15 +601,15 @@ model ConsultantPayout {
 // ──────────────────────────────────────────────────────────────────────
 
 model Milestone {
-  id      String          @id @default(cuid())
-  title   String
+  id          String          @id @default(cuid())
+  title       String
   // Nullable: a milestone may be undated (then it doesn't appear on the timeline).
-  dueDate DateTime?
-  status  MilestoneStatus
+  dueDate     DateTime?
+  status      MilestoneStatus
   // Board column (To Do / In Progress / In Review / Done). The milestone CARD
   // moves through the funnel on the Task Board; `status` above stays for the
   // timeline and is synced from this on the board.
-  boardStatus TaskStatus @default(todo)
+  boardStatus TaskStatus      @default(todo)
 
   // Universal parent: a milestone may be tied to a project, a deal/client, or
   // nothing (firm-level BD/Admin). All scope FKs are nullable.
@@ -606,7 +645,15 @@ model Milestone {
 model Invoice {
   id       String        @id @default(cuid())
   number   String        @unique
+  // `amount` is the subtotal (pre-GST) in whole CAD — kept as the canonical
+  // figure all existing AR math reads. gstBps/total are additive (Phase 4):
+  // the firm is not GST-registered yet so gstBps defaults to 0 and total ==
+  // amount; flip gstBps to 500 (5%) when the firm registers and totals recompute.
   amount   Int
+  gstBps   Int           @default(0)
+  total    Int           @default(0)
+  // Marked manually sent outside the tool (no generated Artifact) — Phase 4.
+  isManual Boolean       @default(false)
   issuedAt DateTime
   dueAt    DateTime
   paidAt   DateTime?
@@ -652,21 +699,21 @@ model Activity {
 // ──────────────────────────────────────────────────────────────────────
 
 model Task {
-  id        String       @id @default(cuid())
-  title     String
-  due       DateTime
-  priority  TaskPriority
-  relatedTo String?
+  id            String       @id @default(cuid())
+  title         String
+  due           DateTime
+  priority      TaskPriority
+  relatedTo     String?
   // Board column. `done` is kept in sync (done === status "done") so existing
   // dashboard widgets and toggleTaskDone keep working.
-  status    TaskStatus   @default(todo)
-  done      Boolean      @default(false)
+  status        TaskStatus   @default(todo)
+  done          Boolean      @default(false)
   // Board categorisation — colour/tag. Defaults from scope; editable.
   category      WorkCategory @default(other)
   categoryLabel String?
   // Free-text context for the task — manual notes and/or suggested context.
   // No task is a bare button: this is the payload API agents will read (Phase 4+).
-  context   String?
+  context       String?
 
   // The owner IS the assignee. Nullable — a task can sit UNASSIGNED (drives the
   // milestone's orange "sub-task not assigned" state). assignedBy records who
@@ -678,13 +725,13 @@ model Task {
 
   // Scoping FKs (nullable — firm-wide tasks have neither).
   // Enables "what's open on Acme" queries without parsing relatedTo.
-  client    Client?  @relation(fields: [clientId], references: [id])
-  clientId  String?
-  project   Project? @relation(fields: [projectId], references: [id])
-  projectId String?
+  client      Client?    @relation(fields: [clientId], references: [id])
+  clientId    String?
+  project     Project?   @relation(fields: [projectId], references: [id])
+  projectId   String?
   // The deliverable this task hangs off, if any (deliverable card → add task).
-  artifact   Artifact? @relation(fields: [artifactId], references: [id])
-  artifactId String?
+  artifact    Artifact?  @relation(fields: [artifactId], references: [id])
+  artifactId  String?
   // The milestone (epic) this task is a sub-task of, if any.
   milestone   Milestone? @relation(fields: [milestoneId], references: [id])
   milestoneId String?
@@ -763,7 +810,7 @@ model Artifact {
   dealId    String?
 
   // Tasks scoped to this deliverable (deliverable card → add task → assign).
-  tasks     Task[]
+  tasks Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -787,12 +834,12 @@ model Artifact {
 // ──────────────────────────────────────────────────────────────────────
 
 model AgentPlan {
-  id        String          @id @default(cuid())
-  name      String
-  goal      String
-  keyTasks  String[]
-  notes     String?
-  status    AgentPlanStatus @default(idea)
+  id       String          @id @default(cuid())
+  name     String
+  goal     String
+  keyTasks String[]
+  notes    String?
+  status   AgentPlanStatus @default(idea)
 
   createdBy   Partner @relation("AgentPlanCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -811,20 +858,20 @@ model AgentPlan {
 // ──────────────────────────────────────────────────────────────────────
 
 model Channel {
-  id        String      @id @default(cuid())
+  id        String          @id @default(cuid())
   kind      ChannelKind
   name      String? // null for DMs (label derived from the members)
   members   ChannelMember[]
   messages  Message[]
-  createdAt DateTime    @default(now())
+  createdAt DateTime        @default(now())
 
   @@index([kind])
 }
 
 model ChannelMember {
-  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channel    Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
   channelId  String
-  partner    Partner  @relation(fields: [partnerId], references: [id])
+  partner    Partner   @relation(fields: [partnerId], references: [id])
   partnerId  String
   lastReadAt DateTime? // drives unread badges
 
@@ -833,23 +880,23 @@ model ChannelMember {
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  id        String      @id @default(cuid())
+  channel   Channel     @relation(fields: [channelId], references: [id], onDelete: Cascade)
   channelId String
   // Partner FK; null = system message (e.g. a task-assignment card).
-  author    Partner? @relation(fields: [authorId], references: [id])
+  author    Partner?    @relation(fields: [authorId], references: [id])
   authorId  String?
   body      String
   // Notification type — 'chat' for ordinary messages, or a typed system note
   // (drives color + icon + sort in the per-partner system chat).
   kind      MessageKind @default(chat)
   // If set, render this message as an inline task card.
-  task      Task?    @relation(fields: [taskId], references: [id])
+  task      Task?       @relation(fields: [taskId], references: [id])
   taskId    String?
   // Optional deep-link for a system note (e.g. "/ingest", "/projects/<id>") —
   // makes a typed notification click through to the thing it's about.
   link      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime    @default(now())
 
   @@index([channelId, createdAt])
 }
@@ -896,15 +943,141 @@ model IngestProposal {
   @@index([status])
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// RateTier — the firm's standard rate card (Phase 1). One row per billing
+// tier. `billRateCents` is what the client is charged per hour; `payRateCents`
+// is the person's take-home per hour. These are the DEFAULTS that seed each
+// ProjectEconomicsLine / EstimateLine; per-line rates stay overridable. Rates
+// step up only by partner vote — editing here is an explicit rate-card change.
+// "Developer" is NOT a tier: a developer line is slotted at an existing tier's
+// rates, so only the four real tiers (mp/senior/intermediate/junior) live here.
+// ──────────────────────────────────────────────────────────────────────
+
+model RateTier {
+  id            String  @id @default(cuid())
+  key           String  @unique // "mp" | "senior" | "intermediate" | "junior"
+  name          String
+  billRateCents Int
+  payRateCents  Int
+  sortOrder     Int     @default(0)
+  active        Boolean @default(true)
+
+  economicsLines ProjectEconomicsLine[]
+  estimateLines  EstimateLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ProjectDirectCost — pass-through costs (travel, client SaaS, third-party
+// tools). Billed to the client AT COST: they add to the client price but carry
+// NO origination, NO firm-pool split, NO margin. Kept separate from
+// ProjectEconomicsLine because direct costs are flat amounts, not hours×rate.
+// `amount` is whole CAD (matches Invoice/Installment).
+// ──────────────────────────────────────────────────────────────────────
+
+model ProjectDirectCost {
+  id        String  @id @default(cuid())
+  label     String
+  amount    Int // whole CAD, at cost
+  notes     String?
+  sortOrder Int     @default(0)
+
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, sortOrder])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Origination — who sourced a contract and their share of the 10% origination
+// slot (Phase 2). 1–2 rows per project (shared origination), or zero (brand /
+// website / non-partner referral → 0% to anyone, the slot rolls to firm pool).
+// `sharePct` rows for a project sum to 100. Paid on the FIRST contract per
+// client only (Project.isFirstContract); logged before SOW signature.
+// ──────────────────────────────────────────────────────────────────────
+
+model Origination {
+  id       String  @id @default(cuid())
+  sharePct Decimal @db.Decimal(5, 2) // share of the origination pool; rows sum to 100
+  notes    String?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+
+  partner   Partner @relation(fields: [partnerId], references: [id])
+  partnerId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, partnerId])
+  @@index([projectId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Estimate / EstimateLine — pre-proposal scoping (Phase 5). An Estimate hangs
+// off a Deal: partners scope hours-by-tier before the proposal goes out. Lines
+// default to the standard rate card and are overridable, mirroring
+// ProjectEconomicsLine. Versionable: editing a `sent` estimate creates a new
+// version and supersedes the old. On deal-won the `accepted` estimate's lines
+// convert into the new project's economics lines.
+// ──────────────────────────────────────────────────────────────────────
+
+model Estimate {
+  id         String         @id @default(cuid())
+  version    Int            @default(1)
+  status     EstimateStatus @default(draft)
+  // Computed from lines (Σ hours×bill + direct costs), overridable.
+  totalValue Int            @default(0)
+  notes      String?
+
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealId String
+
+  lines EstimateLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealId])
+}
+
+model EstimateLine {
+  id            String  @id @default(cuid())
+  role          String
+  hours         Decimal @db.Decimal(7, 2)
+  payRateCents  Int
+  billRateCents Int
+  isExtra       Boolean @default(false)
+  sortOrder     Int     @default(0)
+  notes         String?
+
+  estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  estimateId String
+
+  rateTier   RateTier? @relation(fields: [rateTierId], references: [id])
+  rateTierId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estimateId, sortOrder])
+}
+
 model AuditLog {
   id         String   @id @default(cuid())
   ts         DateTime @default(now())
-  actor      String   // partner.id or "agent:<name>"
+  actor      String // partner.id or "agent:<name>"
   actorLabel String
-  action     String   // e.g. "create.contact", "update.deal.stage"
-  targetType String   // e.g. "Contact", "Deal"
+  action     String // e.g. "create.contact", "update.deal.stage"
+  targetType String // e.g. "Contact", "Deal"
   targetId   String?
-  changes    Json?    // before/after diff
+  changes    Json? // before/after diff
   ip         String?
   userAgent  String?
 

@@ -22,6 +22,7 @@ import {
   ListTodo,
   KanbanSquare,
   Flag,
+  Calculator,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -506,12 +507,23 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <Calculator size={16} strokeWidth={1.5} />,
+    title: "Estimate a contract before the proposal",
+    blurb: "Size the contract value from hours-by-tier before you propose.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Deal → Build estimate · add a line per tier (hours at standard rates)" },
+      { tone: "claude", kind: "Shown", label: "Estimated contract value + margin · override any rate" },
+      { tone: "review", kind: "You do", label: "Mark sent, then accepted — accepting locks the version" },
+      { tone: "write", kind: "Saved", label: "On win, the accepted estimate becomes the project's economics + AuditLog" },
+    ],
+  },
+  {
     icon: <Receipt size={16} strokeWidth={1.5} />,
-    title: "Raise & generate an invoice",
+    title: "Raise, generate, or log an invoice",
     blurb: "Build an invoice off the engagement and track it to paid.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Client → New invoice · pick a stage or amount + due date" },
-      { tone: "claude", kind: "Claude", label: "Generates the invoice doc from the engagement" },
+      { tone: "trigger", kind: "You do", label: "Project → Raise invoice · pick a stage or amount + due date" },
+      { tone: "claude", kind: "Claude", label: "Generates the invoice doc — or tick \"sent manually\" to just log it" },
       { tone: "review", kind: "You review", label: "Edit a draft's amount/due, mark Sent when it goes out" },
       { tone: "write", kind: "Saved", label: "Invoice (draft→sent→paid) + Artifact + change log + AuditLog" },
     ],
@@ -519,12 +531,12 @@ const flows: Flow[] = [
   {
     icon: <FileCheck2 size={16} strokeWidth={1.5} />,
     title: "Set up a project's economics & payouts",
-    blurb: "Track what you bill vs. what you pay the team — and who's been paid.",
+    blurb: "What you bill vs. what you pay — and where every billed dollar goes.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Project → Economics · add a line per person (hours, pay, bill)" },
-      { tone: "claude", kind: "Shown", label: "Cost vs. billable, margin, and a flag if it drifts from the value" },
-      { tone: "review", kind: "You do", label: "Team payouts split per stage · mark paid (e-transfer) + confirm" },
-      { tone: "write", kind: "Tracked", label: "Owed vs. paid per consultant + change log + AuditLog" },
+      { tone: "trigger", kind: "You do", label: "Project → Financials tab → Economics · add a line per person (pick a tier, hours)" },
+      { tone: "claude", kind: "Shown", label: "Cost vs. billable + the 10/15/75 split: commission, firm pool, team, reserve" },
+      { tone: "review", kind: "You do", label: "Set the commission % + who sourced it · split team payouts per stage · mark paid" },
+      { tone: "write", kind: "Tracked", label: "Owed vs. paid per consultant + firm reserve + change log + AuditLog" },
     ],
   },
   {

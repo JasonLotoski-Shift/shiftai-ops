@@ -9,10 +9,13 @@
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import {
   fiftyTwentyFiveSchedule,
+  monthlyEvenSchedule,
+  monthlyDueDate,
   draftDueDate,
   reconcileSchedule,
   type ExistingInstallment,
 } from "@/lib/billing/schedule";
+import type { ScheduleType } from "@/lib/generated/prisma/enums";
 
 // Only the billingInstallment delegate is needed; a $transaction tx client
 // satisfies this (same narrowing trick as lib/audit.ts).
@@ -40,6 +43,7 @@ export async function applyStandardScheduleTx(
     value: number;
     startDate: Date;
     targetEndDate: Date;
+    scheduleType?: ScheduleType;
     force?: boolean;
   },
 ): Promise<ApplyScheduleResult> {
@@ -57,12 +61,18 @@ export async function applyStandardScheduleTx(
     return { skipped: true, reason: "invoiced", created: 0, deleted: 0, lockedKept: rec.lockedIds.length };
   }
 
-  // Safe to regenerate: drop the planned non-extra rows, then create the three.
+  // Safe to regenerate: drop the planned non-extra rows, then create the schedule.
   if (rec.deletableIds.length > 0) {
     await tx.billingInstallment.deleteMany({ where: { id: { in: rec.deletableIds } } });
   }
 
-  const drafts = fiftyTwentyFiveSchedule(args.value);
+  // Schedule shape depends on the project's scheduleType. 'custom' falls through
+  // to 50/25/25 here (a deliberate generate is still an explicit 50/25/25 ask).
+  const monthly = args.scheduleType === "monthly_even";
+  const drafts = monthly
+    ? monthlyEvenSchedule(args.value, args.startDate, args.targetEndDate)
+    : fiftyTwentyFiveSchedule(args.value);
+
   for (let i = 0; i < drafts.length; i++) {
     const d = drafts[i];
     await tx.billingInstallment.create({
@@ -71,7 +81,7 @@ export async function applyStandardScheduleTx(
         label: d.label,
         amount: d.amount,
         trigger: d.trigger,
-        dueDate: draftDueDate(d, args.startDate, args.targetEndDate),
+        dueDate: monthly ? monthlyDueDate(args.startDate, i) : draftDueDate(d, args.startDate, args.targetEndDate),
         sortOrder: i,
         status: "planned",
         isExtra: false,

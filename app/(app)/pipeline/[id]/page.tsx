@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Hairline, Avatar, EmptyState } from "@/components/ui";
 import { DealActions } from "@/components/deal-actions";
+import { EstimateEditor } from "@/components/billing/estimate-editor";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { stageLabels, industryLabels } from "@/lib/data/seed";
@@ -16,6 +17,37 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     include: { contact: true, partnerLead: true },
   });
   if (!deal) notFound();
+
+  // Latest open/accepted estimate for this deal (Phase 5 scoping).
+  const [estimateRaw, tiers] = await Promise.all([
+    prisma.estimate.findFirst({
+      where: { dealId: id, status: { not: "superseded" } },
+      orderBy: { version: "desc" },
+      include: { lines: { orderBy: { sortOrder: "asc" } } },
+    }),
+    prisma.rateTier.findMany({
+      where: { active: true },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, name: true, billRateCents: true, payRateCents: true },
+    }),
+  ]);
+  const estimate = estimateRaw
+    ? {
+        id: estimateRaw.id,
+        version: estimateRaw.version,
+        status: estimateRaw.status as "draft" | "sent" | "accepted" | "superseded",
+        totalValue: estimateRaw.totalValue,
+        lines: estimateRaw.lines.map((l) => ({
+          id: l.id,
+          role: l.role,
+          hours: Number(l.hours),
+          payRateCents: l.payRateCents,
+          billRateCents: l.billRateCents,
+          isExtra: l.isExtra,
+          rateTierId: l.rateTierId,
+        })),
+      }
+    : null;
 
   const contact = deal.contact;
   const partner = deal.partnerLead;
@@ -78,6 +110,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               </div>
             )}
           </Card>
+
+          <EstimateEditor dealId={deal.id} estimate={estimate} tiers={tiers} />
 
           <Card className="border-track-gold/40 bg-track-gold-dim/5">
             <CardBody className="flex items-start gap-4">

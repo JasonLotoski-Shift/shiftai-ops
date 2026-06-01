@@ -118,9 +118,68 @@ export type Project = {
   partnerLeadId: string;
   consultantIds: string[];
   description: string;
+  // Billing meta (Phase 2 + 4) — DB-defaulted, optional in the fixture subset.
+  scheduleType?: ScheduleType;
+  originationPct?: number; // % of labour revenue (default 10)
+  isFirstContract?: boolean;
 };
 
 export type ProjectType = "discovery-report" | "pilot-project" | "monthly-project" | "full-build";
+export type ScheduleType = "fifty-twenty-five" | "monthly-even" | "custom";
+export type EstimateStatus = "draft" | "sent" | "accepted" | "superseded";
+
+/* Rate card — the firm's standard tiers (Phase 1). Rates in CENTS. */
+export type RateTier = {
+  id: string;
+  key: "mp" | "senior" | "intermediate" | "junior";
+  name: string;
+  billRateCents: number;
+  payRateCents: number;
+  sortOrder: number;
+  active: boolean;
+};
+
+/* Direct cost — pass-through, billed at cost (Phase 1). amount in whole CAD. */
+export type ProjectDirectCost = {
+  id: string;
+  projectId: string;
+  label: string;
+  amount: number;
+  notes?: string;
+  sortOrder: number;
+};
+
+/* Origination — who sourced the contract + their share of the commission
+ * pool (Phase 2). sharePct rows for a project sum to 100. */
+export type Origination = {
+  id: string;
+  projectId: string;
+  partnerId: string;
+  sharePct: number;
+  notes?: string;
+};
+
+/* Estimate — pre-proposal scoping on a Deal (Phase 5). */
+export type Estimate = {
+  id: string;
+  dealId: string;
+  version: number;
+  status: EstimateStatus;
+  totalValue: number;
+  notes?: string;
+};
+
+export type EstimateLine = {
+  id: string;
+  estimateId: string;
+  role: string;
+  hours: number;
+  payRateCents: number;
+  billRateCents: number;
+  isExtra: boolean;
+  sortOrder: number;
+  rateTierId?: string;
+};
 export type WorkCategory = "firm" | "project" | "pipeline" | "other";
 export type TaskStatus = "todo" | "in-progress" | "in-review" | "done";
 
@@ -143,7 +202,10 @@ export type Invoice = {
   number: string;
   clientId: string;
   projectId: string;
-  amount: number;
+  amount: number; // subtotal, whole CAD
+  gstBps?: number; // GST rate in basis points (0 until the firm registers)
+  total?: number; // amount + GST
+  isManual?: boolean; // logged as sent outside the tool, no generated doc
   issuedAt: string;
   dueAt: string;
   paidAt?: string;

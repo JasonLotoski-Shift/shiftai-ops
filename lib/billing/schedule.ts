@@ -8,10 +8,8 @@
 
 import type { InstallmentTrigger, InstallmentStatus } from "@/lib/generated/prisma/enums";
 
-// A placeholder default billable rate (CENTS/hr) used to seed firm economics
-// before a real rate card is entered. Clearly a placeholder — partners edit
-// the per-line billable rate in-app. $200/hr.
-export const DEFAULT_BILLABLE_RATE_CENTS = 20000;
+// Firm economics rates now come from the rate card (lib/billing/rate-card.ts),
+// not a flat placeholder. See RATE_CARD / FALLBACK_BILL_RATE_CENTS there.
 
 export type InstallmentDraft = {
   label: string;
@@ -34,6 +32,46 @@ export function fiftyTwentyFiveSchedule(value: number): InstallmentDraft[] {
     { label: "25% — Mid-point", amount: second, trigger: "milestone", offsetFromStartDays: null },
     { label: "25% — On delivery", amount: third, trigger: "date", offsetFromStartDays: null },
   ];
+}
+
+// Total value split evenly across the contract months (retainer-style billing).
+// One installment per calendar month from start through target-end (inclusive,
+// min 1). The rounding remainder is pushed onto the final month so amounts sum
+// to `value`. Each row's dueDate is the first of its month; all carry the
+// `date` trigger. Used when Project.scheduleType === "monthly_even".
+export function monthlyEvenSchedule(
+  value: number,
+  startDate: Date,
+  targetEndDate: Date,
+): InstallmentDraft[] {
+  const v = Math.max(0, Math.round(value));
+  const months = Math.max(
+    1,
+    (targetEndDate.getFullYear() - startDate.getFullYear()) * 12 +
+      (targetEndDate.getMonth() - startDate.getMonth()) +
+      1,
+  );
+  const per = Math.round(v / months);
+  const drafts: InstallmentDraft[] = [];
+  let allocated = 0;
+  for (let i = 0; i < months; i++) {
+    const last = i === months - 1;
+    const amount = last ? v - allocated : per;
+    allocated += amount;
+    drafts.push({
+      label: `Month ${i + 1} of ${months}`,
+      amount,
+      trigger: "date",
+      offsetFromStartDays: null,
+    });
+  }
+  return drafts;
+}
+
+// dueDate for a monthly-even draft: the first of the month, `index` months after
+// the project start.
+export function monthlyDueDate(startDate: Date, index: number): Date {
+  return new Date(startDate.getFullYear(), startDate.getMonth() + index, 1);
 }
 
 // Resolve a draft's dueDate against the project window. on_signing → start;

@@ -20,7 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { recomputePayoutsTx } from "@/lib/billing/payouts";
-import { DEFAULT_BILLABLE_RATE_CENTS } from "@/lib/billing/schedule";
+import { FALLBACK_BILL_RATE_CENTS } from "@/lib/billing/rate-card";
 import type { InstallmentTrigger } from "@/lib/generated/prisma/enums";
 
 async function getActor() {
@@ -220,7 +220,7 @@ export async function generateStandardSchedule(projectId: string, opts?: { force
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true, budgetFee: true, startDate: true, targetEndDate: true },
+    select: { id: true, budgetFee: true, startDate: true, targetEndDate: true, scheduleType: true },
   });
   if (!project) throw new Error("Project not found");
   if (project.budgetFee <= 0) throw new Error("Set a project value before generating a schedule");
@@ -231,6 +231,7 @@ export async function generateStandardSchedule(projectId: string, opts?: { force
       value: project.budgetFee,
       startDate: project.startDate,
       targetEndDate: project.targetEndDate,
+      scheduleType: project.scheduleType,
       force: opts?.force,
     });
     if (!r.skipped) {
@@ -277,6 +278,7 @@ export async function createEconomicsLine(
   projectId: string,
   input: {
     consultantId?: string | null;
+    rateTierId?: string | null;
     role?: string;
     hours: number;
     payRateCents?: number;
@@ -300,14 +302,32 @@ export async function createEconomicsLine(
     consultant = found;
   }
 
-  const role = (input.role?.trim() || consultant?.role || "").trim();
-  if (!role) throw new Error("Give the line a role (or pick a consultant)");
+  // A rate tier (the firm rate card) supplies the default pay + bill rates.
+  let tier: { id: string; name: string; billRateCents: number; payRateCents: number } | null = null;
+  if (input.rateTierId) {
+    const found = await prisma.rateTier.findUnique({
+      where: { id: input.rateTierId },
+      select: { id: true, name: true, billRateCents: true, payRateCents: true },
+    });
+    if (!found) throw new Error("Rate tier not found");
+    tier = found;
+  }
+
+  const role = (input.role?.trim() || tier?.name || consultant?.role || "").trim();
+  if (!role) throw new Error("Give the line a role (pick a tier or consultant)");
 
   const hours = validHours(input.hours);
-  // Firm defaults: pay rate from the consultant's roster rate; billable from the
-  // firm default. Supplying either explicitly counts as an override.
-  const payRateCents = validRateCents(input.payRateCents, consultant?.defaultPayRateCents ?? 0);
-  const billRateCents = validRateCents(input.billRateCents, DEFAULT_BILLABLE_RATE_CENTS);
+  // Firm defaults, in priority order: explicit input → rate tier → consultant
+  // roster rate (pay) / Senior tier (bill). Supplying a rate explicitly is an
+  // override; seeding purely from tier/roster is "apply firm economics".
+  const payRateCents = validRateCents(
+    input.payRateCents,
+    tier?.payRateCents ?? consultant?.defaultPayRateCents ?? 0,
+  );
+  const billRateCents = validRateCents(
+    input.billRateCents,
+    tier?.billRateCents ?? FALLBACK_BILL_RATE_CENTS,
+  );
   const fromFirmDefault = input.payRateCents === undefined && input.billRateCents === undefined;
 
   const last = await prisma.projectEconomicsLine.findFirst({
@@ -322,6 +342,7 @@ export async function createEconomicsLine(
       data: {
         projectId,
         consultantId: consultant?.id ?? null,
+        rateTierId: tier?.id ?? null,
         role,
         hours,
         payRateCents,
@@ -336,7 +357,7 @@ export async function createEconomicsLine(
       action: "create.economicsLine",
       targetType: "ProjectEconomicsLine",
       targetId: row.id,
-      changes: { projectId, consultantId: consultant?.id ?? null, role, hours, payRateCents, billRateCents, isExtra: input.isExtra ?? false },
+      changes: { projectId, consultantId: consultant?.id ?? null, rateTierId: tier?.id ?? null, role, hours, payRateCents, billRateCents, isExtra: input.isExtra ?? false },
     });
     return row;
   });
@@ -350,6 +371,7 @@ export async function updateEconomicsLine(
   lineId: string,
   input: {
     consultantId?: string | null;
+    rateTierId?: string | null;
     role?: string;
     hours?: number;
     payRateCents?: number;
@@ -367,6 +389,7 @@ export async function updateEconomicsLine(
 
   const data: {
     consultantId?: string | null;
+    rateTierId?: string | null;
     role?: string;
     hours?: number;
     payRateCents?: number;
@@ -375,6 +398,7 @@ export async function updateEconomicsLine(
     fromFirmDefault?: boolean;
   } = {};
   if (input.consultantId !== undefined) data.consultantId = input.consultantId || null;
+  if (input.rateTierId !== undefined) data.rateTierId = input.rateTierId || null;
   if (input.role !== undefined) {
     const role = input.role.trim();
     if (!role) throw new Error("Role can't be empty");
@@ -498,6 +522,8 @@ export async function createInvoiceFromProject(
       data: {
         number,
         amount,
+        gstBps: 0, // firm not GST-registered yet; total == amount
+        total: amount,
         issuedAt: now,
         dueAt,
         status: "draft",
@@ -624,5 +650,375 @@ export async function generateInvoice(invoiceId: string) {
   revalidatePath("/invoices");
   if (invoice.projectId) revalidatePath(`/projects/${invoice.projectId}`);
   revalidatePath("/dashboard");
+  revalidatePath("/financials");
   return { status: "sent" as const, ...result };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FEATURE 6 — Direct costs (Phase 1)
+//
+// Pass-through costs (travel, SaaS, third-party tools) billed AT COST. They add
+// to the client price but carry no origination / firm-pool split / margin.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function createDirectCost(
+  projectId: string,
+  input: { label: string; amount: number; notes?: string | null },
+) {
+  const { actor } = await getActor();
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+  if (!project) throw new Error("Project not found");
+
+  const label = input.label?.trim();
+  if (!label) throw new Error("Give the direct cost a label");
+  const amount = validAmount(input.amount);
+
+  const last = await prisma.projectDirectCost.findFirst({
+    where: { projectId },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+  const sortOrder = (last?.sortOrder ?? -1) + 1;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.projectDirectCost.create({
+      data: { projectId, label, amount, notes: input.notes?.trim() || null, sortOrder },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.directCost",
+      targetType: "ProjectDirectCost",
+      targetId: row.id,
+      changes: { projectId, label, amount },
+    });
+    return row;
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/financials");
+  return { id: created.id };
+}
+
+export async function updateDirectCost(
+  costId: string,
+  input: { label?: string; amount?: number; notes?: string | null },
+) {
+  const { actor } = await getActor();
+  const before = await prisma.projectDirectCost.findUnique({
+    where: { id: costId },
+    select: { id: true, projectId: true, label: true, amount: true },
+  });
+  if (!before) throw new Error("Direct cost not found");
+
+  const data: { label?: string; amount?: number; notes?: string | null } = {};
+  if (input.label !== undefined) {
+    const label = input.label.trim();
+    if (!label) throw new Error("Label can't be empty");
+    data.label = label;
+  }
+  if (input.amount !== undefined) data.amount = validAmount(input.amount);
+  if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectDirectCost.update({ where: { id: costId }, data });
+    await writeAudit(tx, {
+      actor,
+      action: "update.directCost",
+      targetType: "ProjectDirectCost",
+      targetId: costId,
+      changes: {
+        label: data.label !== undefined ? { before: before.label, after: data.label } : undefined,
+        amount: data.amount !== undefined ? { before: before.amount, after: data.amount } : undefined,
+      },
+    });
+  });
+
+  revalidatePath(`/projects/${before.projectId}`);
+  revalidatePath("/financials");
+  return { id: costId };
+}
+
+export async function deleteDirectCost(costId: string) {
+  const { actor } = await getActor();
+  const before = await prisma.projectDirectCost.findUnique({
+    where: { id: costId },
+    select: { id: true, projectId: true, label: true },
+  });
+  if (!before) throw new Error("Direct cost not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectDirectCost.delete({ where: { id: costId } });
+    await writeAudit(tx, {
+      actor,
+      action: "delete.directCost",
+      targetType: "ProjectDirectCost",
+      targetId: costId,
+      changes: { projectId: before.projectId, label: before.label },
+    });
+  });
+
+  revalidatePath(`/projects/${before.projectId}`);
+  revalidatePath("/financials");
+  return { id: costId };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FEATURE 7 — Origination / commission (Phase 2)
+//
+// Who sourced the contract and their share of the 10% origination slot. 1–2
+// rows per project (shared), or none. Shares must sum to 100 when any exist.
+// ──────────────────────────────────────────────────────────────────────
+
+function validSharePct(raw: number): number {
+  const pct = Math.round(Number(raw) * 100) / 100;
+  if (!Number.isFinite(pct) || pct <= 0 || pct > 100) throw new Error("Share must be between 0 and 100");
+  return pct;
+}
+
+// Guard: existing + this new/edited share can't exceed 100, and at most 2 rows.
+async function assertOriginationShares(projectId: string, addPct: number, excludeId?: string) {
+  const rows = await prisma.origination.findMany({
+    where: { projectId, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    select: { sharePct: true },
+  });
+  if (!excludeId && rows.length >= 2) throw new Error("Origination supports at most two people");
+  const existing = rows.reduce((s, r) => s + Number(r.sharePct), 0);
+  if (existing + addPct > 100.0001) throw new Error(`Shares exceed 100% (${existing}% already attributed)`);
+}
+
+export async function addOrigination(
+  projectId: string,
+  input: { partnerId: string; sharePct: number; notes?: string | null },
+) {
+  const { actor } = await getActor();
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+  if (!project) throw new Error("Project not found");
+  const partner = await prisma.partner.findUnique({ where: { id: input.partnerId }, select: { id: true, name: true } });
+  if (!partner) throw new Error("Partner not found");
+
+  const sharePct = validSharePct(input.sharePct);
+  await assertOriginationShares(projectId, sharePct);
+
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.origination.create({
+      data: { projectId, partnerId: partner.id, sharePct, notes: input.notes?.trim() || null },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.origination",
+      targetType: "Origination",
+      targetId: row.id,
+      changes: { projectId, partnerId: partner.id, sharePct },
+    });
+    return row;
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/financials");
+  return { id: created.id };
+}
+
+export async function updateOrigination(
+  originationId: string,
+  input: { sharePct?: number; notes?: string | null },
+) {
+  const { actor } = await getActor();
+  const before = await prisma.origination.findUnique({
+    where: { id: originationId },
+    select: { id: true, projectId: true, sharePct: true },
+  });
+  if (!before) throw new Error("Origination not found");
+
+  const data: { sharePct?: number; notes?: string | null } = {};
+  if (input.sharePct !== undefined) {
+    const sharePct = validSharePct(input.sharePct);
+    await assertOriginationShares(before.projectId, sharePct, originationId);
+    data.sharePct = sharePct;
+  }
+  if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.origination.update({ where: { id: originationId }, data });
+    await writeAudit(tx, {
+      actor,
+      action: "update.origination",
+      targetType: "Origination",
+      targetId: originationId,
+      changes: { sharePct: data.sharePct !== undefined ? { before: Number(before.sharePct), after: data.sharePct } : undefined },
+    });
+  });
+
+  revalidatePath(`/projects/${before.projectId}`);
+  revalidatePath("/financials");
+  return { id: originationId };
+}
+
+export async function deleteOrigination(originationId: string) {
+  const { actor } = await getActor();
+  const before = await prisma.origination.findUnique({
+    where: { id: originationId },
+    select: { id: true, projectId: true },
+  });
+  if (!before) throw new Error("Origination not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.origination.delete({ where: { id: originationId } });
+    await writeAudit(tx, {
+      actor,
+      action: "delete.origination",
+      targetType: "Origination",
+      targetId: originationId,
+      changes: { projectId: before.projectId },
+    });
+  });
+
+  revalidatePath(`/projects/${before.projectId}`);
+  revalidatePath("/financials");
+  return { id: originationId };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FEATURE 8 — Project billing settings (Phase 2 + 4)
+//
+// originationPct (commission %), isFirstContract (eligibility snapshot), and
+// scheduleType (how the standard schedule is generated). All on Project.
+// ──────────────────────────────────────────────────────────────────────
+
+const VALID_SCHEDULE_TYPES = ["fifty_twenty_five", "monthly_even", "custom"] as const;
+type ScheduleTypeStr = (typeof VALID_SCHEDULE_TYPES)[number];
+
+export async function setProjectBillingMeta(
+  projectId: string,
+  input: { originationPct?: number; isFirstContract?: boolean; scheduleType?: string },
+) {
+  const { actor } = await getActor();
+  const before = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, originationPct: true, isFirstContract: true, scheduleType: true },
+  });
+  if (!before) throw new Error("Project not found");
+
+  const data: { originationPct?: number; isFirstContract?: boolean; scheduleType?: ScheduleTypeStr } = {};
+  if (input.originationPct !== undefined) {
+    const pct = Math.round(Number(input.originationPct) * 100) / 100;
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new Error("Commission % must be between 0 and 100");
+    data.originationPct = pct;
+  }
+  if (input.isFirstContract !== undefined) data.isFirstContract = input.isFirstContract;
+  if (input.scheduleType !== undefined) {
+    if (!VALID_SCHEDULE_TYPES.includes(input.scheduleType as ScheduleTypeStr)) {
+      throw new Error("Unknown schedule type");
+    }
+    data.scheduleType = input.scheduleType as ScheduleTypeStr;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.project.update({ where: { id: projectId }, data });
+    await writeAudit(tx, {
+      actor,
+      action: "update.project.billingMeta",
+      targetType: "Project",
+      targetId: projectId,
+      changes: {
+        originationPct: data.originationPct !== undefined ? { before: Number(before.originationPct), after: data.originationPct } : undefined,
+        isFirstContract: data.isFirstContract !== undefined ? { before: before.isFirstContract, after: data.isFirstContract } : undefined,
+        scheduleType: data.scheduleType !== undefined ? { before: before.scheduleType, after: data.scheduleType } : undefined,
+      },
+    });
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/financials");
+  return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FEATURE 9b — Mark an invoice manually sent (Phase 4)
+//
+// For invoices sent outside the tool (e.g. Shane Nolan). Creates a SENT invoice
+// with isManual=true and NO generated Artifact, links the installment, and
+// recomputes payouts — same downstream effect as generateInvoice, minus the doc.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function markInvoiceManual(
+  projectId: string,
+  input: { installmentId?: string; amount: number; issuedAt?: string | null; dueInDays?: number; gstBps?: number },
+) {
+  const { actor } = await getActor();
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, clientId: true, client: { select: { company: true } } },
+  });
+  if (!project) throw new Error("Project not found");
+
+  const amount = validAmount(input.amount);
+  if (amount <= 0) throw new Error("Invoice amount must be greater than zero");
+  const gstBps = Number.isFinite(Number(input.gstBps)) ? Math.max(0, Math.round(Number(input.gstBps))) : 0;
+  const total = amount + Math.round((amount * gstBps) / 10000);
+
+  const issuedAt = input.issuedAt ? new Date(input.issuedAt) : new Date();
+  if (Number.isNaN(issuedAt.getTime())) throw new Error("Enter a valid issued date");
+  const dueInDays = Number.isFinite(Number(input.dueInDays)) ? Math.round(Number(input.dueInDays)) : 30;
+  const dueAt = new Date(issuedAt.getTime() + dueInDays * 24 * 60 * 60 * 1000);
+
+  let installment: { id: string; label: string } | null = null;
+  if (input.installmentId) {
+    const found = await prisma.billingInstallment.findUnique({
+      where: { id: input.installmentId },
+      select: { id: true, status: true, label: true, projectId: true, invoiceId: true },
+    });
+    if (!found || found.projectId !== projectId) throw new Error("Installment not found on this project");
+    if (found.status !== "planned" || found.invoiceId) throw new Error("That installment has already been invoiced");
+    installment = { id: found.id, label: found.label };
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const number = await nextInvoiceNumber(tx, issuedAt.getFullYear());
+    const invoice = await tx.invoice.create({
+      data: {
+        number,
+        amount,
+        gstBps,
+        total,
+        isManual: true,
+        issuedAt,
+        dueAt,
+        status: "sent",
+        clientId: project.clientId,
+        projectId: project.id,
+      },
+    });
+
+    if (installment) {
+      await tx.billingInstallment.update({
+        where: { id: installment.id },
+        data: { status: "invoiced", invoiceId: invoice.id },
+      });
+      await recomputePayoutsTx(tx, project.id);
+    }
+
+    await writeAudit(tx, {
+      actor,
+      action: "create.invoice.manual",
+      targetType: "Invoice",
+      targetId: invoice.id,
+      changes: { number, amount, total, gstBps, isManual: true, installmentId: installment?.id ?? null },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: project.client.company,
+      detail: installment ? `Logged manual invoice ${number} — ${installment.label}` : `Logged manual invoice ${number}`,
+      link: `/invoices/${invoice.id}`,
+    });
+
+    return { id: invoice.id, number };
+  });
+
+  revalidatePath("/invoices");
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/financials");
+  revalidatePath("/dashboard");
+  return result;
 }

@@ -32,9 +32,11 @@ export type EconLine = {
   fromFirmDefault: boolean;
   consultantId: string | null;
   consultantName: string | null;
+  rateTierId: string | null;
 };
 
 export type EconConsultant = { id: string; name: string; role: string; payRateCents: number };
+export type EconTier = { id: string; name: string; billRateCents: number; payRateCents: number };
 
 const money = (n: number) => formatCAD(n).replace("CA$", "$");
 const rate = (cents: number) => `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -44,11 +46,13 @@ export function EconomicsEditor({
   value,
   lines,
   consultants,
+  tiers,
 }: {
   projectId: string;
   value: number;
   lines: EconLine[];
   consultants: EconConsultant[];
+  tiers: EconTier[];
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -90,6 +94,7 @@ export function EconomicsEditor({
         <div className="px-5 pb-3">
           <LineForm
             consultants={consultants}
+            tiers={tiers}
             isPending={isPending}
             onCancel={() => setAdding(false)}
             onSubmit={(v) => run(() => createEconomicsLine(projectId, v), () => setAdding(false))}
@@ -120,6 +125,7 @@ export function EconomicsEditor({
               <div key={l.id} className="px-5 py-3 border-t border-graphite/40">
                 <LineForm
                   consultants={consultants}
+                  tiers={tiers}
                   initial={l}
                   isPending={isPending}
                   onCancel={() => setEditingId(null)}
@@ -181,6 +187,7 @@ export function EconomicsEditor({
 
 type LineFormValue = {
   consultantId: string | null;
+  rateTierId: string | null;
   role: string;
   hours: number;
   payRateCents?: number;
@@ -190,18 +197,21 @@ type LineFormValue = {
 
 function LineForm({
   consultants,
+  tiers,
   initial,
   isPending,
   onCancel,
   onSubmit,
 }: {
   consultants: EconConsultant[];
+  tiers: EconTier[];
   initial?: EconLine;
   isPending: boolean;
   onCancel: () => void;
   onSubmit: (v: LineFormValue) => void;
 }) {
   const [consultantId, setConsultantId] = useState(initial?.consultantId ?? "");
+  const [rateTierId, setRateTierId] = useState(initial?.rateTierId ?? "");
   const [role, setRole] = useState(initial?.role ?? "");
   const [hours, setHours] = useState(initial ? String(initial.hours) : "");
   const [pay, setPay] = useState(initial ? String(initial.payRateCents / 100) : "");
@@ -219,9 +229,21 @@ function LineForm({
     }
   }
 
+  // Picking a rate tier sets BOTH default rates from the rate card (overridable).
+  function pickTier(id: string) {
+    setRateTierId(id);
+    const t = tiers.find((x) => x.id === id);
+    if (t) {
+      setBill(String(t.billRateCents / 100));
+      setPay(String(t.payRateCents / 100));
+      if (!role.trim()) setRole(t.name);
+    }
+  }
+
   function submit() {
     onSubmit({
       consultantId: consultantId || null,
+      rateTierId: rateTierId || null,
       role,
       hours: Number(hours || 0),
       payRateCents: pay.trim() === "" ? undefined : Math.round(Number(pay) * 100),
@@ -232,11 +254,17 @@ function LineForm({
 
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="grid grid-cols-[1.3fr_1fr_70px_90px_90px] gap-2">
+      <div className="grid grid-cols-[1fr_1fr_1fr_60px_80px_80px] gap-2">
         <Select value={consultantId} onChange={(e) => pickConsultant(e.target.value)} className="h-8 text-[13px]">
-          <option value="">No consultant (role only)</option>
+          <option value="">No consultant</option>
           {consultants.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </Select>
+        <Select value={rateTierId} onChange={(e) => pickTier(e.target.value)} className="h-8 text-[13px]">
+          <option value="">No tier</option>
+          {tiers.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </Select>
         <Input placeholder="Role" value={role} onChange={(e) => setRole(e.target.value)} className="h-8 text-[13px]" />
