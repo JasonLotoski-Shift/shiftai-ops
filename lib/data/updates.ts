@@ -24,6 +24,12 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-01",
+    tag: "new",
+    title: "Rename a project and change its dates",
+    detail: "On a project page, hover the title to rename it — the new name shows up everywhere the project appears (projects list, task board, invoices, the client page). Hover the timeline dates to change the start or target-end date in place.",
+  },
+  {
+    date: "2026-06-01",
     tag: "improved",
     title: "The board runs on milestones now",
     detail: "The Tasks tab is the Task Board. Milestones are cards on it — open one to see its sub-tasks, who's on each, the overall owner, and a bar showing how done it is; set each sub-task's stage from there. A milestone with no owner shows red until you assign it; one with an unassigned sub-task shows amber. Tasks that don't belong to a milestone are the only ones that move across the columns on their own. A milestone or task tied to a project, client, or deal shows a link icon you can click to jump straight there. Every column has an Add task at the bottom.",

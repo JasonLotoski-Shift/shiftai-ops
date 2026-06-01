@@ -147,6 +147,119 @@ export async function setProjectType(projectId: string, projectType: string) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// setProjectName — rename the project. The name is shown everywhere via FK
+// join (projects list, task board, invoices, client detail, header), so a
+// single write propagates on next render — no denormalized copies to chase.
+// Append-only logs (Activity / Audit / Messages) keep their point-in-time
+// snapshot by design.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function setProjectName(projectId: string, name: string) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Project name is required");
+  if (trimmed.length > 200) throw new Error("Project name is too long (max 200 chars)");
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, name: true },
+  });
+  if (!project) throw new Error("Project not found");
+
+  if (trimmed !== project.name) {
+    await prisma.$transaction(async (tx) => {
+      await tx.project.update({ where: { id: projectId }, data: { name: trimmed } });
+      await writeAudit(tx, {
+        actor,
+        action: "update.project.name",
+        targetType: "Project",
+        targetId: projectId,
+        changes: { name: { before: project.name, after: trimmed } },
+      });
+    });
+  }
+
+  // Refresh every surface that shows the project name via join.
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/projects");
+  revalidatePath("/tasks");
+  revalidatePath("/invoices");
+  revalidatePath("/clients", "layout");
+  return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// setProjectDates — edit the project's start and/or target-end date. Both
+// optional; if both are supplied, start must not be after end. Drives the
+// delivery timeline and the projects-list timeline column.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function setProjectDates(
+  projectId: string,
+  input: { startDate?: string; targetEndDate?: string },
+) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, startDate: true, targetEndDate: true },
+  });
+  if (!project) throw new Error("Project not found");
+
+  const data: { startDate?: Date; targetEndDate?: Date } = {};
+  if (input.startDate !== undefined) {
+    const d = new Date(input.startDate);
+    if (Number.isNaN(d.getTime())) throw new Error(`Invalid start date: ${input.startDate}`);
+    data.startDate = d;
+  }
+  if (input.targetEndDate !== undefined) {
+    const d = new Date(input.targetEndDate);
+    if (Number.isNaN(d.getTime())) throw new Error(`Invalid target end date: ${input.targetEndDate}`);
+    data.targetEndDate = d;
+  }
+  if (data.startDate === undefined && data.targetEndDate === undefined) {
+    throw new Error("Nothing to update");
+  }
+
+  const start = data.startDate ?? project.startDate;
+  const end = data.targetEndDate ?? project.targetEndDate;
+  if (start > end) throw new Error("Start date must be on or before the target end date");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.project.update({ where: { id: projectId }, data });
+    await writeAudit(tx, {
+      actor,
+      action: "update.project.dates",
+      targetType: "Project",
+      targetId: projectId,
+      changes: {
+        ...(data.startDate
+          ? { startDate: { before: project.startDate.toISOString(), after: data.startDate.toISOString() } }
+          : {}),
+        ...(data.targetEndDate
+          ? { targetEndDate: { before: project.targetEndDate.toISOString(), after: data.targetEndDate.toISOString() } }
+          : {}),
+      },
+    });
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/projects");
+  return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // createMilestone — a milestone is the firm's universal unit of work. It may
 // be tied to a project, a deal/client, or nothing (firm-level BD/Admin). Has
 // an optional owner + a category (defaulted from scope). Date is optional.

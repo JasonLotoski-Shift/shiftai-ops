@@ -9,7 +9,7 @@ export function Header({
   actions,
 }: {
   eyebrow?: string;
-  title: string;
+  title: React.ReactNode;
   actions?: React.ReactNode;
 }) {
   return (

@@ -10,6 +10,8 @@ import { ProjectTypeEdit } from "@/components/project-type-edit";
 import { MilestoneEpic } from "@/components/milestone-epic";
 import { ProjectFinancials } from "@/components/project-financials";
 import { ProjectFeeEdit } from "@/components/project-fee-edit";
+import { ProjectNameEdit } from "@/components/project-name-edit";
+import { ProjectDatesEdit } from "@/components/project-dates-edit";
 import { ManualMilestoneForm } from "@/components/manual-milestone-form";
 import { ManualDeliverableForm } from "@/components/manual-deliverable-form";
 import { DeliverableTasks } from "@/components/deliverable-tasks";
@@ -72,7 +74,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     <>
       <Header
         eyebrow={client.company}
-        title={project.name.split("·")[1]?.trim() ?? project.name}
+        title={<ProjectNameEdit projectId={project.id} name={project.name} />}
         actions={
           <>
             <SendInvoiceModal
@@ -109,6 +111,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       {/* Delivery timeline — full-width, outside the 2/3 column grid */}
       <div className="px-8 pb-8">
+        <div className="flex items-center justify-between mb-3">
+          <Label>Timeline</Label>
+          <ProjectDatesEdit
+            projectId={project.id}
+            startDate={project.startDate}
+            targetEndDate={project.targetEndDate}
+          />
+        </div>
         <ProjectTimeline
           startDate={project.startDate}
           targetEndDate={project.targetEndDate}
