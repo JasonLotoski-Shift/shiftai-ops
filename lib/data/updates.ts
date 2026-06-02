@@ -25,6 +25,12 @@ export const updates: Update[] = [
   {
     date: "2026-06-02",
     tag: "new",
+    title: "One-click drafts for every deal stage",
+    detail: "A deal page now has stage Quick Actions: a Discovery prep brief (internal — how to run the call and earn the next one), a post-call Survey, a Follow-up email, and a Book-a-meeting note — plus Draft proposal. Each is emphasized on the stage it belongs to, drafts from the deal's history, and won't invent facts (a [NEEDS INPUT] marker blocks saving). Everything files to Drive and lands as a reviewable Artifact on the deal.",
+  },
+  {
+    date: "2026-06-02",
+    tag: "new",
     title: "New \"Discussion Call\" stage + color-coded leads",
     detail: "The pipeline now has a Discussion Call column between Discovery Call and Proposal — the step after discovery where you send a survey, follow up, and book the next meeting. Lead cards also carry a left-edge color by source (intro, outbound, referral, event, inbound), with a legend above the board. Set a contact's source category when you add them.",
   },

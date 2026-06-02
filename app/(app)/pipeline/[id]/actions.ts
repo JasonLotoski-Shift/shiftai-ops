@@ -15,7 +15,7 @@ import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { formatCAD, formatDate } from "@/lib/format";
-import type { DealStage, Industry } from "@/lib/generated/prisma/enums";
+import type { DealStage, Industry, ArtifactType } from "@/lib/generated/prisma/enums";
 
 /**
  * Convert a deal in stage `proposal` or `negotiation` into a signed Client.
@@ -392,24 +392,21 @@ const STAGE_LABELS_EDIT: Record<DealStage, string> = {
   signed: "Signed",
 };
 
-export async function generateProposal(
-  dealId: string,
-  input: { focus: string; fee?: string; timeline?: string; notes?: string },
-): Promise<{ body: string }> {
-  const session = await auth();
-  if (!session?.user?.partnerId) throw new Error("Not authenticated");
-
-  const focus = input.focus.trim();
-  if (!focus) throw new Error("Focus is required");
-
+// Shared deal context — the "who/where this opportunity is" block fed to every
+// deal-scoped skill (proposal, discovery prep, survey, book-meeting, and the
+// Phase 3 proposal engine). One loader so each surface reads the same picture.
+async function buildDealContext(dealId: string) {
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
     include: {
       contact: {
         select: {
+          id: true,
           name: true,
           title: true,
           company: true,
+          email: true,
+          source: true,
           interactions: {
             orderBy: { date: "desc" },
             take: 6,
@@ -436,6 +433,7 @@ export async function generateProposal(
     "## Primary contact",
     `${deal.contact.name} — ${deal.contact.title}, ${deal.contact.company}`,
   );
+  if (deal.contact.source) contextLines.push(`Lead source: ${deal.contact.source}`);
   if (deal.contact.interactions.length) {
     contextLines.push("", "## Recent interactions (newest first)");
     for (const i of deal.contact.interactions) {
@@ -444,7 +442,20 @@ export async function generateProposal(
   } else {
     contextLines.push("", "## Recent interactions", "None logged yet.");
   }
-  const context = contextLines.join("\n");
+  return { deal, context: contextLines.join("\n") };
+}
+
+export async function generateProposal(
+  dealId: string,
+  input: { focus: string; fee?: string; timeline?: string; notes?: string },
+): Promise<{ body: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+
+  const focus = input.focus.trim();
+  if (!focus) throw new Error("Focus is required");
+
+  const { deal, context } = await buildDealContext(dealId);
 
   const intake = [
     "## This proposal",
@@ -457,6 +468,115 @@ export async function generateProposal(
 
   const body = await generate({ skill: "scope", context, intake, maxTokens: 6000 });
   return { body: body.trim() };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Deal-scoped generative docs — discovery prep (internal), post-call survey,
+// book-a-meeting note. Mirror the client-doc pattern (generateClientDoc /
+// saveClientDoc) but read deal context. Each follows the canonical recipe:
+// generate* (read + generate, returns the editable draft) → save* (Drive
+// upload → Artifact + AuditLog + Activity, one transaction). The skill name IS
+// the registry key (matches the skills/<name>/SKILL.md folder).
+// ──────────────────────────────────────────────────────────────────────
+
+const DEAL_DOCS = {
+  "discovery-prep": { title: "Discovery prep", fileSuffix: "discovery-prep", artifactType: "report", maxTokens: 3000 },
+  "client-survey": { title: "Post-call survey", fileSuffix: "survey", artifactType: "report", maxTokens: 2500 },
+  "book-meeting": { title: "Meeting note", fileSuffix: "meeting-note", artifactType: "other", maxTokens: 1200 },
+} as const;
+type DealDocSkill = keyof typeof DEAL_DOCS;
+
+function isDealDocSkill(s: string): s is DealDocSkill {
+  return s in DEAL_DOCS;
+}
+
+export async function generateDealDoc(
+  dealId: string,
+  input: { skill: string; focus: string; notes?: string },
+): Promise<{ body: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  if (!isDealDocSkill(input.skill)) throw new Error(`Unknown deal doc skill: ${input.skill}`);
+
+  const focus = input.focus.trim();
+  if (!focus) throw new Error("Focus is required");
+
+  const { context } = await buildDealContext(dealId);
+  const cfg = DEAL_DOCS[input.skill];
+
+  const intake = [
+    `## This ${cfg.title.toLowerCase()}`,
+    `Focus / what to anchor on: ${focus}`,
+    `Anything else to weave in: ${input.notes?.trim() || "(none)"}`,
+  ].join("\n");
+
+  const body = await generate({ skill: input.skill, context, intake, maxTokens: cfg.maxTokens });
+  return { body: body.trim() };
+}
+
+export async function saveDealDoc(dealId: string, input: { skill: string; body: string }) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  if (!isDealDocSkill(input.skill)) throw new Error(`Unknown deal doc skill: ${input.skill}`);
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+  const cfg = DEAL_DOCS[input.skill];
+
+  const body = input.body.trimEnd();
+  if (!body.trim()) throw new Error(`${cfg.title} body is required`);
+  assertNoNeedsInput(body, cfg.title.toLowerCase());
+
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, company: true } });
+  if (!deal) throw new Error("Deal not found");
+
+  // Deals have no Drive folder of their own — file into the Shared Drive root.
+  const sharedDriveFolderId = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
+  if (!sharedDriveFolderId) throw new Error("DRIVE_SHARED_DRIVE_FOLDER_ID is not configured");
+
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-${cfg.fileSuffix}.md`;
+  const res = await drive.files.create({
+    requestBody: { name: fileName, parents: [sharedDriveFolderId], mimeType: "text/markdown" },
+    media: { mimeType: "text/markdown", body: Readable.from(body) },
+    fields: "id, webViewLink",
+    supportsAllDrives: true,
+  });
+  const fileId = res.data.id;
+  const webViewLink = res.data.webViewLink;
+  if (!fileId || !webViewLink) throw new Error("Drive upload returned no ID");
+
+  const artifact = await prisma.$transaction(async (tx) => {
+    const created = await tx.artifact.create({
+      data: {
+        type: cfg.artifactType as ArtifactType,
+        title: `${cfg.title} · ${deal.company} · ${today}`,
+        driveUrl: webViewLink,
+        fileName,
+        createdBy: partnerLabel,
+        generatedFromSkill: input.skill,
+        reviewStatus: "draft",
+        dealId: deal.id,
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.artifact.dealDoc.draft",
+      targetType: "Artifact",
+      targetId: created.id,
+      changes: { dealId, skill: input.skill, driveFileId: fileId, bodyLength: body.length },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: deal.company,
+      detail: `Drafted ${cfg.title.toLowerCase()} — awaiting review`,
+      link: `/pipeline/${dealId}`,
+    });
+    return created;
+  });
+
+  revalidatePath(`/pipeline/${dealId}`);
+  return { artifactId: artifact.id, driveUrl: webViewLink };
 }
 
 export async function saveProposal(dealId: string, input: { body: string }) {

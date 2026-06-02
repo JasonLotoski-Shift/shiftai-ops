@@ -463,6 +463,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <ListTodo size={16} strokeWidth={1.5} />,
+    title: "Work a deal through the stages",
+    blurb: "Each stage from Discovery Call to Proposal has a one-click draft, reviewed before it leaves.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "On the deal header: Discovery prep · Survey · Follow-up email · Book meeting · Draft proposal" },
+      { tone: "claude", kind: "Claude", label: "Drafts from the deal's history — internal prep, a survey, a follow-up, or a proposal" },
+      { tone: "review", kind: "You review", label: "Edit freely; [NEEDS INPUT] blocks save until you fill real facts in" },
+      { tone: "write", kind: "Saved", label: "Filed to Drive + an Artifact on the deal (a sent email also logs an interaction)" },
+    ],
+  },
+  {
     icon: <GitBranch size={16} strokeWidth={1.5} />,
     title: "Convert a deal to a client",
     blurb: "A signed deal becomes a live engagement with everything scaffolded.",

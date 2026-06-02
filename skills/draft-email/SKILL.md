@@ -22,6 +22,10 @@ Return **only the email body** — ready to drop into a compose window. No subje
 - **Specifics over adjectives.** If the context gives a number, a date, or a named project, use it. Don't manufacture any that aren't there.
 - **Sign-off** uses the sending partner's first name. If the partner isn't identified in the input, end with `[NEEDS INPUT: partner name]`.
 
+## Post-discovery follow-up
+
+A common use is the **follow-up after a discovery call** (the intake will say so). For that case: open by thanking them and referencing the actual call, recap the one or two real things you heard (their pain, where they are with AI), restate the value briefly, and land one clear next step — a discussion call or a scoped proposal. Pull every specific from the logged interactions; never invent what was said.
+
 ## When input is missing
 
 Never invent a fact — no fabricated meeting dates, prices, commitments, or names. If the email needs a fact that isn't in the context or intake, insert `[NEEDS INPUT: <what's needed>]` inline exactly where it belongs and keep going. The partner fills it before sending. (A server-side gate blocks any draft still containing `[NEEDS INPUT]` from being marked sent — so leaving the marker is the correct, safe move.)

@@ -4,9 +4,11 @@ Draft a short, tailored survey to send a client during or after an engagement �
 
 The firm's voice, identity, and hard rules are in the firm context above. Apply them.
 
+The context may be a **prospect (an open deal), not a signed client** — when run after a discovery call. In that case, anchor the questions in what was discussed on the call (their pain, where they are with AI, what they want to fix), not in a live engagement, and keep the purpose qualifying: surface fit, priorities, and appetite for the next step.
+
 ## Input you'll get
 
-- **Context block** — the client: company, industry, status, what we're building (projects/phases), and recent interactions.
+- **Context block** — the client or prospect: company, industry, status/stage, what we're building or discussing, and recent interactions.
 - **Intake** — what the partner wants the survey to find out (the focus) and any notes.
 
 ## What to produce
