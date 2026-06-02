@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, Calendar, FileText } from "lucide-react";
+import { Mail, Calendar, FileText, Pencil } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
 import { DraftProposalModal } from "@/components/draft-proposal-modal";
+import { DealEditModal } from "@/components/deal-edit-modal";
 import type {
   DealModel as Deal,
   PartnerModel as Partner,
@@ -23,6 +24,9 @@ export function DealActions({
 }) {
   const [convertOpen, setConvertOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+
+  const signed = deal.stage === "signed";
 
   // Auto-open from the dashboard Quick Action (routes here with ?qa=proposal).
   const searchParams = useSearchParams();
@@ -32,6 +36,12 @@ export function DealActions({
 
   return (
     <>
+      {!signed && (
+        <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
+          <Pencil size={13} strokeWidth={1.5} />
+          Edit
+        </Button>
+      )}
       <Button variant="ghost" size="sm">
         <Mail size={13} strokeWidth={1.5} />
         Log email
@@ -63,6 +73,8 @@ export function DealActions({
           onClose={() => setProposalOpen(false)}
         />
       )}
+
+      {editOpen && <DealEditModal deal={deal} onClose={() => setEditOpen(false)} />}
     </>
   );
 }

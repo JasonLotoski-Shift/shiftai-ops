@@ -24,6 +24,12 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-01",
+    tag: "new",
+    title: "Edit a deal's value, stage, and details",
+    detail: "A deal page now has an Edit button — change the estimated value, stage, industry, close-target date, company, or notes in one place. Moving the stage resets the board's aging clock. Signing still goes through Convert → Client so the engagement gets scaffolded.",
+  },
+  {
+    date: "2026-06-01",
     tag: "fixed",
     title: "Ingest can now target a pipeline deal",
     detail: "The Ingest composer's target pickers now include \"Add deal…\" alongside contact, client, and project — so a call or email about an open deal can update the deal (and propose a stage move) like any other record.",

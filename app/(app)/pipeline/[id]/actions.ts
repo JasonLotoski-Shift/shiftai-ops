@@ -15,6 +15,7 @@ import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { formatCAD, formatDate } from "@/lib/format";
+import type { DealStage, Industry } from "@/lib/generated/prisma/enums";
 
 /**
  * Convert a deal in stage `proposal` or `negotiation` into a signed Client.
@@ -226,6 +227,169 @@ export async function convertDeal(
 // Activity, one transaction. A deal has no Drive folder yet, so the file lands
 // in the Shared Drive root; the Artifact is scoped to the deal.
 // ──────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────
+// updateDeal — edit a deal's core fields (company, value, stage, industry,
+// close-target date, notes) from the deal detail page. One write; the page
+// re-renders from it (no denormalized copies).
+//
+// Stage rules mirror the board (pipeline/actions.ts updateDealStage):
+//   - "signed" is NOT settable here — signing runs Convert (scaffolds the
+//     Client + Project + Drive folder); a bare flip would orphan all that.
+//   - An already-signed deal is frozen — it's been converted; edit the Client.
+//   - A real stage change resets lastTouchAt + stageEnteredAt (the board's
+//     aging color goes back to fresh).
+// ──────────────────────────────────────────────────────────────────────
+
+const VALID_STAGES_EDIT: DealStage[] = ["lead", "qualified", "discovery", "proposal", "negotiation"];
+const VALID_INDUSTRIES_EDIT: Industry[] = ["automotive", "motorsport", "engineering", "construction", "other"];
+
+export async function updateDeal(
+  dealId: string,
+  input: {
+    company?: string;
+    valueEstimate?: number;
+    stage?: string;
+    industry?: string;
+    closeTargetDate?: string; // YYYY-MM-DD
+    notes?: string | null;
+  },
+) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: {
+      company: true,
+      valueEstimate: true,
+      stage: true,
+      industry: true,
+      closeTargetDate: true,
+      notes: true,
+    },
+  });
+  if (!deal) throw new Error("Deal not found");
+  if (deal.stage === "signed") {
+    throw new Error("This deal is signed — edit the client it became, not the deal.");
+  }
+
+  const data: {
+    company?: string;
+    valueEstimate?: number;
+    stage?: DealStage;
+    industry?: Industry;
+    closeTargetDate?: Date;
+    notes?: string | null;
+    lastTouchAt?: Date;
+    stageEnteredAt?: Date;
+  } = {};
+  const changes: Record<string, { before: unknown; after: unknown }> = {};
+
+  if (input.company !== undefined) {
+    const company = input.company.trim();
+    if (!company) throw new Error("Company is required");
+    if (company.length > 200) throw new Error("Company name is too long (max 200 chars)");
+    if (company !== deal.company) {
+      data.company = company;
+      changes.company = { before: deal.company, after: company };
+    }
+  }
+
+  if (input.valueEstimate !== undefined) {
+    const value = Math.round(Number(input.valueEstimate));
+    if (!Number.isFinite(value) || value < 0) throw new Error("Enter a valid estimated value");
+    if (value !== deal.valueEstimate) {
+      data.valueEstimate = value;
+      changes.valueEstimate = { before: deal.valueEstimate, after: value };
+    }
+  }
+
+  let stageChanged = false;
+  if (input.stage !== undefined && input.stage !== deal.stage) {
+    if (input.stage === "signed") {
+      throw new Error("Use Convert → Client to sign a deal — it scaffolds the engagement.");
+    }
+    if (!VALID_STAGES_EDIT.includes(input.stage as DealStage)) {
+      throw new Error(`Invalid stage: ${input.stage}`);
+    }
+    data.stage = input.stage as DealStage;
+    changes.stage = { before: deal.stage, after: input.stage };
+    stageChanged = true;
+  }
+
+  if (input.industry !== undefined && input.industry !== deal.industry) {
+    if (!VALID_INDUSTRIES_EDIT.includes(input.industry as Industry)) {
+      throw new Error(`Invalid industry: ${input.industry}`);
+    }
+    data.industry = input.industry as Industry;
+    changes.industry = { before: deal.industry, after: input.industry };
+  }
+
+  if (input.closeTargetDate !== undefined) {
+    const d = new Date(input.closeTargetDate);
+    if (Number.isNaN(d.getTime())) throw new Error(`Invalid close-target date: ${input.closeTargetDate}`);
+    if (d.getTime() !== deal.closeTargetDate.getTime()) {
+      data.closeTargetDate = d;
+      changes.closeTargetDate = { before: deal.closeTargetDate.toISOString(), after: d.toISOString() };
+    }
+  }
+
+  if (input.notes !== undefined) {
+    const notes = input.notes?.trim() || null;
+    if (notes !== (deal.notes ?? null)) {
+      data.notes = notes;
+      changes.notes = { before: deal.notes ?? null, after: notes };
+    }
+  }
+
+  if (Object.keys(changes).length === 0) return { ok: true as const };
+
+  // A stage move is a touch — reset both clocks so the board ages from now.
+  if (stageChanged) {
+    const now = new Date();
+    data.lastTouchAt = now;
+    data.stageEnteredAt = now;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.deal.update({ where: { id: dealId }, data });
+    await writeAudit(tx, {
+      actor,
+      action: "update.deal",
+      targetType: "Deal",
+      targetId: dealId,
+      changes,
+    });
+    if (stageChanged) {
+      await writeActivity(tx, {
+        actor,
+        type: "status",
+        target: data.company ?? deal.company,
+        detail: `Moved to ${STAGE_LABELS_EDIT[data.stage as DealStage]}`,
+        link: `/pipeline/${dealId}`,
+      });
+    }
+  });
+
+  revalidatePath(`/pipeline/${dealId}`);
+  revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
+  return { ok: true as const };
+}
+
+const STAGE_LABELS_EDIT: Record<DealStage, string> = {
+  lead: "Lead",
+  qualified: "Qualified",
+  discovery: "Discovery",
+  proposal: "Proposal",
+  negotiation: "Negotiation",
+  signed: "Signed",
+};
 
 export async function generateProposal(
   dealId: string,
