@@ -26,7 +26,7 @@ export default async function IngestPage({
     }
   }
 
-  const [pending, partners, contacts, clients, projects] = await Promise.all([
+  const [pending, partners, contacts, clients, projects, deals] = await Promise.all([
     prisma.ingestProposal.findMany({
       // Scope-pricing proposals are reviewed on their project page, not here.
       where: { status: "pending", NOT: { ingestType: "scope-pricing" } },
@@ -39,6 +39,7 @@ export default async function IngestPage({
       select: { id: true, name: true, client: { select: { company: true } } },
       orderBy: { updatedAt: "desc" },
     }),
+    prisma.deal.findMany({ select: { id: true, company: true, stage: true }, orderBy: { lastTouchAt: "desc" } }),
   ]);
 
   const projectLabels: Record<string, string> = Object.fromEntries(
@@ -66,6 +67,7 @@ export default async function IngestPage({
   });
 
   const projectOpts = projects.map((p) => ({ id: p.id, name: projectLabels[p.id] ?? p.name }));
+  const dealOpts = deals.map((d) => ({ id: d.id, name: `${d.company} · ${d.stage.replace(/_/g, "-")}` }));
 
   return (
     <>
@@ -76,6 +78,7 @@ export default async function IngestPage({
         contacts={contacts}
         clients={clients}
         projects={projectOpts}
+        deals={dealOpts}
         currentPartnerId={partnerId}
         initialFocus={initialFocus}
       />

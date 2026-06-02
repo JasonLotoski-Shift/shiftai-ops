@@ -24,6 +24,18 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-01",
+    tag: "fixed",
+    title: "Ingest can now target a pipeline deal",
+    detail: "The Ingest composer's target pickers now include \"Add deal…\" alongside contact, client, and project — so a call or email about an open deal can update the deal (and propose a stage move) like any other record.",
+  },
+  {
+    date: "2026-06-01",
+    tag: "improved",
+    title: "Ingest detects the target client from the text",
+    detail: "\"Detect from text\" no longer needs a known email address. It now reads the title, notes, and email for client and deal names — and the people you've met — and suggests them as targets, leading with the client.",
+  },
+  {
+    date: "2026-06-01",
     tag: "new",
     title: "Billing is now Financials — with a firm revenue view",
     detail: "The sidebar's Billing is now Financials. It opens on a firm-wide rollup — contracted, invoiced, received, outstanding, and the firm's internal take — and breaks revenue down by project. The raw invoice register is one click away.",

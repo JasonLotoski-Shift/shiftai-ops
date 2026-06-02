@@ -32,6 +32,7 @@ const TEXT_EXTS = [".txt", ".md", ".markdown", ".vtt", ".srt", ".text", ".log", 
 type Opt = { id: string; name: string; company: string };
 type ClientOpt = { id: string; company: string };
 type ProjectOpt = { id: string; name: string };
+type DealOpt = { id: string; name: string };
 type PartnerOpt = { id: string; name: string };
 
 // One picked target in the composer. `id` may be "" for the not-yet-saved
@@ -63,6 +64,7 @@ export function IngestComposer({
   contacts,
   clients,
   projects,
+  deals,
   currentPartnerId,
   initialFocus,
   onClose,
@@ -71,6 +73,7 @@ export function IngestComposer({
   contacts: Opt[];
   clients: ClientOpt[];
   projects: ProjectOpt[];
+  deals: DealOpt[];
   currentPartnerId: string;
   initialFocus?: { kind: IngestTargetKind; id: string } | null;
   onClose: () => void;
@@ -87,7 +90,7 @@ export function IngestComposer({
   const [dragging, setDragging] = useState(false);
 
   const [targets, setTargets] = useState<Target[]>(() =>
-    initialFocus ? [resolveTarget(initialFocus.kind, initialFocus.id, { contacts, clients, projects }, true)] : [],
+    initialFocus ? [resolveTarget(initialFocus.kind, initialFocus.id, { contacts, clients, projects, deals }, true)] : [],
   );
 
   const [detecting, startDetect] = useTransition();
@@ -125,7 +128,7 @@ export function IngestComposer({
   function addTarget(kind: IngestTargetKind, id: string) {
     setTargets((prev) => {
       if (prev.some((t) => t.kind === kind && t.id === id)) return prev;
-      const t = resolveTarget(kind, id, { contacts, clients, projects }, prev.length === 0);
+      const t = resolveTarget(kind, id, { contacts, clients, projects, deals }, prev.length === 0);
       return [...prev, t];
     });
   }
@@ -139,7 +142,7 @@ export function IngestComposer({
     setError(null);
     startDetect(async () => {
       try {
-        const res = await detectTargets({ content, emailBlock: emailBlock || undefined });
+        const res = await detectTargets({ content, emailBlock: emailBlock || undefined, title: title || undefined });
         if (res.targets.length === 0) {
           setDetectNote("No known records matched the text. Add targets by hand below.");
           return;
@@ -328,7 +331,7 @@ export function IngestComposer({
               )}
 
               {/* Manual add */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-1">
                 <RecordPicker
                   placeholder="Add contact…"
                   options={contacts.map((c) => ({ id: c.id, label: `${c.name} · ${c.company}` }))}
@@ -339,6 +342,12 @@ export function IngestComposer({
                   placeholder="Add client…"
                   options={clients.map((c) => ({ id: c.id, label: c.company }))}
                   onPick={(id) => addTarget("client", id)}
+                  disabled={isPending}
+                />
+                <RecordPicker
+                  placeholder="Add deal…"
+                  options={deals.map((d) => ({ id: d.id, label: d.name }))}
+                  onPick={(id) => addTarget("deal", id)}
                   disabled={isPending}
                 />
                 <RecordPicker
@@ -468,7 +477,7 @@ export function IngestComposer({
 function resolveTarget(
   kind: IngestTargetKind,
   id: string,
-  lists: { contacts: Opt[]; clients: ClientOpt[]; projects: ProjectOpt[] },
+  lists: { contacts: Opt[]; clients: ClientOpt[]; projects: ProjectOpt[]; deals: DealOpt[] },
   focus: boolean,
 ): Target {
   let label = id;
@@ -482,7 +491,8 @@ function resolveTarget(
     const p = lists.projects.find((x) => x.id === id);
     if (p) label = p.name;
   } else if (kind === "deal") {
-    label = "Deal";
+    const d = lists.deals.find((x) => x.id === id);
+    label = d ? d.name : "Deal";
   }
   return { kind, id, label, focus };
 }

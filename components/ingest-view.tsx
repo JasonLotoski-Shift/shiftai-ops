@@ -57,6 +57,7 @@ export function IngestView({
   contacts,
   clients,
   projects,
+  deals,
   currentPartnerId,
   initialFocus,
 }: {
@@ -65,6 +66,7 @@ export function IngestView({
   contacts: { id: string; name: string; company: string }[];
   clients: { id: string; company: string }[];
   projects: { id: string; name: string }[];
+  deals: { id: string; name: string }[];
   currentPartnerId?: string;
   initialFocus?: { kind: IngestTargetKind; id: string } | null;
 }) {
@@ -146,6 +148,7 @@ export function IngestView({
           contacts={contacts}
           clients={clients}
           projects={projects}
+          deals={deals}
           currentPartnerId={currentPartnerId ?? ""}
           initialFocus={initialFocus}
           onClose={() => setComposerOpen(false)}
