@@ -114,6 +114,13 @@ enum AgentPlanStatus {
   done
 }
 
+// A plan row is either an agent plan or an MCP plan — same shape, same CRUD,
+// rendered under different tabs on the Agents & MCPs page.
+enum AgentPlanKind {
+  agent
+  mcp
+}
+
 enum ChannelKind {
   channel
   dm
@@ -840,6 +847,7 @@ model AgentPlan {
   keyTasks String[]
   notes    String?
   status   AgentPlanStatus @default(idea)
+  kind     AgentPlanKind   @default(agent)
 
   createdBy   Partner @relation("AgentPlanCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -848,6 +856,7 @@ model AgentPlan {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+  @@index([kind])
 }
 
 // ──────────────────────────────────────────────────────────────────────

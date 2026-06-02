@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   Bot,
+  Plug,
   Plus,
   X,
   ShieldAlert,
@@ -22,6 +23,7 @@ import {
 } from "@/app/(app)/agents/actions";
 
 type PlanStatus = "idea" | "active" | "paused" | "done";
+type PlanKind = "agent" | "mcp";
 
 type PlanProp = {
   id: string;
@@ -30,6 +32,7 @@ type PlanProp = {
   keyTasks: string[];
   notes: string | null;
   status: PlanStatus;
+  kind: PlanKind;
   createdByName: string;
   updatedAt: string;
 };
@@ -45,6 +48,60 @@ const STATUS_TONE: Record<PlanStatus, "neutral" | "gold" | "steel" | "bone"> = {
 
 const STATUSES: PlanStatus[] = ["idea", "active", "paused", "done"];
 
+// Per-kind copy so one set of CRUD components serves both tabs.
+const KIND_COPY: Record<PlanKind, { tasksLabel: string; tasksPlaceholder: string; newLabel: string; one: string }> = {
+  agent: {
+    tasksLabel: "Key tasks (one per line)",
+    tasksPlaceholder: "Pull deals stale 14d+\nDraft a summary\nPost to #pipeline",
+    newLabel: "New plan",
+    one: "agent plan",
+  },
+  mcp: {
+    tasksLabel: "Tools / capabilities (one per line)",
+    tasksPlaceholder: "get_client(id)\nlist_pipeline(filters)\nlog_hours(project_id, hours, …)",
+    newLabel: "New MCP plan",
+    one: "MCP plan",
+  },
+};
+
+// The MCP surface the ops tool plans to expose to Claude Code workspaces and
+// scheduled agents — the canonical roadmap, kept in sync with
+// docs/mcp-contract.md. This is the "here" the team copies a good MCP plan into.
+const PLANNED_MCPS: { name: string; purpose: string; tools: string[] }[] = [
+  {
+    name: "Ops MCP server — read tools",
+    purpose: "How Claude pulls firm state from inside a workspace or a scheduled run.",
+    tools: [
+      "get_client(id)",
+      "get_project(id)",
+      "list_pipeline(filters)",
+      "list_active_engagements()",
+      "get_team_hours(period, filters)",
+      "list_artifacts(scope, filters)",
+      "get_ip_library_index()",
+    ],
+  },
+  {
+    name: "Ops MCP server — write tools",
+    purpose: "How Claude updates firm state — each wrapped by the audit ledger.",
+    tools: [
+      "create_engagement(client_id, scope_payload)",
+      "log_hours(project_id, hours, description, partner_id)",
+      "update_project_status(project_id, status, notes)",
+      "create_artifact(type, title, driveUrl, scope, generatedFromSkill?)",
+    ],
+  },
+  {
+    name: "Event stream",
+    purpose: "Events Claude listens for (webhooks or polling) to fire a skill.",
+    tools: [
+      "engagement.created → /onboard-client",
+      "engagement.closed → /harvest-engagement",
+      "proposal.requested → /scope",
+    ],
+  },
+];
+
 export function AgentsViews({
   plans,
   skills,
@@ -56,39 +113,44 @@ export function AgentsViews({
 }) {
   const [tab, setTab] = useState("plans");
   const [editing, setEditing] = useState<PlanProp | null>(null);
-  const [creating, setCreating] = useState(false);
+  // null = closed; otherwise the kind we're drafting.
+  const [creating, setCreating] = useState<PlanKind | null>(null);
+
+  const agentPlans = useMemo(() => plans.filter((p) => p.kind === "agent"), [plans]);
+  const mcpPlans = useMemo(() => plans.filter((p) => p.kind === "mcp"), [plans]);
 
   return (
     <div className="px-8 py-8 flex flex-col gap-8">
       <Tabs
         tabs={[
-          { key: "plans", label: "Agent plans", count: plans.length },
-          { key: "live", label: "Live skills", count: skills.length },
+          { key: "plans", label: "Agent plans", count: agentPlans.length },
+          { key: "live", label: "Agent (skills)", count: skills.length },
+          { key: "mcps", label: "MCPs", count: PLANNED_MCPS.length + mcpPlans.length },
         ]}
         active={tab}
         onChange={setTab}
       />
 
-      {tab === "plans" ? (
+      {tab === "plans" && (
         <div className="flex flex-col gap-5">
           <div className="flex items-center justify-between">
             <p className="text-[13px] text-bone-mute max-w-[640px] leading-relaxed">
               Draft what an agent <span className="text-bone">should</span> do — its goal and key tasks — before any skill or
               scheduled run exists. A planning surface, not a deploy. Promote a plan to a real skill when it&apos;s ready.
             </p>
-            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+            <Button variant="primary" size="sm" onClick={() => setCreating("agent")}>
               <Plus size={13} strokeWidth={1.5} />
               New plan
             </Button>
           </div>
 
-          {plans.length === 0 ? (
+          {agentPlans.length === 0 ? (
             <EmptyState
               icon={<Bot size={28} strokeWidth={1.5} />}
               title="No agent plans yet"
               hint="Draft the first one."
               action={
-                <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+                <Button variant="primary" size="sm" onClick={() => setCreating("agent")}>
                   <Plus size={13} strokeWidth={1.5} />
                   New plan
                 </Button>
@@ -96,24 +158,116 @@ export function AgentsViews({
             />
           ) : (
             <div className="grid grid-cols-2 gap-4">
-              {plans.map((p) => (
+              {agentPlans.map((p) => (
                 <PlanCard key={p.id} plan={p} onEdit={() => setEditing(p)} />
               ))}
             </div>
           )}
         </div>
-      ) : (
-        <LiveSkills skills={skills} firmContext={firmContext} />
       )}
 
-      {creating && <PlanModal onClose={() => setCreating(false)} />}
-      {editing && <PlanModal plan={editing} onClose={() => setEditing(null)} />}
+      {tab === "live" && <LiveSkills skills={skills} firmContext={firmContext} />}
+
+      {tab === "mcps" && (
+        <McpsTab plans={mcpPlans} onNew={() => setCreating("mcp")} onEdit={(p) => setEditing(p)} />
+      )}
+
+      {creating && <PlanModal kind={creating} onClose={() => setCreating(null)} />}
+      {editing && <PlanModal plan={editing} kind={editing.kind} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function McpsTab({
+  plans,
+  onNew,
+  onEdit,
+}: {
+  plans: PlanProp[];
+  onNew: () => void;
+  onEdit: (p: PlanProp) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex items-start justify-between gap-6">
+        <p className="text-[13px] text-bone-mute max-w-[640px] leading-relaxed">
+          The MCP server is how Claude Code workspaces and scheduled agents read and write firm state — same Prisma
+          client, same Postgres as this UI. Below is the <span className="text-bone">planned surface</span> from the
+          contract; the team can draft MCP plans of their own, and a good one gets copied up to the plan later.
+        </p>
+        <Button variant="primary" size="sm" onClick={onNew}>
+          <Plus size={13} strokeWidth={1.5} />
+          New MCP plan
+        </Button>
+      </div>
+
+      {/* Planned MCPs — canonical roadmap (read-only). */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <Label gold>Planned MCPs</Label>
+          <span className="text-[11px] text-bone-mute">— from the MCP contract</span>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {PLANNED_MCPS.map((m) => (
+            <Card key={m.name} className="flex flex-col">
+              <div className="px-5 py-4 flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Plug size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
+                  <span className="title-md truncate">{m.name}</span>
+                </div>
+                <Badge tone="gold">planned</Badge>
+              </div>
+              <div className="px-5 py-4 flex flex-col gap-3 flex-1">
+                <p className="text-[13px] text-bone-dim leading-relaxed">{m.purpose}</p>
+                <ul className="flex flex-col gap-1">
+                  {m.tools.map((t, i) => (
+                    <li key={i} className="text-[12px] text-bone-dim flex items-start gap-2">
+                      <span className="text-track-gold mt-0.5">·</span>
+                      <span className="mono text-[11px]">{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Team MCP plans — drafts the team proposes (DB-backed). */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <Label>Team MCP plans</Label>
+          <span className="text-[11px] text-bone-mute">— proposed by the team; promote a good one to the plan above</span>
+        </div>
+        {plans.length === 0 ? (
+          <EmptyState
+            icon={<Plug size={28} strokeWidth={1.5} />}
+            title="No MCP plans yet"
+            hint="Draft a tool or server the firm should expose."
+            action={
+              <Button variant="primary" size="sm" onClick={onNew}>
+                <Plus size={13} strokeWidth={1.5} />
+                New MCP plan
+              </Button>
+            }
+            compact
+          />
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {plans.map((p) => (
+              <PlanCard key={p.id} plan={p} onEdit={() => onEdit(p)} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
   const [isPending, startTransition] = useTransition();
+  const copy = KIND_COPY[plan.kind];
+  const Icon = plan.kind === "mcp" ? Plug : Bot;
 
   function cycleStatus(next: PlanStatus) {
     startTransition(async () => {
@@ -126,7 +280,7 @@ function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
   }
 
   function remove() {
-    if (!confirm(`Delete the "${plan.name}" plan?`)) return;
+    if (!confirm(`Delete the "${plan.name}" ${copy.one}?`)) return;
     startTransition(async () => {
       try {
         await deleteAgentPlan(plan.id);
@@ -140,7 +294,7 @@ function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
     <Card className={cn("flex flex-col", isPending && "opacity-60")}>
       <div className="px-5 py-4 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <Bot size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
+          <Icon size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
           <span className="title-md truncate">{plan.name}</span>
         </div>
         <Badge tone={STATUS_TONE[plan.status]}>{plan.status}</Badge>
@@ -149,7 +303,7 @@ function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
         <p className="text-[13px] text-bone-dim leading-relaxed">{plan.goal}</p>
         {plan.keyTasks.length > 0 && (
           <div className="flex flex-col gap-1.5">
-            <Label>Key tasks</Label>
+            <Label>{plan.kind === "mcp" ? "Tools / capabilities" : "Key tasks"}</Label>
             <ul className="flex flex-col gap-1">
               {plan.keyTasks.map((t, i) => (
                 <li key={i} className="text-[12px] text-bone-dim flex items-start gap-2">
@@ -193,7 +347,8 @@ function PlanCard({ plan, onEdit }: { plan: PlanProp; onEdit: () => void }) {
   );
 }
 
-function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) {
+function PlanModal({ plan, kind, onClose }: { plan?: PlanProp; kind: PlanKind; onClose: () => void }) {
+  const copy = KIND_COPY[kind];
   const [name, setName] = useState(plan?.name ?? "");
   const [goal, setGoal] = useState(plan?.goal ?? "");
   const [keyTasks, setKeyTasks] = useState(plan?.keyTasks.join("\n") ?? "");
@@ -202,12 +357,14 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const Icon = kind === "mcp" ? Plug : Bot;
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
       try {
-        const payload = { name, goal, keyTasks, notes, status };
+        const payload = { name, goal, keyTasks, notes, status, kind };
         if (plan) await updateAgentPlan(plan.id, payload);
         else await createAgentPlan(payload);
         onClose();
@@ -217,13 +374,17 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
     });
   }
 
+  const title = plan
+    ? kind === "mcp" ? "Edit MCP plan" : "Edit agent plan"
+    : kind === "mcp" ? "New MCP plan" : "New agent plan";
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-[600px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
-            <Bot size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>{plan ? "Edit agent plan" : "New agent plan"}</Label>
+            <Icon size={14} strokeWidth={1.5} className="text-track-gold" />
+            <Label gold>{title}</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -232,15 +393,28 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
         <form onSubmit={submit} className="px-5 py-5 flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label>Name <span className="text-flag-red">*</span></Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Weekly pipeline review" required disabled={isPending} />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={kind === "mcp" ? "e.g. log_hours write tool" : "e.g. Weekly pipeline review"}
+              required
+              disabled={isPending}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label>Goal <span className="text-flag-red">*</span></Label>
-            <Textarea rows={2} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="What should this agent accomplish?" required disabled={isPending} />
+            <Textarea
+              rows={2}
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              placeholder={kind === "mcp" ? "What should this MCP tool / server let Claude do?" : "What should this agent accomplish?"}
+              required
+              disabled={isPending}
+            />
           </div>
           <div className="flex flex-col gap-2">
-            <Label>Key tasks (one per line)</Label>
-            <Textarea rows={4} value={keyTasks} onChange={(e) => setKeyTasks(e.target.value)} placeholder={"Pull deals stale 14d+\nDraft a summary\nPost to #pipeline"} disabled={isPending} />
+            <Label>{copy.tasksLabel}</Label>
+            <Textarea rows={4} value={keyTasks} onChange={(e) => setKeyTasks(e.target.value)} placeholder={copy.tasksPlaceholder} disabled={isPending} />
           </div>
           <div className="grid grid-cols-[1fr_160px] gap-4">
             <div className="flex flex-col gap-2">
@@ -269,7 +443,7 @@ function PlanModal({ plan, onClose }: { plan?: PlanProp; onClose: () => void }) 
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" type="button" onClick={onClose} disabled={isPending}>Cancel</Button>
             <Button variant="primary" size="sm" type="submit" disabled={isPending || !name.trim() || !goal.trim()}>
-              {isPending ? "Saving…" : plan ? "Save changes" : "Create plan"}
+              {isPending ? "Saving…" : plan ? "Save changes" : kind === "mcp" ? "Create MCP plan" : "Create plan"}
             </Button>
           </div>
         </form>

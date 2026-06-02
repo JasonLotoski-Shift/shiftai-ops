@@ -23,6 +23,12 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-02",
+    tag: "new",
+    title: "Agents page is now Agents & MCPs",
+    detail: "The Agents tab is now Agents & MCPs, with three views: Agent plans, Agent (skills), and a new MCPs view. MCPs shows the planned MCP surface from the contract and lets the team draft their own MCP plans — promote a good one to the plan when it's ready.",
+  },
+  {
     date: "2026-06-01",
     tag: "new",
     title: "Edit a deal's value, stage, and details",

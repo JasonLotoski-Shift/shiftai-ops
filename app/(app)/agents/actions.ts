@@ -12,9 +12,10 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
-import type { AgentPlanStatus } from "@/lib/generated/prisma/enums";
+import type { AgentPlanStatus, AgentPlanKind } from "@/lib/generated/prisma/enums";
 
 const VALID_STATUS: AgentPlanStatus[] = ["idea", "active", "paused", "done"];
+const VALID_KIND: AgentPlanKind[] = ["agent", "mcp"];
 
 function splitTasks(raw: string): string[] {
   return raw
@@ -30,6 +31,8 @@ export type AgentPlanInput = {
   keyTasks: string;
   notes?: string;
   status?: string;
+  /** "agent" (default) or "mcp" — which tab the plan lives under. */
+  kind?: string;
 };
 
 export async function createAgentPlan(input: AgentPlanInput) {
@@ -45,6 +48,10 @@ export async function createAgentPlan(input: AgentPlanInput) {
   const status = (input.status && VALID_STATUS.includes(input.status as AgentPlanStatus)
     ? (input.status as AgentPlanStatus)
     : "idea");
+  const kind = (input.kind && VALID_KIND.includes(input.kind as AgentPlanKind)
+    ? (input.kind as AgentPlanKind)
+    : "agent");
+  const label = kind === "mcp" ? "an MCP plan" : "an agent plan";
 
   const plan = await prisma.$transaction(async (tx) => {
     const created = await tx.agentPlan.create({
@@ -54,6 +61,7 @@ export async function createAgentPlan(input: AgentPlanInput) {
         keyTasks: splitTasks(input.keyTasks),
         notes: input.notes?.trim() || null,
         status,
+        kind,
         createdById: session.user.partnerId!,
       },
     });
@@ -63,14 +71,14 @@ export async function createAgentPlan(input: AgentPlanInput) {
       action: "create.agentPlan",
       targetType: "AgentPlan",
       targetId: created.id,
-      changes: { name, goal, status },
+      changes: { name, goal, status, kind },
     });
 
     await writeActivity(tx, {
       actor,
       type: "ai",
       target: name,
-      detail: `Drafted an agent plan — ${goal.length > 80 ? goal.slice(0, 77) + "…" : goal}`,
+      detail: `Drafted ${label} — ${goal.length > 80 ? goal.slice(0, 77) + "…" : goal}`,
       link: `/agents`,
     });
 

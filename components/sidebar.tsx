@@ -42,7 +42,7 @@ const reference = [
 
 const secondary = [
   { href: "/library", label: "Library", icon: Library, disabled: true },
-  { href: "/agents", label: "Agents", icon: Bot, disabled: false },
+  { href: "/agents", label: "Agents & MCPs", icon: Bot, disabled: false },
   { href: "/settings", label: "Settings", icon: Settings, disabled: true },
 ];
 

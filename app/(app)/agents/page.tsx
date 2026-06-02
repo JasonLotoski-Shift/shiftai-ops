@@ -21,13 +21,14 @@ export default async function AgentsPage() {
     keyTasks: p.keyTasks,
     notes: p.notes,
     status: p.status,
+    kind: p.kind,
     createdByName: p.createdBy.name,
     updatedAt: p.updatedAt.toISOString(),
   }));
 
   return (
     <>
-      <Header eyebrow="Firm · Agents" title="Agents." />
+      <Header eyebrow="Firm · Agents & MCPs" title="Agents & MCPs." />
       <AgentsViews plans={planProps} skills={skills} firmContext={firm.body} />
     </>
   );
