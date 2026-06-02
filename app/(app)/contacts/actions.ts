@@ -10,13 +10,22 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
-import type { Industry } from "@/lib/generated/prisma/enums";
+import type { Industry, LeadSource } from "@/lib/generated/prisma/enums";
 
 const VALID_INDUSTRIES: Industry[] = [
   "automotive",
   "motorsport",
   "engineering",
   "construction",
+  "other",
+];
+
+const VALID_LEAD_SOURCES: LeadSource[] = [
+  "intro",
+  "outbound",
+  "referral",
+  "event",
+  "inbound",
   "other",
 ];
 
@@ -28,6 +37,8 @@ export type CreateContactInput = {
   phone?: string;
   industry: string;
   source: string;
+  /** Structured bucket for color-coding lead cards (optional). */
+  sourceCategory?: string;
   notes?: string;
   /** Partner who owns the relationship. Defaults to the signed-in partner. */
   partnerLeadId?: string;
@@ -54,6 +65,11 @@ export async function createContact(input: CreateContactInput) {
   if (!VALID_INDUSTRIES.includes(input.industry as Industry)) {
     throw new Error(`Invalid industry: ${input.industry}`);
   }
+  // Optional structured source bucket — validated if supplied, else left null.
+  const sourceCategory =
+    input.sourceCategory && VALID_LEAD_SOURCES.includes(input.sourceCategory as LeadSource)
+      ? (input.sourceCategory as LeadSource)
+      : null;
 
   // Default the partner lead to whoever is signed in; allow an explicit
   // override (the form offers the roster). Validate the FK exists.
@@ -76,6 +92,7 @@ export async function createContact(input: CreateContactInput) {
         phone: input.phone?.trim() || null,
         industry: input.industry as Industry,
         source: input.source.trim() || "Manual entry",
+        sourceCategory,
         notes: input.notes?.trim() || null,
         // A brand-new contact counts as touched now — keeps it out of the
         // "cold 30d+" bucket on the day it's added.

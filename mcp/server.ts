@@ -82,7 +82,7 @@ const tools: Tool[] = [
     description: "Open deals, optionally filtered by stage. Returns stage, value, last-touch, stage-entered, owner.",
     inputSchema: {
       type: "object",
-      properties: { stage: { type: "string", description: "lead|qualified|discovery|proposal|negotiation|signed (optional)" } },
+      properties: { stage: { type: "string", description: "lead|qualified|discovery|discussion|proposal|negotiation|signed (optional)" } },
     },
     handler: async (a) => {
       const stage = str(a.stage);

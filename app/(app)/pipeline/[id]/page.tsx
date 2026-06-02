@@ -6,7 +6,7 @@ import { DealActions } from "@/components/deal-actions";
 import { EstimateEditor } from "@/components/billing/estimate-editor";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
-import { stageLabels, industryLabels } from "@/lib/data/seed";
+import { stageLabels, industryLabels, leadSourceLabels } from "@/lib/data/seed";
 import { ArrowLeft, Mail, Phone, Sparkles, Activity } from "lucide-react";
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -216,7 +216,10 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
             <div className="px-5 pt-5 pb-3">
               <span className="title-md">Source</span>
             </div>
-            <CardBody>
+            <CardBody className="flex flex-col gap-2">
+              {contact.sourceCategory && (
+                <Badge tone="gold">{leadSourceLabels[contact.sourceCategory] ?? contact.sourceCategory}</Badge>
+              )}
               <p className="text-[13px] text-bone-dim">{contact.source ?? "Unknown"}</p>
             </CardBody>
           </Card>

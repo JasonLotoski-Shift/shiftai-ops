@@ -241,7 +241,7 @@ export async function convertDeal(
 //     aging color goes back to fresh).
 // ──────────────────────────────────────────────────────────────────────
 
-const VALID_STAGES_EDIT: DealStage[] = ["lead", "qualified", "discovery", "proposal", "negotiation"];
+const VALID_STAGES_EDIT: DealStage[] = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation"];
 const VALID_INDUSTRIES_EDIT: Industry[] = ["automotive", "motorsport", "engineering", "construction", "other"];
 
 export async function updateDeal(
@@ -385,7 +385,8 @@ export async function updateDeal(
 const STAGE_LABELS_EDIT: Record<DealStage, string> = {
   lead: "Lead",
   qualified: "Qualified",
-  discovery: "Discovery",
+  discovery: "Discovery Call",
+  discussion: "Discussion Call",
   proposal: "Proposal",
   negotiation: "Negotiation",
   signed: "Signed",

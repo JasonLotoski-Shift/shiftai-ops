@@ -14,7 +14,7 @@ import { updateDeal } from "@/app/(app)/pipeline/[id]/actions";
 import type { DealModel as Deal } from "@/lib/generated/prisma/models";
 
 // Stages settable here — "signed" is intentionally excluded (Convert owns it).
-const EDIT_STAGES = ["lead", "qualified", "discovery", "proposal", "negotiation"] as const;
+const EDIT_STAGES = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation"] as const;
 const INDUSTRIES = ["automotive", "motorsport", "engineering", "construction", "other"] as const;
 
 function toISODate(d: Date): string {

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { UserPlus, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { createContact } from "@/app/(app)/contacts/actions";
-import { industryLabels } from "@/lib/data/seed";
+import { industryLabels, leadSourceLabels } from "@/lib/data/seed";
 
 type PartnerOption = { id: string; name: string };
 
@@ -60,6 +60,7 @@ function AddContactModal({
   const [phone, setPhone] = useState("");
   const [industry, setIndustry] = useState("automotive");
   const [source, setSource] = useState("");
+  const [sourceCategory, setSourceCategory] = useState("intro");
   const [notes, setNotes] = useState("");
   const [partnerLeadId, setPartnerLeadId] = useState(
     defaultPartnerId ?? partners[0]?.id ?? "",
@@ -80,6 +81,7 @@ function AddContactModal({
           phone,
           industry,
           source,
+          sourceCategory,
           notes,
           partnerLeadId,
         });
@@ -144,8 +146,16 @@ function AddContactModal({
               </Select>
             </div>
             <div className="flex flex-col gap-2">
-              <Label>Source</Label>
-              <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g. Referral, LinkedIn, event" disabled={isPending} />
+              <Label>Source category</Label>
+              <Select value={sourceCategory} onChange={(e) => setSourceCategory(e.target.value)} disabled={isPending}>
+                {Object.entries(leadSourceLabels).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Source (detail)</Label>
+              <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g. Referral from Jay, LinkedIn, SEMA" disabled={isPending} />
             </div>
             <div className="flex flex-col gap-2">
               <Label>Partner lead</Label>

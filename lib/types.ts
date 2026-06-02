@@ -23,7 +23,8 @@ export type Contact = {
   partnerLeadId: string;
   industry: Industry;
   lastTouchAt: string; // ISO date
-  source: string;
+  source: string; // free-text "where exactly" note
+  sourceCategory?: LeadSource; // structured bucket — color-codes lead cards
   notes?: string;
 
   // Relationship intelligence — built up over time, enriched by web search + AI.
@@ -54,7 +55,9 @@ export type Interaction = {
   channel?: string; // optional: "Zoom", "On-site", "Phone"
 };
 
-export type DealStage = "lead" | "qualified" | "discovery" | "proposal" | "negotiation" | "signed";
+export type LeadSource = "intro" | "outbound" | "referral" | "event" | "inbound" | "other";
+
+export type DealStage = "lead" | "qualified" | "discovery" | "discussion" | "proposal" | "negotiation" | "signed";
 
 export type Deal = {
   id: string;

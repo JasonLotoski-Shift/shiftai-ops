@@ -486,15 +486,26 @@ export const interactionLabels: Record<string, string> = {
   other: "Other",
 };
 
-export const stageOrder: Deal["stage"][] = ["lead", "qualified", "discovery", "proposal", "negotiation", "signed"];
+export const stageOrder: Deal["stage"][] = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation", "signed"];
 
 export const stageLabels: Record<Deal["stage"], string> = {
   lead: "Lead",
   qualified: "Qualified",
-  discovery: "Discovery",
+  discovery: "Discovery Call",
+  discussion: "Discussion Call",
   proposal: "Proposal",
   negotiation: "Negotiation",
   signed: "Signed",
+};
+
+// Lead-source bucket → human label (capture dropdowns + detail display).
+export const leadSourceLabels: Record<string, string> = {
+  intro: "Intro",
+  outbound: "Outbound (found)",
+  referral: "Referral",
+  event: "Event",
+  inbound: "Inbound",
+  other: "Other",
 };
 
 export const industryLabels: Record<string, string> = {

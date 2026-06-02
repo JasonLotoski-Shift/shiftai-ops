@@ -5,7 +5,7 @@ import { Card, CardBody, Label, Badge, Avatar, EmptyState } from "@/components/u
 import { ContactActions } from "@/components/contact-actions";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
-import { interactionLabels, industryLabels, stageLabels } from "@/lib/data/seed";
+import { interactionLabels, industryLabels, stageLabels, leadSourceLabels } from "@/lib/data/seed";
 import {
   ArrowLeft,
   Mail,
@@ -95,7 +95,12 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Source</Label>
-                <span className="text-[13px] text-bone-dim">{contact.source}</span>
+                <div className="flex items-center gap-2">
+                  {contact.sourceCategory && (
+                    <Badge tone="gold">{leadSourceLabels[contact.sourceCategory] ?? contact.sourceCategory}</Badge>
+                  )}
+                  <span className="text-[13px] text-bone-dim">{contact.source}</span>
+                </div>
               </div>
             </div>
           </Card>

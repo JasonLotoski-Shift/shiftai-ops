@@ -39,7 +39,7 @@ export const PROJECT_SCALAR_FIELDS = ["phase", "status"] as const;
 
 const PROJECT_PHASES = new Set(["discovery", "build", "run"]);
 const ENGAGEMENT_STATUSES = new Set(["on_track", "at_risk", "blocked", "closing", "closed"]);
-const DEAL_STAGES = new Set(["lead", "qualified", "discovery", "proposal", "negotiation", "signed"]);
+const DEAL_STAGES = new Set(["lead", "qualified", "discovery", "discussion", "proposal", "negotiation", "signed"]);
 
 /** Hyphenated DB enum values → underscored Prisma identifiers ("at-risk" → "at_risk"). */
 function normEnum(v: string): string {

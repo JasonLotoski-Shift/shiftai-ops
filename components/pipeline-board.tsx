@@ -14,7 +14,7 @@ import type {
   ContactModel as Contact,
   PartnerModel as Partner,
 } from "@/lib/generated/prisma/models";
-import type { DealStage } from "@/lib/generated/prisma/enums";
+import type { DealStage, LeadSource } from "@/lib/generated/prisma/enums";
 
 type DealWithRel = Deal & { contact: Contact; partnerLead: Partner };
 
@@ -33,8 +33,12 @@ const NEXT_ACTION: Record<string, (company: string) => { title: string; context:
     context: `Goal: get a scoping call on the calendar with ${c}.\nBring: the pain we heard, two example outcomes, a proposed agenda.`,
   }),
   discovery: (c) => ({
-    title: `Draft proposal for ${c}`,
-    context: `Goal: turn discovery notes into a scoped proposal for ${c}.\nInclude: phased plan, success measures, fee, timeline.`,
+    title: `Run the discovery call with ${c}, then book the discussion call`,
+    context: `Goal: get to know ${c} — their pain, what they know about AI, who decides.\nQualify hard, then earn a discussion call. Prep the internal discovery doc first.`,
+  }),
+  discussion: (c) => ({
+    title: `Send survey + follow-up, then move ${c} to proposal`,
+    context: `Goal: turn discovery + discussion into a scoped proposal for ${c}.\nSend the post-call survey, a follow-up email, and book the next step. Include: phased plan, success measures, fee, timeline.`,
   }),
   proposal: (c) => ({
     title: `Follow up on the ${c} proposal`,
@@ -58,6 +62,29 @@ const AGE_DOT: Record<StageAgeTier, string> = {
   warming: "bg-signal-warming",
   stale: "bg-flag-red",
 };
+
+// Lead-source accent — a left border on each card colored by where the lead
+// came from (from contact.sourceCategory). CSS vars (not Tailwind classes) so
+// the color always renders regardless of safelisting. null → graphite.
+const SOURCE_ACCENT: Record<LeadSource, string> = {
+  intro: "var(--color-track-gold)",
+  outbound: "var(--color-signal-warming)",
+  referral: "var(--color-signal-fresh)",
+  event: "var(--color-bone)",
+  inbound: "var(--color-diagnostic-steel)",
+  other: "var(--color-graphite)",
+};
+const SOURCE_FALLBACK = "var(--color-graphite)";
+
+// Legend rows for the board header (label + the same color).
+const SOURCE_LEGEND: { source: LeadSource; label: string }[] = [
+  { source: "intro", label: "Intro" },
+  { source: "outbound", label: "Outbound" },
+  { source: "referral", label: "Referral" },
+  { source: "event", label: "Event" },
+  { source: "inbound", label: "Inbound" },
+  { source: "other", label: "Other" },
+];
 
 interface PipelineBoardProps {
   initialDeals: DealWithRel[];
@@ -164,6 +191,20 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
 
   return (
     <>
+      {/* Lead-source legend — the left-border color on each card. */}
+      <div className="px-8 pt-5 flex items-center gap-4 flex-wrap">
+        <span className="label text-[10px] text-bone-mute">Lead source</span>
+        {SOURCE_LEGEND.map(({ source, label }) => (
+          <span key={source} className="inline-flex items-center gap-1.5 text-[11px] text-bone-dim">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-[2px] shrink-0"
+              style={{ backgroundColor: SOURCE_ACCENT[source] }}
+            />
+            {label}
+          </span>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-x-auto px-8 py-6">
         {/* Fixed-width, content-height lanes: empty lanes stay short instead of
             stretching into tall channels. Only the deal cards float. */}
@@ -211,6 +252,13 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         onDragStart={(e) => onDragStart(e, deal.id)}
                         onDragEnd={onDragEnd}
                         onClick={() => router.push(`/pipeline/${deal.id}`)}
+                        style={{
+                          borderLeftWidth: 2,
+                          borderLeftStyle: "solid",
+                          borderLeftColor: deal.contact.sourceCategory
+                            ? SOURCE_ACCENT[deal.contact.sourceCategory]
+                            : SOURCE_FALLBACK,
+                        }}
                         className={cn(
                           "block bg-asphalt rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-all cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow)] hover:-translate-y-px",
                           dragging && "opacity-40",

@@ -25,6 +25,12 @@ export const updates: Update[] = [
   {
     date: "2026-06-02",
     tag: "new",
+    title: "New \"Discussion Call\" stage + color-coded leads",
+    detail: "The pipeline now has a Discussion Call column between Discovery Call and Proposal — the step after discovery where you send a survey, follow up, and book the next meeting. Lead cards also carry a left-edge color by source (intro, outbound, referral, event, inbound), with a legend above the board. Set a contact's source category when you add them.",
+  },
+  {
+    date: "2026-06-02",
+    tag: "new",
     title: "Agents page is now Agents & MCPs",
     detail: "The Agents tab is now Agents & MCPs, with three views: Agent plans, Agent (skills), and a new MCPs view. MCPs shows the planned MCP surface from the contract and lets the team draft their own MCP plans — promote a good one to the plan when it's ready.",
   },

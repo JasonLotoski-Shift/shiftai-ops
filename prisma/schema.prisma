@@ -39,9 +39,22 @@ enum DealStage {
   lead
   qualified
   discovery
+  discussion
   proposal
   negotiation
   signed
+}
+
+// Where a lead/contact came from — a structured bucket used to color-code
+// lead cards on the pipeline board. The free-text Contact.source stays as the
+// human "where exactly" note; this is the closed set for coloring + filtering.
+enum LeadSource {
+  intro
+  outbound // a.k.a. "found"
+  referral
+  event
+  inbound
+  other
 }
 
 enum EngagementStatus {
@@ -273,7 +286,8 @@ model Contact {
   email       String
   phone       String?
   industry    Industry
-  source      String
+  source      String      // free-text "where exactly" note
+  sourceCategory LeadSource? // structured bucket — color-codes lead cards
   notes       String?
   lastTouchAt DateTime
 

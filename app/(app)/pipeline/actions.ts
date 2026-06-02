@@ -16,7 +16,8 @@ import type { DealStage, Industry } from "@/lib/generated/prisma/enums";
 const STAGE_LABELS: Record<DealStage, string> = {
   lead: "Lead",
   qualified: "Qualified",
-  discovery: "Discovery",
+  discovery: "Discovery Call",
+  discussion: "Discussion Call",
   proposal: "Proposal",
   negotiation: "Negotiation",
   signed: "Signed",
@@ -25,7 +26,7 @@ const STAGE_LABELS: Record<DealStage, string> = {
 // Stages a card can be dragged into. "signed" is intentionally excluded —
 // signing a deal runs the convert-deal flow (creates Client + Project +
 // Drive folder), not a bare stage flip.
-const DRAGGABLE_STAGES: DealStage[] = ["lead", "qualified", "discovery", "proposal", "negotiation"];
+const DRAGGABLE_STAGES: DealStage[] = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation"];
 
 export async function updateDealStage(dealId: string, newStage: string) {
   const session = await auth();
@@ -89,7 +90,7 @@ export async function updateDealStage(dealId: string, newStage: string) {
 // defaults to now. Canonical recipe: create + writeAudit + writeActivity.
 // ──────────────────────────────────────────────────────────────────────
 
-const VALID_STAGES: DealStage[] = ["lead", "qualified", "discovery", "proposal", "negotiation", "signed"];
+const VALID_STAGES: DealStage[] = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation", "signed"];
 const VALID_INDUSTRIES: Industry[] = ["automotive", "motorsport", "engineering", "construction", "other"];
 
 export async function createDeal(input: {
