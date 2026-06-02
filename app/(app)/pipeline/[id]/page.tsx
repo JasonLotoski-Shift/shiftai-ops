@@ -9,6 +9,11 @@ import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { stageLabels, industryLabels, leadSourceLabels } from "@/lib/data/seed";
 import { ArrowLeft, Mail, Phone, Sparkles, Activity } from "lucide-react";
 
+// The proposal engine's Opus build chain (server actions on this route) can run
+// 60–120s. Extend the function timeout to the max (honored on hosts that allow
+// it; capped by the plan otherwise).
+export const maxDuration = 300;
+
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
@@ -18,8 +23,9 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   });
   if (!deal) notFound();
 
-  // Latest open/accepted estimate for this deal (Phase 5 scoping).
-  const [estimateRaw, tiers] = await Promise.all([
+  // Latest open/accepted estimate for this deal (Phase 5 scoping) + whether a
+  // prototype already exists (gates the proposal-deck action).
+  const [estimateRaw, tiers, prototype] = await Promise.all([
     prisma.estimate.findFirst({
       where: { dealId: id, status: { not: "superseded" } },
       orderBy: { version: "desc" },
@@ -30,7 +36,12 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       orderBy: { sortOrder: "asc" },
       select: { id: true, name: true, billRateCents: true, payRateCents: true },
     }),
+    prisma.artifact.findFirst({
+      where: { dealId: id, generatedFromSkill: "html-prototype" },
+      select: { id: true },
+    }),
   ]);
+  const hasPrototype = !!prototype;
   const estimate = estimateRaw
     ? {
         id: estimateRaw.id,
@@ -58,7 +69,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       <Header
         eyebrow={`Pipeline · ${stageLabels[deal.stage]}`}
         title={deal.company}
-        actions={<DealActions deal={deal} partner={partner} contact={contact} />}
+        actions={<DealActions deal={deal} partner={partner} contact={contact} hasPrototype={hasPrototype} />}
       />
 
       <div className="px-8 py-8 flex flex-col gap-8">

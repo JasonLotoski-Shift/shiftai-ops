@@ -25,6 +25,12 @@ export const updates: Update[] = [
   {
     date: "2026-06-02",
     tag: "new",
+    title: "Proposal engine — interactive prototype + presentation deck",
+    detail: "At the Proposal stage, two new actions on a deal: Build prototype runs a multi-step workflow (frame the problem → spec the screens → write the HTML) into a single interactive prototype that shows how we'd solve their problem; Build deck produces a formal HTML presentation (scope, timeline, deliverables, price) with a \"Demo prototype\" button linking it. Preview both in the browser, edit before you save — and the deck waits until a prototype exists. Both file to Drive as self-contained .html.",
+  },
+  {
+    date: "2026-06-02",
+    tag: "new",
     title: "One-click drafts for every deal stage",
     detail: "A deal page now has stage Quick Actions: a Discovery prep brief (internal — how to run the call and earn the next one), a post-call Survey, a Follow-up email, and a Book-a-meeting note — plus Draft proposal. Each is emphasized on the stage it belongs to, drafts from the deal's history, and won't invent facts (a [NEEDS INPUT] marker blocks saving). Everything files to Drive and lands as a reviewable Artifact on the deal.",
   },

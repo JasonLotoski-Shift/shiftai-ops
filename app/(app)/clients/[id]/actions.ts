@@ -11,11 +11,10 @@
 // context loader + generate/save pair, keyed by skill. Upload client files is
 // an ingest round-trip (no generation).
 
-import { Readable } from "node:stream";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { drive, folderIdFromUrl } from "@/lib/drive";
+import { folderIdFromUrl, uploadFile } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
@@ -46,15 +45,8 @@ function resolveClientFolderId(driveFolderUrl: string): string {
   }
 }
 
-async function uploadMarkdown(body: string, fileName: string, parentFolderId: string) {
-  const res = await drive.files.create({
-    requestBody: { name: fileName, parents: [parentFolderId], mimeType: "text/markdown" },
-    media: { mimeType: "text/markdown", body: Readable.from(body) },
-    fields: "id, webViewLink",
-    supportsAllDrives: true,
-  });
-  if (!res.data.id || !res.data.webViewLink) throw new Error("Drive upload returned no ID");
-  return { fileId: res.data.id, webViewLink: res.data.webViewLink };
+function uploadMarkdown(body: string, fileName: string, parentFolderId: string) {
+  return uploadFile(body, fileName, parentFolderId, "text/markdown");
 }
 
 // ──────────────────────────────────────────────────────────────────────

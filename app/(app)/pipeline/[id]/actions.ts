@@ -14,7 +14,7 @@ import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { applyStandardScheduleTx } from "@/lib/billing/apply";
-import { formatCAD, formatDate } from "@/lib/format";
+import { buildDealContext } from "@/lib/deal-context";
 import type { DealStage, Industry, ArtifactType } from "@/lib/generated/prisma/enums";
 
 /**
@@ -391,59 +391,6 @@ const STAGE_LABELS_EDIT: Record<DealStage, string> = {
   negotiation: "Negotiation",
   signed: "Signed",
 };
-
-// Shared deal context — the "who/where this opportunity is" block fed to every
-// deal-scoped skill (proposal, discovery prep, survey, book-meeting, and the
-// Phase 3 proposal engine). One loader so each surface reads the same picture.
-async function buildDealContext(dealId: string) {
-  const deal = await prisma.deal.findUnique({
-    where: { id: dealId },
-    include: {
-      contact: {
-        select: {
-          id: true,
-          name: true,
-          title: true,
-          company: true,
-          email: true,
-          source: true,
-          interactions: {
-            orderBy: { date: "desc" },
-            take: 6,
-            select: { type: true, date: true, summary: true },
-          },
-        },
-      },
-      partnerLead: { select: { name: true } },
-    },
-  });
-  if (!deal) throw new Error("Deal not found");
-
-  const contextLines: string[] = [
-    "## Opportunity",
-    `Company: ${deal.company}`,
-    `Industry: ${deal.industry}`,
-    `Deal stage: ${deal.stage}`,
-    `Estimated value: ${formatCAD(deal.valueEstimate)}`,
-    `Target close: ${formatDate(deal.closeTargetDate)}`,
-  ];
-  if (deal.notes) contextLines.push(`Deal notes: ${deal.notes}`);
-  contextLines.push(
-    "",
-    "## Primary contact",
-    `${deal.contact.name} — ${deal.contact.title}, ${deal.contact.company}`,
-  );
-  if (deal.contact.source) contextLines.push(`Lead source: ${deal.contact.source}`);
-  if (deal.contact.interactions.length) {
-    contextLines.push("", "## Recent interactions (newest first)");
-    for (const i of deal.contact.interactions) {
-      contextLines.push(`- ${formatDate(i.date)} · ${i.type.replace("_", "-")} — ${i.summary}`);
-    }
-  } else {
-    contextLines.push("", "## Recent interactions", "None logged yet.");
-  }
-  return { deal, context: contextLines.join("\n") };
-}
 
 export async function generateProposal(
   dealId: string,

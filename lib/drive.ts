@@ -6,6 +6,7 @@
 // All list/get/create calls MUST pass supportsAllDrives + includeItemsFromAllDrives
 // — Shared Drive items are invisible without them. Helpers in this file set them.
 
+import { Readable } from "node:stream";
 import { google, drive_v3 } from "googleapis";
 
 const globalForDrive = globalThis as unknown as { drive: drive_v3.Drive | undefined };
@@ -35,6 +36,26 @@ export function folderIdFromUrl(url: string): string {
   const m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
   if (!m) throw new Error(`Could not extract folder ID from URL: ${url}`);
   return m[1];
+}
+
+// Upload a text file (markdown, HTML, …) to a Drive folder and return its ID +
+// webViewLink. Shared helper so every save* action files the same way; pass the
+// matching mimeType ("text/markdown", "text/html"). Self-contained HTML uploads
+// as a raw file that opens in the browser (not converted to a Google Doc).
+export async function uploadFile(
+  body: string,
+  fileName: string,
+  parentFolderId: string,
+  mimeType: string,
+): Promise<{ fileId: string; webViewLink: string }> {
+  const res = await drive.files.create({
+    requestBody: { name: fileName, parents: [parentFolderId], mimeType },
+    media: { mimeType, body: Readable.from(body) },
+    fields: "id, webViewLink",
+    supportsAllDrives: true,
+  });
+  if (!res.data.id || !res.data.webViewLink) throw new Error("Drive upload returned no ID");
+  return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
 
 // The standard subfolder structure seeded inside every new client folder.

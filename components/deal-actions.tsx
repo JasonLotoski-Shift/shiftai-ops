@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, FileText, Pencil, ClipboardList, ListChecks, CalendarPlus, type LucideIcon } from "lucide-react";
+import { Mail, FileText, Pencil, ClipboardList, ListChecks, CalendarPlus, FlaskConical, Presentation, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
 import { DraftProposalModal } from "@/components/draft-proposal-modal";
 import { DealEditModal } from "@/components/deal-edit-modal";
 import { DealDocModal, type DealDocSkill } from "@/components/deal-doc-modal";
 import { DraftEmailModal } from "@/components/draft-email-modal";
+import { ProposalEngineModal } from "@/components/proposal-engine-modal";
 import type {
   DealModel as Deal,
   PartnerModel as Partner,
@@ -48,16 +49,20 @@ export function DealActions({
   deal,
   partner,
   contact,
+  hasPrototype = false,
 }: {
   deal: Deal;
   partner: Partner | null;
   contact: Contact | null;
+  /** Whether a prototype Artifact already exists — gates the deck action. */
+  hasPrototype?: boolean;
 }) {
   const [convertOpen, setConvertOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [docSkill, setDocSkill] = useState<DealDocSkill | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [engineMode, setEngineMode] = useState<"prototype" | "deck" | null>(null);
 
   const signed = deal.stage === "signed";
 
@@ -103,6 +108,20 @@ export function DealActions({
             <FileText size={13} strokeWidth={1.5} />
             Draft proposal
           </Button>
+          <Button variant={v(["proposal"])} size="sm" onClick={() => setEngineMode("prototype")}>
+            <FlaskConical size={13} strokeWidth={1.5} />
+            Build prototype
+          </Button>
+          <Button
+            variant={v(["proposal"])}
+            size="sm"
+            onClick={() => setEngineMode("deck")}
+            disabled={!hasPrototype}
+            title={hasPrototype ? undefined : "Build a prototype first — the deck links to it"}
+          >
+            <Presentation size={13} strokeWidth={1.5} />
+            Build deck
+          </Button>
         </>
       )}
 
@@ -146,6 +165,15 @@ export function DealActions({
           partnerName={partner?.name}
           defaultPurpose={followupEmailPurpose(deal.company)}
           onClose={() => setEmailOpen(false)}
+        />
+      )}
+
+      {engineMode && (
+        <ProposalEngineModal
+          dealId={deal.id}
+          company={deal.company}
+          mode={engineMode}
+          onClose={() => setEngineMode(null)}
         />
       )}
 

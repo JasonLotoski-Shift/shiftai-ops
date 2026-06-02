@@ -474,6 +474,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <Sparkles size={16} strokeWidth={1.5} />,
+    title: "Build the proposal package",
+    blurb: "At the Proposal stage: an interactive prototype and a formal presentation deck.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "On the deal: Build prototype (say what to show) → then Build deck" },
+      { tone: "claude", kind: "Claude", label: "Prototype = frame → spec → write HTML (multi-step); deck = scope/timeline/price + a Demo-prototype link" },
+      { tone: "review", kind: "You review", label: "Preview in the browser, edit the HTML; [NEEDS INPUT] blocks save until resolved" },
+      { tone: "write", kind: "Saved", label: "Each files to Drive as a self-contained .html + an Artifact on the deal" },
+    ],
+  },
+  {
     icon: <GitBranch size={16} strokeWidth={1.5} />,
     title: "Convert a deal to a client",
     blurb: "A signed deal becomes a live engagement with everything scaffolded.",
