@@ -9,6 +9,12 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // CLI-only (migrate / db push / studio). Prefer DIRECT_URL — the Supabase
+    // SESSION-mode pooler (port 5432), which is IPv4-reachable and supports the
+    // dedicated-connection features migrations need (DDL, advisory locks).
+    // The free-tier DIRECT host is IPv6-only and unreachable on no-IPv6 networks;
+    // the TRANSACTION pooler (DATABASE_URL, 6543) multiplexes per-statement and
+    // can't run migrations. Runtime (lib/prisma.ts) still uses DATABASE_URL.
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });

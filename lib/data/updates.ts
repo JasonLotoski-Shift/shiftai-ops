@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-03",
+    tag: "new",
+    title: "Targeting — define who the Lead Agent hunts for",
+    detail:
+      "A new Targeting page lets you build and edit target segments (industries, revenue and size bands, geographies, buyer personas, buying signals, disqualifiers, anchor companies) and switch each one on or off. Four starter segments — Automotive, Motorsport, Engineering, Construction — are ready to tune. These define the ideal customers the Lead Agent will go find.",
+  },
+  {
     date: "2026-06-02",
     tag: "new",
     title: "Proposal engine — interactive prototype + presentation deck",

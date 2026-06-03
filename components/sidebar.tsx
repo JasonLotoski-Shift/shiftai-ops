@@ -16,6 +16,7 @@ import {
   CheckSquare,
   MessageSquare,
   FileInput,
+  Crosshair,
   Sparkles,
   LogOut,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const nav = [
   { href: "/tasks", label: "Task Board", icon: CheckSquare },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/ingest", label: "Ingest", icon: FileInput },
+  { href: "/targeting", label: "Targeting", icon: Crosshair },
   { href: "/financials", label: "Financials", icon: Receipt },
 ];
 

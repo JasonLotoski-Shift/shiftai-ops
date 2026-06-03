@@ -315,3 +315,26 @@ export type NewsItem = {
   headline: string;
   why: string; // why it matters to the firm / a named account
 };
+
+/* Lead Agent — Phase A: Targeting */
+
+export type TargetSegment = {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+  priority: number;
+  industries: string[]; // free-form tags, NOT the Industry enum
+  revenueMin?: number; // whole CAD
+  revenueMax?: number; // whole CAD
+  employeeMin?: number;
+  employeeMax?: number;
+  geographies: string[];
+  buyerPersonas: string[];
+  buyingSignals: string[];
+  disqualifiers: string[];
+  searchSpec?: Record<string, unknown> | null; // Prisma Json? — structured search criteria
+  anchorCompanies: string[];
+  createdAt: string; // ISO date
+  updatedAt: string; // ISO date
+};

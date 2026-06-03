@@ -45,6 +45,16 @@ The original sketch was "3 agents that search and cross-reference each other." W
 | D10 | Discovery sources | **Two: Firecrawl (web) + Apollo (people DB)**; Anthropic web search assists enrich/rate only |
 | D11 | Per-source guidelines | Each source gets its **own `SKILL.md`** defining how a segment compiles into its query format |
 | D12 | Trigger | Manual **"Fill Funnel"** server action (capped batch per run); not MCP-gated |
+| D13 | Seed segments (Q1) | **Pre-seed the 4 beachhead verticals** (automotive/motorsport/engineering/construction, $25–200M) as fully editable starter segments |
+| D14 | People storage (Q7) | **`Json` array** of candidate people on `ProspectLead` (no separate table for v1) |
+| D15 | Pipeline dedup (Q8) | **Add a normalized `domain` field to `Contact`** for exact "already in pipeline" checks, alongside the unique key on `ProspectLead` |
+| D16 | Execution | **Build A + B now** (no external keys); create Firecrawl + Apollo accounts in parallel; Phase C after keys land |
+| D17 | Run targeting (Q4) | **One segment per "Fill Funnel" run**; the segment card shows a **live "searching" indicator** while its run is in flight |
+| D18 | Run size (Q2) | **Time-boxed run (~240s budget)**; stop and report how many candidates were evaluated |
+| D19 | Threshold (Q3) | **Global score threshold, default 6** (≥6 → pending, <6 → ghost). *Future option: per-segment custom threshold* |
+| D20 | People depth (Q6) | **Apollo pulls 3–5 people/company**, filtered by the segment's `buyerPersonas` titles |
+| D21 | Run status | A lightweight **`LeadRun`** record (segment, status `running`/`done`, counts, timestamps) powers the live indicator + future run history |
+| D22 | Guideline style (Q9) | Each source `SKILL.md` uses **principles + parameterized templates** (segment field → query mapping the model adapts) |
 
 ---
 
@@ -138,16 +148,19 @@ Two skill files define *how a segment becomes a query*:
 ## 8. Open questions — we resolve these one at a time before building each phase
 
 **Phase A (Targeting)**
-- **Q1.** Seed content: do we pre-load the 4 beachhead verticals (automotive / motorsport / engineering / construction, $25–200M) as starter segments, or start empty and you build them in the UI?
+- ~~**Q1.** Seed content~~ → **RESOLVED (D13):** pre-seed the 4 beachhead verticals as fully editable starter segments.
 
 **Phase C (pipeline) — the meaty ones**
-- **Q2.** Batch cap `N` per "Fill Funnel" click (sync run ≤ 300s). Start at ~10–15 companies/run?
-- **Q3.** Rating threshold for `pending` vs auto-`ghost` (default 6/10?) — and is it global or per-segment?
-- **Q4.** Per-run targeting: does a click run **one chosen segment**, or **all active segments** at once?
-- **Q5.** Apollo account tier / credit budget — affects how many people we pull per company and run volume.
-- **Q6.** People depth: how many candidate people per company, and pulled by which titles (from the segment's `buyerPersonas`)?
-- **Q7.** Nested people storage: `ProspectPerson` as a real related table vs. a `Json` array on `ProspectLead` (simpler, no joins)?
-- **Q8.** "Already in pipeline" dedup: Contact/Client have no `domain` field today. Add a normalized `domain` to Contact for exact dedup, or fuzzy-match by company name for that check (keeping the hard unique key on `ProspectLead` only)?
+- ~~**Q2.** Batch cap~~ → **RESOLVED (D18):** time-boxed ~240s run, report count.
+- ~~**Q3.** Rating threshold~~ → **RESOLVED (D19):** global default 6; per-segment override is a noted future option.
+- ~~**Q4.** Per-run targeting~~ → **RESOLVED (D17):** one segment per run + live searching indicator (D21 `LeadRun`).
+- **Q5.** Apollo account tier / credit budget — *informational: Jason to report once the Apollo account exists; drives run volume.*
+- ~~**Q6.** People depth~~ → **RESOLVED (D20):** 3–5 people/company, filtered by `buyerPersonas`.
+- ~~**Q9.** Guideline style~~ → **RESOLVED (D22):** principles + parameterized templates in each source `SKILL.md`.
+
+> **Phase C is now fully designed.** The only outstanding item is **Q5 (Apollo tier — informational)** and the two API keys. Everything else is locked and ready to build once keys land.
+- ~~**Q7.** Nested people storage~~ → **RESOLVED (D14):** `Json` array on `ProspectLead`.
+- ~~**Q8.** "Already in pipeline" dedup~~ → **RESOLVED (D15):** add a normalized `domain` field to `Contact`.
 - **Q9.** Search-guideline detail: how prescriptive should the Firecrawl/Apollo `SKILL.md`s be (exact query templates vs. principles the model adapts)?
 
 **Phase D (later)**

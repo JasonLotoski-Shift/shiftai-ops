@@ -874,6 +874,40 @@ model AgentPlan {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Lead Agent — Phase A: Targeting.
+// A TargetSegment is an editable ideal-customer spec the Lead Agent hunts
+// against. `industries` are FREE-FORM string tags (NOT the 5-value Industry
+// enum, which stays untouched). Revenue/employee bounds are whole numbers
+// (revenue in whole CAD, no cents). `searchSpec` is an opaque agent-config
+// blob (Json?) the search layer fills in later. Self-contained — no Partner
+// relation in Phase A.
+// ──────────────────────────────────────────────────────────────────────
+
+model TargetSegment {
+  id              String   @id @default(cuid())
+  name            String
+  description     String
+  active          Boolean  @default(true)
+  priority        Int      @default(0)
+  industries      String[]
+  revenueMin      Int?
+  revenueMax      Int?
+  employeeMin     Int?
+  employeeMax     Int?
+  geographies     String[]
+  buyerPersonas   String[]
+  buyingSignals   String[]
+  disqualifiers   String[]
+  searchSpec      Json?
+  anchorCompanies String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, priority])
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Messaging (B4) — the firm timeline's two interactive lanes (channels + DMs).
 // The third lane is the existing Activity feed. Real-time is short-interval
 // polling (getMessagesSince) — no new infra. A system Message (authorId null)
