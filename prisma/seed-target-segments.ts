@@ -34,9 +34,9 @@ type SeedSegment = {
 // Shared across all four (editable in the UI).
 const REVENUE_MIN = 25_000_000;
 const REVENUE_MAX = 200_000_000;
-// priorityLocation must be one of geographies — keep "Ontario, Canada" in the list.
-const PRIORITY_LOCATION = "Ontario, Canada";
-const GEOGRAPHIES = ["Ontario, Canada", "Canada"];
+// priorityLocation must be one of geographies — keep "British Columbia, Canada" in the list.
+const PRIORITY_LOCATION = "British Columbia, Canada";
+const GEOGRAPHIES = ["British Columbia, Canada", "Canada"];
 
 const SEGMENTS: SeedSegment[] = [
   {

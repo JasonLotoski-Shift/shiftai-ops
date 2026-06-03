@@ -382,6 +382,68 @@ export async function updateDeal(
   return { ok: true as const };
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// markDealReplied (D36) — a cold-emailed lead-stage deal got a reply.
+//
+// Guards: the deal is at stage "lead", coldOutreachAt is set, and
+// outreachRepliedAt is still null. Promotes lead → qualified, stamps
+// outreachRepliedAt, resets the stage clock, and logs an email_received
+// Interaction on the deal's Contact. Audit (update.deal.stage) + activity.
+// ──────────────────────────────────────────────────────────────────────
+export async function markDealReplied(dealId: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: { stage: true, company: true, contactId: true, coldOutreachAt: true, outreachRepliedAt: true },
+  });
+  if (!deal) throw new Error("Deal not found");
+  if (deal.stage !== "lead" || !deal.coldOutreachAt || deal.outreachRepliedAt) {
+    throw new Error("This deal isn’t awaiting a cold-outreach reply");
+  }
+
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.deal.update({
+      where: { id: dealId },
+      data: { stage: "qualified", stageEnteredAt: now, lastTouchAt: now, outreachRepliedAt: now },
+    });
+    await tx.interaction.create({
+      data: {
+        contactId: deal.contactId,
+        type: "email_received",
+        date: now,
+        summary: "Prospect replied to cold outreach",
+        loggedBy: partnerLabel,
+        channel: "email",
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "update.deal.stage",
+      targetType: "Deal",
+      targetId: dealId,
+      changes: { stage: { before: "lead", after: "qualified" }, repliedAt: now.toISOString() },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: deal.company,
+      detail: "Prospect replied — moved to Qualified",
+      link: `/pipeline/${dealId}`,
+    });
+  });
+
+  revalidatePath(`/pipeline/${dealId}`);
+  revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 const STAGE_LABELS_EDIT: Record<DealStage, string> = {
   lead: "Lead",
   qualified: "Qualified",

@@ -57,6 +57,23 @@ enum LeadSource {
   other
 }
 
+// Lead Agent — Phase B: AI Found Leads (the review surface for discovered prospects).
+// 'contacted' (Phase B.1) sits between pending and added: a cold-outreach email
+// has been sent and we're waiting on a reply. Enum sort order is cosmetic —
+// the app keys off string equality, never ordinal.
+enum ProspectLeadStatus {
+  pending
+  contacted
+  added
+  ghost
+}
+
+enum LeadRunStatus {
+  running
+  done
+  error
+}
+
 enum EngagementStatus {
   on_track @map("on-track")
   at_risk  @map("at-risk")
@@ -288,6 +305,9 @@ model Contact {
   industry    Industry
   source      String      // free-text "where exactly" note
   sourceCategory LeadSource? // structured bucket — color-codes lead cards
+  // Normalized bare domain (lowercase, no scheme/www) — powers the
+  // "already in pipeline" dedup against discovered ProspectLeads (D15). NOT unique.
+  domain         String?
   notes       String?
   lastTouchAt DateTime
 
@@ -349,6 +369,11 @@ model Deal {
   // When the deal entered its CURRENT stage — drives the board's aging colors
   // (green < 14d, orange < 28d, red beyond). Reset on every stage move.
   stageEnteredAt  DateTime  @default(now())
+  // Cold-outreach funnel (D36): set when a lead enters via a sent cold email;
+  // outreachRepliedAt stamped when the partner marks the prospect as replied
+  // (lead → qualified). Both null for normal Add-to-funnel conversions.
+  coldOutreachAt    DateTime?
+  outreachRepliedAt DateTime?
   notes           String?
 
   contact   Contact @relation(fields: [contactId], references: [id])
@@ -905,10 +930,97 @@ model TargetSegment {
   // priorityLocation: the starred geography (must be one of geographies)
   priorityLocation String?
 
+  // Set when a partner runs the Segment Optimizer (D39). A LeadRun newer than
+  // this (or runs existing while this is null) means Claude has fresh tuning
+  // suggestions for the segment — drives the "Claude has suggestions" nudge.
+  lastOptimizedAt DateTime?
+
+  // Phase B back-relations.
+  prospectLeads ProspectLead[]
+  leadRuns      LeadRun[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([active, priority])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ProspectLead (Phase B) — a discovered prospect awaiting partner review.
+// Discovery (Phase C) writes these; the AI Found Leads surface reads them.
+// ──────────────────────────────────────────────────────────────────────
+
+model ProspectLead {
+  id          String @id @default(cuid())
+  companyName String
+  // Normalized bare domain (lowercase, no scheme/www). UNIQUE so a company
+  // can't be discovered twice across runs (D15 dedup key).
+  domain           String  @unique
+  website          String?
+  industryTags     String[]
+  revenueEstimate  Int? // whole CAD
+  employeeEstimate Int?
+  headquarters     String?
+
+  // Matched segment (nullable — a lead can be unsegmented).
+  segment   TargetSegment? @relation(fields: [segmentId], references: [id])
+  segmentId String?
+
+  score        Int // 1–10 fit score
+  rationale    String // one-paragraph why-it-fits
+  disqualified Boolean            @default(false)
+  status       ProspectLeadStatus @default(pending)
+
+  // people: Json array of { name, title, email?, linkedin?, source? }
+  people  Json     @default("[]")
+  // foundBy: source connectors that surfaced it, e.g. ["firecrawl","apollo"]
+  foundBy String[]
+  // sources: raw per-source payloads (opaque), e.g. { firecrawl: {...} }
+  sources Json?
+
+  createdBy          String  @default("AGENT · CLAUDE")
+  generatedFromSkill String?
+
+  // Set on Add-to-funnel; loose strings (match loose-coupling convention).
+  convertedContactId String?
+  convertedDealId    String?
+
+  reviewedBy String?
+  reviewedAt DateTime?
+
+  // Cold-outreach draft (Phase B.1). The draft lives on the lead itself — there
+  // is no Artifact scope for a ProspectLead. outreachPersonIndex points into the
+  // people Json array; outreachSentAt is set when the partner marks it sent
+  // (status → contacted).
+  outreachSubject     String?
+  outreachDraft       String?
+  outreachPersonIndex Int?
+  outreachSentAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, score])
+  @@index([segmentId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// LeadRun (Phase B) — one discovery pass over a segment (provenance/metrics).
+// ──────────────────────────────────────────────────────────────────────
+
+model LeadRun {
+  id             String         @id @default(cuid())
+  segment        TargetSegment? @relation(fields: [segmentId], references: [id])
+  segmentId      String?
+  status         LeadRunStatus  @default(running)
+  evaluatedCount Int            @default(0)
+  foundCount     Int            @default(0)
+  ghostCount     Int            @default(0)
+  createdBy      String         @default("AGENT · CLAUDE")
+  startedAt      DateTime       @default(now())
+  finishedAt     DateTime?
+
+  @@index([segmentId, startedAt])
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ import { industryLabels, stageOrder, stageLabels } from "@/lib/data/seed";
 import { updateDealStage } from "@/app/(app)/pipeline/actions";
 import { createTask } from "@/app/(app)/tasks/actions";
 import { cn } from "@/lib/cn";
-import { AlertCircle, X } from "lucide-react";
+import { AlertCircle, X, Mail } from "lucide-react";
 import type {
   DealModel as Deal,
   ContactModel as Contact,
@@ -286,6 +286,12 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                             >
                               <AlertCircle size={9} strokeWidth={2} />
                               {daysInStage}d in stage
+                            </span>
+                          )}
+                          {deal.stage === "lead" && deal.coldOutreachAt && !deal.outreachRepliedAt && (
+                            <span className="inline-flex items-center gap-1 mono text-[10px] uppercase tracking-[0.08em] text-signal-warming">
+                              <Mail size={9} strokeWidth={2} />
+                              awaiting reply
                             </span>
                           )}
                         </div>

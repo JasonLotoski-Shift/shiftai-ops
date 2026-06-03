@@ -52,7 +52,7 @@ export type DraftResult = {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 // Trim, drop blanks, dedupe case-insensitively. Mirrors cleanTags in actions.ts.
-function strArr(v: unknown): string[] {
+export function strArr(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -68,7 +68,7 @@ function strArr(v: unknown): string[] {
 }
 
 // Accept number or numeric string, floor to int. Empty/NaN/null → null.
-function numOrNull(v: unknown): number | null {
+export function numOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = typeof v === "number" ? v : parseInt(String(v), 10);
   return Number.isNaN(n) ? null : Math.trunc(n);
@@ -76,7 +76,7 @@ function numOrNull(v: unknown): number | null {
 
 // Case-insensitive snap to a controlled-vocab list; returns the canonical
 // spelling or null if no match.
-function snap(value: unknown, list: readonly string[]): string | null {
+export function snap(value: unknown, list: readonly string[]): string | null {
   if (typeof value !== "string") return null;
   const t = value.trim().toLowerCase();
   if (!t) return null;
@@ -84,7 +84,7 @@ function snap(value: unknown, list: readonly string[]): string | null {
 }
 
 // Reuse ingest's fence-stripping parse recipe verbatim.
-function parseDraftJSON(raw: string): Record<string, unknown> {
+export function parseDraftJSON(raw: string): Record<string, unknown> {
   let text = raw.trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) text = fence[1].trim();
@@ -184,8 +184,17 @@ export async function draftSegment(input: {
     maxTokens: 2500,
   });
 
-  const o = parseDraftJSON(raw);
+  return normalizeDraftShape(parseDraftJSON(raw));
+}
 
+// ── normalizeDraftShape ──────────────────────────────────────────────────────
+// Takes a parsed JSON object that claims to be a segment spec and snaps it into
+// a save-clean DraftResult: tag arrays trimmed/deduped, bands coerced to int|null,
+// personas snapped to the controlled vocab, anchors normalized to bare domains,
+// priorityLocation forced to be one of the returned geographies. Shared by the
+// segment drafter AND the segment optimizer so both emit identical, save-ready
+// shapes.
+export function normalizeDraftShape(o: Record<string, unknown>): DraftResult {
   const geographies = strArr(o.geographies);
   const priorityRaw = typeof o.priorityLocation === "string" ? o.priorityLocation.trim() : "";
   const priorityLocation = priorityRaw && geographies.includes(priorityRaw) ? priorityRaw : null;

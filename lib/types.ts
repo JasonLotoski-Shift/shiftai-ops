@@ -25,6 +25,7 @@ export type Contact = {
   lastTouchAt: string; // ISO date
   source: string; // free-text "where exactly" note
   sourceCategory?: LeadSource; // structured bucket — color-codes lead cards
+  domain?: string; // normalized bare domain — pipeline dedup
   notes?: string;
 
   // Relationship intelligence — built up over time, enriched by web search + AI.
@@ -71,6 +72,8 @@ export type Deal = {
   createdAt: string;
   lastTouchAt: string;
   stageEnteredAt: string; // when it entered the current stage — drives board aging colors
+  coldOutreachAt?: string; // ISO date — set when the deal entered via a sent cold email (D36)
+  outreachRepliedAt?: string; // ISO date — set when the prospect was marked as replied (lead → qualified)
   notes?: string;
 };
 
@@ -336,6 +339,66 @@ export type TargetSegment = {
   personas: { department: string; seniority: string }[]; // Prisma Json?
   anchors: { name: string; domain?: string }[]; // Prisma Json?
   priorityLocation: string | null; // the starred geography (must be one of geographies)
+  lastOptimizedAt?: string | null; // ISO date — last Segment Optimizer run (D39)
   createdAt: string; // ISO date
   updatedAt: string; // ISO date
+};
+
+/* Lead Agent — Phase B: AI Found Leads (the review surface) */
+
+export type ProspectLeadStatus = "pending" | "contacted" | "added" | "ghost";
+export type LeadRunStatus = "running" | "done" | "error";
+
+/* A candidate buyer surfaced on a ProspectLead. */
+export type ProspectPerson = {
+  name: string;
+  title: string;
+  email?: string;
+  linkedin?: string;
+  source?: string; // which connector found this person
+};
+
+export type ProspectLead = {
+  id: string;
+  companyName: string;
+  domain: string; // normalized bare domain (unique)
+  website?: string;
+  industryTags: string[];
+  revenueEstimate?: number; // whole CAD
+  employeeEstimate?: number;
+  headquarters?: string;
+  segmentId?: string;
+  segmentName?: string; // denormalized for the card surface
+  score: number; // 1–10
+  rationale: string;
+  disqualified: boolean;
+  status: ProspectLeadStatus;
+  people: ProspectPerson[]; // typed array (Prisma Json)
+  foundBy: string[]; // e.g. ["firecrawl","apollo"]
+  sources?: Record<string, unknown> | null; // raw per-source payloads (Prisma Json?)
+  createdBy: string; // "AGENT · CLAUDE"
+  generatedFromSkill?: string;
+  convertedContactId?: string;
+  convertedDealId?: string;
+  reviewedBy?: string;
+  reviewedAt?: string; // ISO date
+  // Cold-outreach draft (Phase B.1) — lives on the lead (no Artifact scope).
+  outreachSubject?: string;
+  outreachDraft?: string;
+  outreachPersonIndex?: number;
+  outreachSentAt?: string; // ISO date — set when marked sent (status → contacted)
+  createdAt: string; // ISO date
+  updatedAt: string; // ISO date
+};
+
+export type LeadRun = {
+  id: string;
+  segmentId?: string;
+  status: LeadRunStatus;
+  evaluatedCount: number;
+  foundCount: number;
+  ghostCount: number;
+  createdBy: string;
+  startedAt: string; // ISO date
+  finishedAt?: string; // ISO date
 };

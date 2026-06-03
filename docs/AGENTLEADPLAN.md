@@ -55,6 +55,20 @@ The original sketch was "3 agents that search and cross-reference each other." W
 | D20 | People depth (Q6) | **Apollo pulls 3–5 people/company**, filtered by the segment's `buyerPersonas` titles |
 | D21 | Run status | A lightweight **`LeadRun`** record (segment, status `running`/`done`, counts, timestamps) powers the live indicator + future run history |
 | D22 | Guideline style (Q9) | Each source `SKILL.md` uses **principles + parameterized templates** (segment field → query mapping the model adapts) |
+| D26 | AI segment drafter | "Draft with Claude" — name + brief → web-search-grounded full segment fills the editable form; Anthropic key only; propose-never-write |
+| D27 | Found-leads layout | **Ranked card grid** (score-sorted) with a **Sort-by-score ↔ Group-by-segment** toggle + collapsed "Filtered out" section |
+| D28 | Lead detail | **Full page** `/pipeline/leads/[id]` (not a slide-over) — room for firmographics, all people, rationale, source |
+| D29 | Add to funnel | **Inline panel on the detail page**: pick primary person → map industry tag → enum → assign partner lead → create `Contact` + `Deal(stage=lead)`. Decline → ghost |
+| D30 | Phase B seed | **Seed sample found-leads** across the 4 segments (varied scores, people, some ghosts) so the flow is testable pre-Phase-C |
+| D31 | Pipeline tabs | `/pipeline` gains a **Board \| AI Found Leads** tab switcher |
+| D32 | Targeting ↔ leads | "View AI Found Leads →" link in the Targeting header + a per-segment found-lead count on each card linking to that segment's leads |
+| D33 | Restore ghost | Ghosted leads get a **"Restore to leads"** action (→ back to `pending`) on the detail page + filtered card |
+| D34 | Lead outreach | **"Draft cold email"** (Claude, `cold-outreach` skill) on the lead detail page + a card icon → pick person → drafts-never-sends → edit → **"Mark as sent"** moves lead to `contacted`. Add-to-funnel allowed from `contacted` too. Real Gmail send + auto reply→pipeline = future ops-Gmail integration |
+| D35 | Lead lanes | ~~New · Contacted · Filtered~~ → **SUPERSEDED by D36:** lanes are **New + Filtered** only (contacted leads live on the pipeline board) |
+| D36 | Funnel flow | **Add-to-funnel** AND **Send cold email** both create `Contact` + `Deal(stage=lead)` and the lead leaves AI Found Leads. Emailing also logs an outreach `Interaction` + marks the deal "awaiting reply" (`Deal.coldOutreachAt`). **"Mark replied"** moves the deal **Lead → Qualified** (`outreachRepliedAt`) — manual now, auto once Gmail's wired. "client" = a pipeline Contact+Deal, not a signed `Client` |
+| D37 | Targeting archive | **Active \| Archived** views on Targeting. Disabling a segment **archives** it (off the main grid); from Archived you re-enable it back. (Disable === archive.) |
+| D38 | Targeting stats | **Collapsible stats panel atop Targeting** with an all-segments/single-segment filter + time range. Metrics: leads found & score spread, conversion funnel (found→added→qualified→won), run performance, outreach response rate. (Several only fill in with Phase C run data / Gmail.) |
+| D39 | Suggested tweaks | A `segment-optimizer` skill: analyzes a segment's run results → proposes refinements. **On-demand button + post-run nudge**; **review + one-click apply** to the builder (like the drafter); surfaced **in the builder panel + a Claude system-chat notification** |
 | D23 | Segment status UI | **No "Active" badge.** Card states are **Idle** (calm, default) / **Searching** (green live pulse, only during a run) + a subtle **"Enabled"** toggle (disable a segment without deleting) |
 | D24 | Card interaction | Clean cards (name + one-line summary + last-run); **click → right-side slide-over panel** with the full builder (replaces the dense inline card + centered modal) |
 | D25 | Run trigger | **"Run search" lives on the segment** (card + slide-over) on the Targeting page; results land in the AI Found Leads tab (Phase B). Discovery wiring itself is Phase C — the button is a present-but-disabled affordance until then |
@@ -132,7 +146,7 @@ Two skill files define *how a segment becomes a query*:
 
 ## 6. Phase plan (build order A → D)
 
-- **Phase A — Targeting (ICP).** `TargetSegment` model + migration, `lib/types.ts` type, the Targeting page + target-builder CRUD, and wiring segments into the AI context. *Foundation; ships standalone.*
+- **Phase A — Targeting (ICP). ✅ BUILT (local branch, not live).** `TargetSegment` model + migrations, the Targeting page, clean cards → slide-over builder (sectioned, geography picker w/ ⭐ priority, persona dept+seniority rows, anchor rows w/ domains, tag inputs, $-formatted bands, live search-intent preview), 4 seeded verticals, **plus an AI segment drafter** (D26): "Draft with Claude" — name + brief → web-search-grounded full segment that fills the editable form (`skills/segment-drafter`, `lib/segment-drafter.ts`). Runs on the Anthropic key alone.
 - **Phase B — AI Found Leads surface.** `ProspectLead` model (+ nested people) + migration, dedup key, the Pipeline tab, Add-to-funnel + Decline actions (canonical recipe). *Testable with seed/manual data — no agent yet.*
 - **Phase C — Discovery + rating pipeline.** The two source `SKILL.md` guidelines, Firecrawl + Apollo clients, the merge→enrich→rate orchestration behind "Fill Funnel", the rating rubric + threshold. *The agent comes alive.*
 - **Phase D — Autonomy (later).** Scheduled auto-fill via MCP + cron, partner notifications, run history. *Out of scope for v1.*

@@ -1,14 +1,63 @@
 import { Header } from "@/components/header";
-import { Card, Stat, Button } from "@/components/ui";
-import { PipelineBoard } from "@/components/pipeline-board";
+import { Button } from "@/components/ui";
+import { PipelineTabs } from "@/components/pipeline-tabs";
 import { AddDeal } from "@/components/add-deal";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { formatCAD, stageAgeTier } from "@/lib/format";
+import { stageAgeTier } from "@/lib/format";
+import type { ProspectLead, ProspectPerson } from "@/lib/types";
 import { Filter } from "lucide-react";
 
-export default async function PipelinePage() {
-  const [deals, contacts, partners, session] = await Promise.all([
+type LeadRow = Awaited<ReturnType<typeof loadLeads>>[number];
+
+function loadLeads() {
+  return prisma.prospectLead.findMany({
+    include: { segment: { select: { id: true, name: true } } },
+    orderBy: { score: "desc" },
+  });
+}
+
+function toLead(row: LeadRow): ProspectLead {
+  return {
+    id: row.id,
+    companyName: row.companyName,
+    domain: row.domain,
+    website: row.website ?? undefined,
+    industryTags: row.industryTags,
+    revenueEstimate: row.revenueEstimate ?? undefined,
+    employeeEstimate: row.employeeEstimate ?? undefined,
+    headquarters: row.headquarters ?? undefined,
+    segmentId: row.segmentId ?? undefined,
+    segmentName: row.segment?.name ?? undefined,
+    score: row.score,
+    rationale: row.rationale,
+    disqualified: row.disqualified,
+    status: row.status,
+    people: (row.people as unknown as ProspectPerson[]) ?? [],
+    foundBy: row.foundBy,
+    sources: (row.sources as Record<string, unknown> | null) ?? null,
+    createdBy: row.createdBy,
+    generatedFromSkill: row.generatedFromSkill ?? undefined,
+    convertedContactId: row.convertedContactId ?? undefined,
+    convertedDealId: row.convertedDealId ?? undefined,
+    reviewedBy: row.reviewedBy ?? undefined,
+    reviewedAt: row.reviewedAt?.toISOString(),
+    outreachSubject: row.outreachSubject ?? undefined,
+    outreachDraft: row.outreachDraft ?? undefined,
+    outreachPersonIndex: row.outreachPersonIndex ?? undefined,
+    outreachSentAt: row.outreachSentAt?.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export default async function PipelinePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; segment?: string }>;
+}) {
+  const { tab, segment } = await searchParams;
+  const [deals, contacts, partners, leadRows, session] = await Promise.all([
     prisma.deal.findMany({
       include: { contact: true, partnerLead: true },
       orderBy: { closeTargetDate: "asc" },
@@ -18,12 +67,17 @@ export default async function PipelinePage() {
       orderBy: { lastTouchAt: "desc" },
     }),
     prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    loadLeads(),
     auth(),
   ]);
 
   const openDeals = deals.filter((d) => d.stage !== "signed");
   const totalValue = openDeals.reduce((s, d) => s + d.valueEstimate, 0);
   const staleCount = openDeals.filter((d) => stageAgeTier(d.stageEnteredAt) === "stale").length;
+
+  const allLeads = leadRows.map(toLead);
+  const foundLeads = allLeads.filter((l) => l.status === "pending" && !l.disqualified);
+  const filteredLeads = allLeads.filter((l) => l.status === "ghost" || l.disqualified);
 
   return (
     <>
@@ -41,21 +95,14 @@ export default async function PipelinePage() {
         }
       />
 
-      <div className="px-8 py-8 flex flex-col gap-8">
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="p-5">
-            <Stat label="Open pipeline" value={formatCAD(totalValue).replace("CA$", "$")} />
-          </Card>
-          <Card className="p-5">
-            <Stat label="Open deals" value={openDeals.length} />
-          </Card>
-          <Card className="p-5">
-            <Stat label="Stale (28d+ in stage)" value={staleCount} />
-          </Card>
-        </div>
-
-        <PipelineBoard initialDeals={deals} />
-      </div>
+      <PipelineTabs
+        deals={deals}
+        stats={{ totalValue, openDeals: openDeals.length, staleCount }}
+        foundLeads={foundLeads}
+        filteredLeads={filteredLeads}
+        initialTab={tab === "found" ? "leads" : "board"}
+        segment={segment}
+      />
     </>
   );
 }

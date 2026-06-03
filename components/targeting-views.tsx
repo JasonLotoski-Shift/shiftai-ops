@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Crosshair, Plus, X, ShieldAlert, Trash2, Power, Search, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  Crosshair,
+  Plus,
+  X,
+  ShieldAlert,
+  Trash2,
+  Archive,
+  RotateCcw,
+  Search,
+  Sparkles,
+  Radar,
+  ArrowRight,
+  Wand2,
+} from "lucide-react";
 import { Card, Label, Button, Input, Textarea, EmptyState } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatCAD } from "@/lib/format";
@@ -11,7 +26,9 @@ import {
   toggleSegmentActive,
   deleteSegment,
   draftSegmentAction,
+  suggestSegmentTweaks,
 } from "@/app/(app)/targeting/actions";
+import { TargetingStatsPanel, type StatsSegmentOption, type TargetingStats } from "@/components/targeting-stats-panel";
 import { Section } from "@/components/targeting-builder/section";
 import { TagInput } from "@/components/targeting-builder/tag-input";
 import { GeographyPicker } from "@/components/targeting-builder/geography-picker";
@@ -51,6 +68,7 @@ type SegmentProp = {
   personas: Persona[];
   anchors: Anchor[];
   priorityLocation: string | null;
+  lastOptimizedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -64,9 +82,41 @@ function band(min: number | null, max: number | null, money: boolean): string | 
   return `up to ${fmt(max as number)}`;
 }
 
-export function TargetingViews({ segments }: { segments: SegmentProp[] }) {
+type ViewMode = "active" | "archived";
+
+export function TargetingViews({
+  segments,
+  leadCounts = {},
+  hasSuggestions = {},
+  initialStats,
+  statsSegments = [],
+}: {
+  segments: SegmentProp[];
+  leadCounts?: Record<string, number>;
+  /** Per-segment id → true when Claude has fresh tuning suggestions (D39). */
+  hasSuggestions?: Record<string, boolean>;
+  /** First-paint stats payload (All segments · Last 30d). */
+  initialStats?: TargetingStats;
+  /** Slim {id,name} list for the stats segment selector. */
+  statsSegments?: StatsSegmentOption[];
+}) {
   // `open` is the segment being viewed/edited in the slide-over, or "new".
   const [open, setOpen] = useState<SegmentProp | "new" | null>(null);
+  const [view, setView] = useState<ViewMode>("active");
+
+  const { active, archived } = useMemo(() => {
+    const a: SegmentProp[] = [];
+    const r: SegmentProp[] = [];
+    for (const s of segments) (s.active ? a : r).push(s);
+    return { active: a, archived: r };
+  }, [segments]);
+
+  const shown = view === "active" ? active : archived;
+
+  const views: { key: ViewMode; label: string; count: number }[] = [
+    { key: "active", label: "Active", count: active.length },
+    { key: "archived", label: "Archived", count: archived.length },
+  ];
 
   return (
     <div className="px-8 py-8 flex flex-col gap-8">
@@ -76,11 +126,23 @@ export function TargetingViews({ segments }: { segments: SegmentProp[] }) {
           clients. Each segment is a spec the agent searches and rates against. Click a segment to open its builder; run
           a search when you&apos;re ready.
         </p>
-        <Button variant="primary" size="sm" onClick={() => setOpen("new")}>
-          <Plus size={13} strokeWidth={1.5} />
-          New segment
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/pipeline?tab=found"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-graphite-2 text-bone-dim hover:text-track-gold hover:border-track-gold/40 font-mono text-[9px] uppercase tracking-wide rounded-[var(--radius-pill)] transition-colors"
+          >
+            <Radar size={12} strokeWidth={1.5} />
+            View AI Found Leads
+            <ArrowRight size={12} strokeWidth={1.5} />
+          </Link>
+          <Button variant="primary" size="sm" onClick={() => setOpen("new")}>
+            <Plus size={13} strokeWidth={1.5} />
+            New segment
+          </Button>
+        </div>
       </div>
+
+      <TargetingStatsPanel initialStats={initialStats} segments={statsSegments} />
 
       {segments.length === 0 ? (
         <EmptyState
@@ -95,16 +157,69 @@ export function TargetingViews({ segments }: { segments: SegmentProp[] }) {
           }
         />
       ) : (
-        <div className="grid grid-cols-3 gap-4">
-          {segments.map((s) => (
-            <SegmentCard key={s.id} segment={s} onOpen={() => setOpen(s)} />
-          ))}
-        </div>
+        <>
+          {/* Active / Archived switcher (D37). */}
+          <div className="flex items-center gap-1 -mb-2">
+            {views.map((v) => {
+              const on = view === v.key;
+              return (
+                <button
+                  key={v.key}
+                  onClick={() => setView(v.key)}
+                  className={cn(
+                    "px-3 py-1.5 border font-mono text-[9px] uppercase tracking-wide rounded-[var(--radius-pill)] transition-colors flex items-center gap-1.5",
+                    on
+                      ? "border-track-gold/40 text-track-gold bg-track-gold-dim/10"
+                      : "border-graphite-2 text-bone-mute hover:text-bone-dim",
+                  )}
+                >
+                  {v.label}
+                  <span className="tabular-nums opacity-70">{v.count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {shown.length === 0 ? (
+            view === "active" ? (
+              <EmptyState
+                icon={<Crosshair size={28} strokeWidth={1.5} />}
+                title="No active segments"
+                hint="Restore one from Archived, or define a new ideal-customer spec."
+                action={
+                  <Button variant="primary" size="sm" onClick={() => setOpen("new")}>
+                    <Plus size={13} strokeWidth={1.5} />
+                    New segment
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={<Archive size={28} strokeWidth={1.5} />}
+                title="Nothing archived"
+                hint="Segments you archive collect here. Restore one to return it to Active."
+              />
+            )
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              {shown.map((s) => (
+                <SegmentCard
+                  key={s.id}
+                  segment={s}
+                  leadCount={leadCounts[s.id] ?? 0}
+                  hasSuggestions={hasSuggestions[s.id] ?? false}
+                  onOpen={() => setOpen(s)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {open && (
         <SegmentPanel
           segment={open === "new" ? undefined : open}
+          hasSuggestions={open !== "new" && (hasSuggestions[open.id] ?? false)}
           onClose={() => setOpen(null)}
         />
       )}
@@ -115,7 +230,18 @@ export function TargetingViews({ segments }: { segments: SegmentProp[] }) {
 // ── Card ────────────────────────────────────────────────────────────────────
 // Clean: name + one-line summary + status + run. The whole card opens the
 // builder; the inline controls (enable toggle, run) stop propagation.
-function SegmentCard({ segment, onOpen }: { segment: SegmentProp; onOpen: () => void }) {
+function SegmentCard({
+  segment,
+  leadCount,
+  hasSuggestions,
+  onOpen,
+}: {
+  segment: SegmentProp;
+  leadCount: number;
+  hasSuggestions: boolean;
+  onOpen: () => void;
+}) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const revenue = band(segment.revenueMin, segment.revenueMax, true);
   const summary = [
@@ -131,11 +257,12 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentProp; onOpen: () => 
     .filter(Boolean)
     .join(" · ");
 
-  function toggleEnabled(e: React.MouseEvent) {
+  function toggleArchive(e: React.MouseEvent) {
     e.stopPropagation();
     startTransition(async () => {
       try {
         await toggleSegmentActive(segment.id, !segment.active);
+        router.refresh();
       } catch {
         /* surfaced on reload */
       }
@@ -147,7 +274,7 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentProp; onOpen: () => 
       onClick={onOpen}
       className={cn(
         "flex flex-col cursor-pointer transition-colors hover:border-bone-mute",
-        (isPending || !segment.active) && "opacity-60",
+        isPending && "opacity-60",
       )}
     >
       <div className="px-5 py-4 flex flex-col gap-3 min-h-[124px]">
@@ -156,30 +283,56 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentProp; onOpen: () => 
             <Crosshair size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
             <span className="title-md truncate">{segment.name}</span>
           </div>
-          <button
-            onClick={toggleEnabled}
-            disabled={isPending}
-            title={segment.active ? "Disable segment" : "Enable segment"}
-            className={cn(
-              "mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border flex items-center gap-1.5 shrink-0 transition-colors",
-              segment.active
-                ? "border-track-gold/30 text-track-gold/90 bg-track-gold-dim/5"
-                : "border-graphite text-bone-mute hover:text-bone",
-            )}
-          >
-            <Power size={10} strokeWidth={1.5} />
-            {segment.active ? "Enabled" : "Disabled"}
-          </button>
+          {segment.active ? (
+            <button
+              onClick={toggleArchive}
+              disabled={isPending}
+              title="Archive segment"
+              className="mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border border-graphite text-bone-mute hover:text-bone flex items-center gap-1.5 shrink-0 transition-colors"
+            >
+              <Archive size={10} strokeWidth={1.5} />
+              Archive
+            </button>
+          ) : (
+            <button
+              onClick={toggleArchive}
+              disabled={isPending}
+              title="Restore segment"
+              className="mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border border-track-gold/30 text-track-gold/90 bg-track-gold-dim/5 hover:bg-track-gold-dim/10 flex items-center gap-1.5 shrink-0 transition-colors"
+            >
+              <RotateCcw size={10} strokeWidth={1.5} />
+              Restore
+            </button>
+          )}
         </div>
+
+        {hasSuggestions && (
+          <span className="mono text-[9px] uppercase tracking-[0.12em] text-track-gold/90 flex items-center gap-1.5 self-start">
+            <Wand2 size={10} strokeWidth={1.5} />
+            Claude has suggestions
+          </span>
+        )}
 
         <p className="text-[12px] text-bone-mute leading-relaxed flex-1">{summary || "No criteria yet"}</p>
 
         <div className="flex items-center justify-between gap-2 pt-1">
-          {/* Idle by default; becomes a live "Searching…" pulse during a run (Phase C). */}
-          <span className="mono text-[9px] uppercase tracking-[0.12em] text-bone-mute flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-graphite" />
-            Idle · never run
-          </span>
+          {/* Found-lead count → deep-link into the AI Found Leads tab, filtered. */}
+          {leadCount > 0 ? (
+            <Link
+              href={`/pipeline?tab=found&segment=${segment.id}`}
+              onClick={(e) => e.stopPropagation()}
+              title="View this segment's found leads"
+              className="mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border border-track-gold/30 text-track-gold/90 bg-track-gold-dim/5 hover:bg-track-gold-dim/10 flex items-center gap-1.5 transition-colors"
+            >
+              <Radar size={10} strokeWidth={1.5} />
+              {leadCount} {leadCount === 1 ? "lead" : "leads"}
+            </Link>
+          ) : (
+            <span className="mono text-[9px] uppercase tracking-[0.12em] text-bone-mute flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-graphite" />
+              Idle · never run
+            </span>
+          )}
           <button
             onClick={(e) => e.stopPropagation()}
             disabled
@@ -196,7 +349,15 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentProp; onOpen: () => 
 }
 
 // ── Slide-over builder ───────────────────────────────────────────────────────
-function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: () => void }) {
+function SegmentPanel({
+  segment,
+  hasSuggestions = false,
+  onClose,
+}: {
+  segment?: SegmentProp;
+  hasSuggestions?: boolean;
+  onClose: () => void;
+}) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -227,6 +388,12 @@ function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: ()
   const [drafting, setDrafting] = useState(false);
   const [highlight, setHighlight] = useState(false);
 
+  // ── Suggested tweaks (Segment Optimizer, D39 — existing segments only) ──
+  const [tweaking, setTweaking] = useState(false);
+  const [tweakResult, setTweakResult] = useState<Awaited<ReturnType<typeof suggestSegmentTweaks>> | null>(null);
+  // Which suggestions are checked for "Apply selected" (defaults to all).
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+
   // Auto-clear the AI-filled ring after a few seconds.
   useEffect(() => {
     if (!highlight) return;
@@ -241,33 +408,60 @@ function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: ()
     if (priorityLocation && !next.includes(priorityLocation)) setPriorityLocation(null);
   }
 
-  // Merge a draft into the form. Prefer returned values, but NEVER blank a field
+  // Merge proposed values into the form. `only` (a set of proposed keys) limits
+  // which fields are applied; omit it to apply everything. NEVER blanks a field
   // the partner already filled when the model returns empty for it.
-  function applyDraft(d: Awaited<ReturnType<typeof draftSegmentAction>>) {
-    if (d.description) setDescription(d.description);
-    if (d.industries.length) setIndustries(d.industries);
-    if (d.buyingSignals.length) setBuyingSignals(d.buyingSignals);
-    if (d.disqualifiers.length) setDisqualifiers(d.disqualifiers);
-    if (d.personas.length) setPersonas(d.personas);
-    if (d.anchors.length) setAnchors(d.anchors);
-    if (d.revenueMin != null) setRevenueMin(String(d.revenueMin));
-    if (d.revenueMax != null) setRevenueMax(String(d.revenueMax));
-    if (d.employeeMin != null) setEmployeeMin(String(d.employeeMin));
-    if (d.employeeMax != null) setEmployeeMax(String(d.employeeMax));
+  function applyDraftFields(
+    d: Awaited<ReturnType<typeof draftSegmentAction>>,
+    only?: Set<string>,
+  ) {
+    const want = (k: string) => !only || only.has(k);
+    if (want("description") && d.description) setDescription(d.description);
+    if (want("industries") && d.industries.length) setIndustries(d.industries);
+    if (want("buyingSignals") && d.buyingSignals.length) setBuyingSignals(d.buyingSignals);
+    if (want("disqualifiers") && d.disqualifiers.length) setDisqualifiers(d.disqualifiers);
+    if (want("personas") && d.personas.length) setPersonas(d.personas);
+    if (want("anchors") && d.anchors.length) setAnchors(d.anchors);
+    if (want("revenueMin") && d.revenueMin != null) setRevenueMin(String(d.revenueMin));
+    if (want("revenueMax") && d.revenueMax != null) setRevenueMax(String(d.revenueMax));
+    if (want("employeeMin") && d.employeeMin != null) setEmployeeMin(String(d.employeeMin));
+    if (want("employeeMax") && d.employeeMax != null) setEmployeeMax(String(d.employeeMax));
 
     // Geographies first, then priority — validated against the NEW list, and
     // routed so the priority-consistency invariant runs.
-    const nextGeo = d.geographies.length ? d.geographies : geographies;
-    setGeographies(nextGeo);
-    const nextPriority =
-      d.priorityLocation && nextGeo.includes(d.priorityLocation)
-        ? d.priorityLocation
-        : priorityLocation && nextGeo.includes(priorityLocation)
-          ? priorityLocation
-          : null;
-    setPriorityLocation(nextPriority);
+    if (want("geographies") || want("priorityLocation")) {
+      const nextGeo = want("geographies") && d.geographies.length ? d.geographies : geographies;
+      setGeographies(nextGeo);
+      const nextPriority =
+        want("priorityLocation") && d.priorityLocation && nextGeo.includes(d.priorityLocation)
+          ? d.priorityLocation
+          : priorityLocation && nextGeo.includes(priorityLocation)
+            ? priorityLocation
+            : null;
+      setPriorityLocation(nextPriority);
+    }
 
     setHighlight(true);
+  }
+
+  // The drafter applies the whole draft.
+  const applyDraft = (d: Awaited<ReturnType<typeof draftSegmentAction>>) => applyDraftFields(d);
+
+  // Map a suggestion's free-text `field` to the proposed keys it touches, so
+  // "Apply selected" only writes the fields for the checked suggestions.
+  function proposedKeysForField(field: string): string[] {
+    const f = field.toLowerCase();
+    const ks: string[] = [];
+    if (/industr/.test(f)) ks.push("industries");
+    if (/geograph|location|region|countr|provinc|\bstate\b|\bgeo\b/.test(f)) ks.push("geographies", "priorityLocation");
+    if (/persona|seniorit|department|title|buyer|decision/.test(f)) ks.push("personas");
+    if (/revenue/.test(f)) ks.push("revenueMin", "revenueMax");
+    if (/employee|headcount|\bsize\b|staff/.test(f)) ks.push("employeeMin", "employeeMax");
+    if (/signal|trigger/.test(f)) ks.push("buyingSignals");
+    if (/disqualif|exclu/.test(f)) ks.push("disqualifiers");
+    if (/anchor|example|reference/.test(f)) ks.push("anchors");
+    if (/descript/.test(f)) ks.push("description");
+    return ks;
   }
 
   async function draft() {
@@ -301,6 +495,21 @@ function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: ()
       setError(err instanceof Error ? err.message : "Draft failed");
     } finally {
       setDrafting(false);
+    }
+  }
+
+  async function tweak() {
+    if (!segment) return;
+    setError(null);
+    setTweaking(true);
+    try {
+      const r = await suggestSegmentTweaks(segment.id);
+      setTweakResult(r);
+      setPicked(new Set(r.suggestions.map((_, i) => i)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't get suggestions");
+    } finally {
+      setTweaking(false);
     }
   }
 
@@ -489,7 +698,7 @@ function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: ()
                 disabled={isPending}
                 className="accent-track-gold"
               />
-              Enabled — available to run searches against
+              Active (uncheck to archive)
             </label>
           </Section>
 
@@ -598,6 +807,120 @@ function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: ()
           <div className="pt-4">
             <SearchIntentPreview state={intentState} />
           </div>
+
+          {/* Suggested tweaks (Segment Optimizer, D39) — existing segments only. */}
+          {segment && (
+            <div className="flex flex-col gap-3 p-3 mt-4 border border-graphite/60 bg-bitumen/40 rounded-[var(--radius)]">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <Label>Suggested tweaks</Label>
+                  <span className="text-[11px] text-bone-mute leading-relaxed">
+                    Claude reads this segment&apos;s run results and proposes refinements.
+                  </span>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onClick={tweak}
+                  disabled={tweaking}
+                  className={cn(hasSuggestions && !tweakResult && "ring-1 ring-track-gold/50")}
+                >
+                  <Wand2 size={13} strokeWidth={1.5} />
+                  {tweaking ? "Analyzing…" : "Suggest tweaks"}
+                </Button>
+              </div>
+
+              {tweakResult && (
+                <div className="flex flex-col gap-3">
+                  <p className="text-[12px] text-bone-dim leading-relaxed">{tweakResult.summary}</p>
+
+                  {tweakResult.suggestions.length > 0 && (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-bone-mute">Pick the tweaks to apply, then Save.</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPicked((prev) =>
+                              prev.size === tweakResult.suggestions.length
+                                ? new Set()
+                                : new Set(tweakResult.suggestions.map((_, i) => i)),
+                            )
+                          }
+                          className="mono text-[9px] uppercase tracking-[0.1em] text-bone-mute hover:text-bone shrink-0"
+                        >
+                          {picked.size === tweakResult.suggestions.length ? "Clear all" : "Select all"}
+                        </button>
+                      </div>
+                      <ul className="flex flex-col gap-2">
+                        {tweakResult.suggestions.map((s, i) => {
+                          const on = picked.has(i);
+                          return (
+                            <li key={i}>
+                              <label
+                                className={cn(
+                                  "flex gap-2.5 px-3 py-2 border rounded-[var(--radius-sm)] cursor-pointer transition-colors",
+                                  on
+                                    ? "border-track-gold/40 bg-track-gold-dim/5"
+                                    : "border-graphite/60 bg-asphalt hover:border-bone-mute",
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={on}
+                                  onChange={() =>
+                                    setPicked((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(i)) next.delete(i);
+                                      else next.add(i);
+                                      return next;
+                                    })
+                                  }
+                                  className="accent-track-gold mt-0.5 shrink-0"
+                                />
+                                <div className="flex flex-col gap-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="mono text-[9px] uppercase tracking-[0.12em] text-track-gold/90">
+                                      {s.field}
+                                    </span>
+                                    <span className="text-[12px] text-bone">{s.change}</span>
+                                  </div>
+                                  <span className="text-[11px] text-bone-mute leading-relaxed">{s.reason}</span>
+                                </div>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button variant="ghost" size="sm" type="button" onClick={() => applyDraftFields(tweakResult.proposed)}>
+                      Apply all
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      type="button"
+                      disabled={picked.size === 0}
+                      onClick={() => {
+                        const keys = new Set<string>();
+                        tweakResult.suggestions.forEach((s, i) => {
+                          if (picked.has(i)) proposedKeysForField(s.field).forEach((k) => keys.add(k));
+                        });
+                        applyDraftFields(tweakResult.proposed, keys);
+                      }}
+                    >
+                      <Sparkles size={13} strokeWidth={1.5} />
+                      Apply selected ({picked.size})
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="flex items-start gap-2 px-3 py-2 mt-3 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">

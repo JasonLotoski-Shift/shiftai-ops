@@ -25,6 +25,27 @@ export const updates: Update[] = [
   {
     date: "2026-06-03",
     tag: "improved",
+    title: "Sending a cold email now puts the lead straight on your board",
+    detail:
+      "When you send a cold intro to a found lead, it now lands on the pipeline as a deal — same as adding it to the funnel — marked \"awaiting reply\". When the prospect writes back, open the deal and hit \"Mark replied\" to move it to Qualified. The AI Found Leads tab is simpler too: just New and Filtered, since emailed leads now live on the board.",
+  },
+  {
+    date: "2026-06-03",
+    tag: "new",
+    title: "Cold-email your AI Found Leads, and three clear lanes to work them",
+    detail:
+      "Open a found lead and Claude drafts a short, personalized cold intro to the person you pick — edit it, then mark it sent. The AI Found Leads tab now splits into New, Contacted, and Filtered lanes: new leads to review, the ones you've emailed (with the send date), and the ones you've set aside. Declined a lead by mistake? Restore it back to the queue in one click. Each targeting segment also shows how many found leads are waiting and links straight to them.",
+  },
+  {
+    date: "2026-06-03",
+    tag: "new",
+    title: "AI Found Leads now land in the pipeline",
+    detail:
+      "A new tab on the Pipeline shows companies the lead agent surfaced, ranked by how well they fit your targeting. Open one to see the firmographics and the people, then add it to your funnel as a contact and deal — or decline it to set it aside.",
+  },
+  {
+    date: "2026-06-03",
+    tag: "improved",
     title: "Targeting builder — a guided, sectioned segment editor",
     detail:
       "Building a segment is now point-and-click instead of typing lists. Fields are grouped into collapsible sections (Identity, Firmographics, Who we sell to, Signals & references). Industries, signals, and disqualifiers are quick-add chips with suggestions; geographies come from a searchable list where you star one as the priority; you pick who you sell to as Department + Seniority rows; revenue and employee size offer one-click preset bands with formatted hints; and a live \"search intent\" line at the bottom reads back, in plain English, exactly who this segment will hunt.",

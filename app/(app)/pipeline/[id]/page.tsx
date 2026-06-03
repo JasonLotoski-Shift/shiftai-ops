@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Hairline, Avatar, EmptyState } from "@/components/ui";
 import { DealActions } from "@/components/deal-actions";
+import { MarkRepliedButton } from "@/components/mark-replied-button";
 import { EstimateEditor } from "@/components/billing/estimate-editor";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
@@ -103,6 +104,22 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                 </span>
               </div>
             </div>
+            {deal.coldOutreachAt && (
+              <div className="mx-6 mb-6 px-4 py-4 bg-track-gold-dim/5 border border-track-gold/30 rounded-[var(--radius)] flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Badge tone={deal.outreachRepliedAt ? "gold" : "bone"}>
+                    {deal.outreachRepliedAt ? "Replied" : "Awaiting reply"}
+                  </Badge>
+                  <span className="text-[13px] text-bone-dim">
+                    Cold outreach sent {formatDate(deal.coldOutreachAt)}
+                    {deal.outreachRepliedAt ? ` · replied ${formatDate(deal.outreachRepliedAt)}` : ""}.
+                  </span>
+                </div>
+                {deal.stage === "lead" && !deal.outreachRepliedAt && (
+                  <MarkRepliedButton dealId={deal.id} />
+                )}
+              </div>
+            )}
             {deal.notes && (
               <div className="px-6 pb-6">
                 <Label>Latest note</Label>

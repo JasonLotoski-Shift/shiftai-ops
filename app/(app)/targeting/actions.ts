@@ -13,6 +13,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { draftSegment, type CurrentSegmentValues, type DraftResult } from "@/lib/segment-drafter";
+import { optimizeSegment, type OptimizeResult } from "@/lib/segment-optimizer";
+import { notifyPartner } from "@/lib/messaging";
 
 // The chip/row builder passes arrays directly now. Trim each entry, drop
 // blanks, and de-dupe so the stored String[] is clean.
@@ -235,6 +237,61 @@ export async function draftSegmentAction(input: {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   return draftSegment(input);
+}
+
+// ── Suggested tweaks (Segment Optimizer, D39) ────────────────────────────────
+// Runs the optimizer, then stamps lastOptimizedAt (clears the "Claude has
+// suggestions" nudge) + audits + writes an Activity row in one transaction.
+// Does NOT persist `proposed` — the partner applies it into the form and Saves,
+// exactly like Draft with Claude.
+export async function suggestSegmentTweaks(segmentId: string): Promise<OptimizeResult> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerId = session.user.partnerId;
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(partnerId, partnerLabel);
+
+  const segment = await prisma.targetSegment.findUnique({ where: { id: segmentId }, select: { name: true } });
+  if (!segment) throw new Error("Target segment not found");
+
+  // The model call (web search + generation) runs OUTSIDE the transaction so a
+  // slow LLM never holds a DB connection.
+  const result = await optimizeSegment({ segmentId });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.targetSegment.update({ where: { id: segmentId }, data: { lastOptimizedAt: new Date() } });
+
+    await writeAudit(tx, {
+      actor,
+      action: "ai.optimize.segment",
+      targetType: "TargetSegment",
+      targetId: segmentId,
+      changes: { suggestions: result.suggestions.length },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "ai",
+      target: segment.name,
+      detail: `Claude proposed tuning for ${segment.name} — ${result.suggestions.length} suggestion${
+        result.suggestions.length === 1 ? "" : "s"
+      }`,
+      link: "/targeting",
+    });
+
+    // Best-effort: drop a note in the partner's Claude system chat.
+    await notifyPartner(
+      tx,
+      partnerId,
+      "approval_needed",
+      `Claude has tuning suggestions for segment ${segment.name}`,
+      { link: "/targeting" },
+    );
+  });
+
+  revalidatePath("/targeting");
+  revalidatePath("/messages");
+  return result;
 }
 
 export async function deleteSegment(id: string) {
