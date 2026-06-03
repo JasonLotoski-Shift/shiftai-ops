@@ -116,7 +116,7 @@ shiftai-ops/
 6. Commit + push — Vercel auto-deploys; Vercel reads the same Supabase, sees the new column
 
 ### Wire a Quick Action end-to-end
-**Canonical persistence recipe.** Every Quick Action (and every Phase 5 agent) follows this exact pattern — no exceptions. Full architecture in [docs/ROADMAP.md](docs/ROADMAP.md) "Tracking architecture."
+**Canonical persistence recipe.** Every Quick Action (and every Phase 5 agent) follows this exact pattern — no exceptions.
 
 1. Server action in `app/(app)/<scope>/actions.ts` (or co-located with the page)
 2. Action loads the matching skill content (`shiftai-ops/skills/<name>/SKILL.md` once we sync skills here, or `~/.claude/skills/...` for now)
@@ -173,7 +173,7 @@ If neither applies (pure refactor/infra), say so in the push summary and move on
 
 ## Skills & agents
 
-Skills land in **Phase 3** (with Quick Actions); agents land in **Phase 4–5**. See [docs/ROADMAP.md](docs/ROADMAP.md) for phase detail.
+Skills land in **Phase 3** (with Quick Actions); agents land in **Phase 4–5**.
 
 - **Skills live in `shiftai-ops/skills/<name>/SKILL.md`** (repo-versioned; canonical firm copy the ops tool reads server-side at Quick Action runtime)
 - Personal Claude Code copies at `~/.claude/skills/` for Jason's iteration in chat; promote to repo when stable
