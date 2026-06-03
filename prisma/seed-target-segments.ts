@@ -14,6 +14,9 @@ import { PrismaClient } from "../lib/generated/prisma/client";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
+type Persona = { department: string; seniority: string };
+type Anchor = { name: string; domain?: string };
+
 type SeedSegment = {
   id: string;
   name: string;
@@ -22,16 +25,18 @@ type SeedSegment = {
   industries: string[];
   employeeMin: number;
   employeeMax: number;
-  buyerPersonas: string[];
+  personas: Persona[];
   buyingSignals: string[];
   disqualifiers: string[];
-  anchorCompanies: string[];
+  anchors: Anchor[];
 };
 
 // Shared across all four (editable in the UI).
 const REVENUE_MIN = 25_000_000;
 const REVENUE_MAX = 200_000_000;
-const GEOGRAPHIES = ["Ontario", "Canada"];
+// priorityLocation must be one of geographies — keep "Ontario, Canada" in the list.
+const PRIORITY_LOCATION = "Ontario, Canada";
+const GEOGRAPHIES = ["Ontario, Canada", "Canada"];
 
 const SEGMENTS: SeedSegment[] = [
   {
@@ -49,12 +54,12 @@ const SEGMENTS: SeedSegment[] = [
     ],
     employeeMin: 100,
     employeeMax: 2000,
-    buyerPersonas: [
-      "VP Operations",
-      "COO",
-      "Director of Manufacturing",
-      "VP Digital / IT",
-      "Head of Supply Chain",
+    personas: [
+      { department: "Operations", seniority: "VP" },
+      { department: "Executive", seniority: "C-Suite" },
+      { department: "Operations", seniority: "Director" },
+      { department: "IT", seniority: "VP" },
+      { department: "Procurement", seniority: "Head" },
     ],
     buyingSignals: [
       "New ERP or MES rollout",
@@ -70,7 +75,12 @@ const SEGMENTS: SeedSegment[] = [
       "Already mid-flight with a Big-4 consultancy",
       "OEM giant (>$200M / enterprise procurement)",
     ],
-    anchorCompanies: ["Magna International", "Linamar", "Martinrea International", "Multimatic"],
+    anchors: [
+      { name: "Magna International", domain: "magna.com" },
+      { name: "Linamar", domain: "linamar.com" },
+      { name: "Martinrea International", domain: "martinrea.com" },
+      { name: "Multimatic", domain: "multimatic.com" },
+    ],
   },
   {
     id: "seg-motorsport",
@@ -87,12 +97,12 @@ const SEGMENTS: SeedSegment[] = [
     ],
     employeeMin: 50,
     employeeMax: 1000,
-    buyerPersonas: [
-      "Team Principal",
-      "Technical Director",
-      "Head of Performance",
-      "Head of Race Engineering",
-      "Commercial Director",
+    personas: [
+      { department: "Executive", seniority: "C-Suite" },
+      { department: "Engineering", seniority: "Director" },
+      { department: "Engineering", seniority: "Head" },
+      { department: "Operations", seniority: "Head" },
+      { department: "Sales", seniority: "Director" },
     ],
     buyingSignals: [
       "New series entry or expansion",
@@ -106,7 +116,12 @@ const SEGMENTS: SeedSegment[] = [
       "Under $25M revenue",
       "No in-house engineering function",
     ],
-    anchorCompanies: ["Multimatic Motorsports", "Pratt Miller", "Dallara", "Reynard"],
+    anchors: [
+      { name: "Multimatic Motorsports", domain: "multimatic.com" },
+      { name: "Pratt Miller", domain: "prattmiller.com" },
+      { name: "Dallara", domain: "dallara.it" },
+      { name: "Reynard", domain: "reynard.com" },
+    ],
   },
   {
     id: "seg-engineering",
@@ -123,12 +138,12 @@ const SEGMENTS: SeedSegment[] = [
     ],
     employeeMin: 75,
     employeeMax: 1500,
-    buyerPersonas: [
-      "VP Engineering",
-      "CTO",
-      "Director of Product Development",
-      "Head of R&D",
-      "Operations Director",
+    personas: [
+      { department: "Engineering", seniority: "VP" },
+      { department: "Engineering", seniority: "C-Suite" },
+      { department: "Product", seniority: "Director" },
+      { department: "Engineering", seniority: "Head" },
+      { department: "Operations", seniority: "Director" },
     ],
     buyingSignals: [
       "PLM / CAD modernization",
@@ -142,7 +157,12 @@ const SEGMENTS: SeedSegment[] = [
       "Solo / boutique consultancy (<75 staff)",
       "Government-only contractor with closed procurement",
     ],
-    anchorCompanies: ["ATS Corporation", "Hatch", "Stantec", "Celestica"],
+    anchors: [
+      { name: "ATS Corporation", domain: "atsautomation.com" },
+      { name: "Hatch", domain: "hatch.com" },
+      { name: "Stantec", domain: "stantec.com" },
+      { name: "Celestica", domain: "celestica.com" },
+    ],
   },
   {
     id: "seg-construction",
@@ -153,12 +173,12 @@ const SEGMENTS: SeedSegment[] = [
     industries: ["Construction", "Infrastructure", "Building Products", "Heavy Civil", "Construction Tech"],
     employeeMin: 100,
     employeeMax: 3000,
-    buyerPersonas: [
-      "COO",
-      "VP Operations",
-      "Director of Project Controls",
-      "VP Technology",
-      "CFO",
+    personas: [
+      { department: "Executive", seniority: "C-Suite" },
+      { department: "Operations", seniority: "VP" },
+      { department: "Operations", seniority: "Director" },
+      { department: "IT", seniority: "VP" },
+      { department: "Finance", seniority: "C-Suite" },
     ],
     buyingSignals: [
       "New project management / ERP system",
@@ -172,7 +192,12 @@ const SEGMENTS: SeedSegment[] = [
       "Residential trades / small GC",
       "Single-project special-purpose entity",
     ],
-    anchorCompanies: ["EllisDon", "PCL Construction", "Aecon", "Bird Construction"],
+    anchors: [
+      { name: "EllisDon", domain: "ellisdon.com" },
+      { name: "PCL Construction", domain: "pcl.com" },
+      { name: "Aecon", domain: "aecon.com" },
+      { name: "Bird Construction", domain: "bird.ca" },
+    ],
   },
 ];
 
@@ -189,11 +214,12 @@ async function main() {
       employeeMin: s.employeeMin,
       employeeMax: s.employeeMax,
       geographies: GEOGRAPHIES,
-      buyerPersonas: s.buyerPersonas,
+      priorityLocation: PRIORITY_LOCATION,
       buyingSignals: s.buyingSignals,
       disqualifiers: s.disqualifiers,
       searchSpec: undefined,
-      anchorCompanies: s.anchorCompanies,
+      personas: s.personas,
+      anchors: s.anchors,
     };
     await prisma.targetSegment.upsert({
       where: { id: s.id },

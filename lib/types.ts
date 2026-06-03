@@ -330,11 +330,12 @@ export type TargetSegment = {
   employeeMin?: number;
   employeeMax?: number;
   geographies: string[];
-  buyerPersonas: string[];
   buyingSignals: string[];
   disqualifiers: string[];
   searchSpec?: Record<string, unknown> | null; // Prisma Json? — structured search criteria
-  anchorCompanies: string[];
+  personas: { department: string; seniority: string }[]; // Prisma Json?
+  anchors: { name: string; domain?: string }[]; // Prisma Json?
+  priorityLocation: string | null; // the starred geography (must be one of geographies)
   createdAt: string; // ISO date
   updatedAt: string; // ISO date
 };

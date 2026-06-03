@@ -20,10 +20,11 @@ export default async function TargetingPage() {
     employeeMin: s.employeeMin,
     employeeMax: s.employeeMax,
     geographies: s.geographies,
-    buyerPersonas: s.buyerPersonas,
     buyingSignals: s.buyingSignals,
     disqualifiers: s.disqualifiers,
-    anchorCompanies: s.anchorCompanies,
+    personas: (s.personas as { department: string; seniority: string }[] | null) ?? [],
+    anchors: (s.anchors as { name: string; domain?: string }[] | null) ?? [],
+    priorityLocation: s.priorityLocation ?? null,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
   }));

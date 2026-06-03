@@ -12,14 +12,46 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { draftSegment, type CurrentSegmentValues, type DraftResult } from "@/lib/segment-drafter";
 
-// One value per line — strip leading bullets/numbers, trim, drop blanks.
-// (Same pattern as splitTasks in agents/actions.ts.)
-function splitLines(raw: string): string[] {
+// The chip/row builder passes arrays directly now. Trim each entry, drop
+// blanks, and de-dupe so the stored String[] is clean.
+function cleanTags(raw: string[] | undefined): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of raw) {
+    const t = v.trim();
+    if (t && !seen.has(t.toLowerCase())) {
+      seen.add(t.toLowerCase());
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+// Persona rows: keep only rows with both a department and a seniority.
+function cleanPersonas(
+  raw: { department: string; seniority: string }[] | undefined,
+): { department: string; seniority: string }[] {
+  if (!raw) return [];
   return raw
-    .split("\n")
-    .map((l) => l.replace(/^[-*•\d.\s]+/, "").trim())
-    .filter(Boolean);
+    .map((p) => ({ department: (p.department ?? "").trim(), seniority: (p.seniority ?? "").trim() }))
+    .filter((p) => p.department && p.seniority);
+}
+
+// Anchor rows: keep rows with a name; blank domain → undefined.
+function cleanAnchors(
+  raw: { name: string; domain?: string }[] | undefined,
+): { name: string; domain?: string }[] {
+  if (!raw) return [];
+  return raw
+    .map((a) => {
+      const name = (a.name ?? "").trim();
+      const domain = (a.domain ?? "").trim();
+      return domain ? { name, domain } : { name };
+    })
+    .filter((a) => a.name);
 }
 
 // UI passes number bounds as strings (or empty). Coerce to int or null —
@@ -35,13 +67,15 @@ export type TargetSegmentInput = {
   description: string;
   active?: boolean;
   priority?: string | number | null;
-  /** One value per line — split + trimmed server-side. */
-  industries: string;
-  geographies: string;
-  buyerPersonas: string;
-  buyingSignals: string;
-  disqualifiers: string;
-  anchorCompanies: string;
+  /** Chip/row builder passes arrays — cleaned (trim + dedupe) server-side. */
+  industries: string[];
+  geographies: string[];
+  buyingSignals: string[];
+  disqualifiers: string[];
+  personas: { department: string; seniority: string }[];
+  anchors: { name: string; domain?: string }[];
+  /** Starred geography — coerced to null if not present in geographies. */
+  priorityLocation?: string | null;
   revenueMin?: string | number | null;
   revenueMax?: string | number | null;
   employeeMin?: string | number | null;
@@ -49,16 +83,22 @@ export type TargetSegmentInput = {
 };
 
 function dataFromInput(input: TargetSegmentInput) {
+  const geographies = cleanTags(input.geographies);
+  const priorityRaw = (input.priorityLocation ?? "").trim();
+  // Invariant: priorityLocation must be one of the selected geographies.
+  const priorityLocation = priorityRaw && geographies.includes(priorityRaw) ? priorityRaw : null;
+
   return {
     name: input.name.trim(),
     description: input.description.trim(),
     priority: parseBound(input.priority) ?? 0,
-    industries: splitLines(input.industries),
-    geographies: splitLines(input.geographies),
-    buyerPersonas: splitLines(input.buyerPersonas),
-    buyingSignals: splitLines(input.buyingSignals),
-    disqualifiers: splitLines(input.disqualifiers),
-    anchorCompanies: splitLines(input.anchorCompanies),
+    industries: cleanTags(input.industries),
+    geographies,
+    buyingSignals: cleanTags(input.buyingSignals),
+    disqualifiers: cleanTags(input.disqualifiers),
+    personas: cleanPersonas(input.personas),
+    anchors: cleanAnchors(input.anchors),
+    priorityLocation,
     revenueMin: parseBound(input.revenueMin),
     revenueMax: parseBound(input.revenueMax),
     employeeMin: parseBound(input.employeeMin),
@@ -181,6 +221,20 @@ export async function toggleSegmentActive(id: string, active: boolean) {
 
   revalidatePath("/targeting");
   return { id, active };
+}
+
+// ── Draft with Claude ────────────────────────────────────────────────────────
+// Thin wrapper around draftSegment — keeps ANTHROPIC_API_KEY server-side. The
+// draft is ephemeral: NO DB write, NO audit, NO revalidate. Persistence happens
+// only when the partner clicks Save (createSegment/updateSegment), which audits.
+export async function draftSegmentAction(input: {
+  name: string;
+  brief: string;
+  current?: CurrentSegmentValues;
+}): Promise<DraftResult> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  return draftSegment(input);
 }
 
 export async function deleteSegment(id: string) {

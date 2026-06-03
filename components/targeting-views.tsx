@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { Crosshair, Plus, X, ShieldAlert, Trash2, Power, Search } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { Crosshair, Plus, X, ShieldAlert, Trash2, Power, Search, Sparkles } from "lucide-react";
 import { Card, Label, Button, Input, Textarea, EmptyState } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatCAD } from "@/lib/format";
@@ -10,7 +10,29 @@ import {
   updateSegment,
   toggleSegmentActive,
   deleteSegment,
+  draftSegmentAction,
 } from "@/app/(app)/targeting/actions";
+import { Section } from "@/components/targeting-builder/section";
+import { TagInput } from "@/components/targeting-builder/tag-input";
+import { GeographyPicker } from "@/components/targeting-builder/geography-picker";
+import { PersonaRows, type Persona } from "@/components/targeting-builder/persona-rows";
+import { AnchorRows, type Anchor } from "@/components/targeting-builder/anchor-rows";
+import { RevenueBand, EmployeeBand } from "@/components/targeting-builder/firmographics";
+import { SearchIntentPreview } from "@/components/targeting-builder/search-intent-preview";
+
+// Suggestion sets for the chip inputs.
+const INDUSTRY_SUGGESTIONS = [
+  "Automotive Manufacturing",
+  "Auto Parts & Suppliers",
+  "Industrial Manufacturing",
+  "Logistics & Distribution",
+  "SaaS",
+  "Professional Services",
+  "Healthcare",
+  "Financial Services",
+  "Construction",
+  "Energy",
+];
 
 type SegmentProp = {
   id: string;
@@ -24,10 +46,11 @@ type SegmentProp = {
   employeeMin: number | null;
   employeeMax: number | null;
   geographies: string[];
-  buyerPersonas: string[];
   buyingSignals: string[];
   disqualifiers: string[];
-  anchorCompanies: string[];
+  personas: Persona[];
+  anchors: Anchor[];
+  priorityLocation: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -100,7 +123,10 @@ function SegmentCard({ segment, onOpen }: { segment: SegmentProp; onOpen: () => 
       ? `${segment.industries.length} ${segment.industries.length === 1 ? "industry" : "industries"}`
       : null,
     revenue,
-    segment.geographies[0] ?? null,
+    segment.priorityLocation ?? segment.geographies[0] ?? null,
+    segment.personas.length
+      ? `${segment.personas.length} ${segment.personas.length === 1 ? "persona" : "personas"}`
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -184,14 +210,113 @@ function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: ()
   const [revenueMax, setRevenueMax] = useState(segment?.revenueMax?.toString() ?? "");
   const [employeeMin, setEmployeeMin] = useState(segment?.employeeMin?.toString() ?? "");
   const [employeeMax, setEmployeeMax] = useState(segment?.employeeMax?.toString() ?? "");
-  const [industries, setIndustries] = useState(segment?.industries.join("\n") ?? "");
-  const [geographies, setGeographies] = useState(segment?.geographies.join("\n") ?? "");
-  const [buyerPersonas, setBuyerPersonas] = useState(segment?.buyerPersonas.join("\n") ?? "");
-  const [buyingSignals, setBuyingSignals] = useState(segment?.buyingSignals.join("\n") ?? "");
-  const [disqualifiers, setDisqualifiers] = useState(segment?.disqualifiers.join("\n") ?? "");
-  const [anchorCompanies, setAnchorCompanies] = useState(segment?.anchorCompanies.join("\n") ?? "");
+  const [industries, setIndustries] = useState<string[]>(segment?.industries ?? []);
+  const [geographies, setGeographies] = useState<string[]>(segment?.geographies ?? []);
+  const [priorityLocation, setPriorityLocation] = useState<string | null>(
+    segment?.priorityLocation ?? null,
+  );
+  const [personas, setPersonas] = useState<Persona[]>(segment?.personas ?? []);
+  const [buyingSignals, setBuyingSignals] = useState<string[]>(segment?.buyingSignals ?? []);
+  const [disqualifiers, setDisqualifiers] = useState<string[]>(segment?.disqualifiers ?? []);
+  const [anchors, setAnchors] = useState<Anchor[]>(segment?.anchors ?? []);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // ── Draft with Claude (panel-local; NEVER saved to the segment) ──
+  const [brief, setBrief] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [highlight, setHighlight] = useState(false);
+
+  // Auto-clear the AI-filled ring after a few seconds.
+  useEffect(() => {
+    if (!highlight) return;
+    const t = setTimeout(() => setHighlight(false), 4000);
+    return () => clearTimeout(t);
+  }, [highlight]);
+
+  // Removing a starred geography elsewhere clears priority; keep it consistent
+  // if geographies no longer contain the starred value.
+  function handleGeographies(next: string[]) {
+    setGeographies(next);
+    if (priorityLocation && !next.includes(priorityLocation)) setPriorityLocation(null);
+  }
+
+  // Merge a draft into the form. Prefer returned values, but NEVER blank a field
+  // the partner already filled when the model returns empty for it.
+  function applyDraft(d: Awaited<ReturnType<typeof draftSegmentAction>>) {
+    if (d.description) setDescription(d.description);
+    if (d.industries.length) setIndustries(d.industries);
+    if (d.buyingSignals.length) setBuyingSignals(d.buyingSignals);
+    if (d.disqualifiers.length) setDisqualifiers(d.disqualifiers);
+    if (d.personas.length) setPersonas(d.personas);
+    if (d.anchors.length) setAnchors(d.anchors);
+    if (d.revenueMin != null) setRevenueMin(String(d.revenueMin));
+    if (d.revenueMax != null) setRevenueMax(String(d.revenueMax));
+    if (d.employeeMin != null) setEmployeeMin(String(d.employeeMin));
+    if (d.employeeMax != null) setEmployeeMax(String(d.employeeMax));
+
+    // Geographies first, then priority — validated against the NEW list, and
+    // routed so the priority-consistency invariant runs.
+    const nextGeo = d.geographies.length ? d.geographies : geographies;
+    setGeographies(nextGeo);
+    const nextPriority =
+      d.priorityLocation && nextGeo.includes(d.priorityLocation)
+        ? d.priorityLocation
+        : priorityLocation && nextGeo.includes(priorityLocation)
+          ? priorityLocation
+          : null;
+    setPriorityLocation(nextPriority);
+
+    setHighlight(true);
+  }
+
+  async function draft() {
+    if (!name.trim() || !brief.trim()) {
+      setError("Add a name and a short brief first");
+      return;
+    }
+    setError(null);
+    setDrafting(true);
+    try {
+      const d = await draftSegmentAction({
+        name,
+        brief,
+        current: {
+          description,
+          industries,
+          revenueMin,
+          revenueMax,
+          employeeMin,
+          employeeMax,
+          geographies,
+          priorityLocation,
+          personas,
+          buyingSignals,
+          disqualifiers,
+          anchors,
+        },
+      });
+      applyDraft(d);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Draft failed");
+    } finally {
+      setDrafting(false);
+    }
+  }
+
+  const intentState = useMemo(
+    () => ({
+      industries,
+      geographies,
+      priorityLocation,
+      revenueMin,
+      revenueMax,
+      employeeMin,
+      employeeMax,
+      personas,
+    }),
+    [industries, geographies, priorityLocation, revenueMin, revenueMax, employeeMin, employeeMax, personas],
+  );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -209,10 +334,11 @@ function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: ()
           employeeMax,
           industries,
           geographies,
-          buyerPersonas,
           buyingSignals,
           disqualifiers,
-          anchorCompanies,
+          personas,
+          anchors,
+          priorityLocation,
         };
         if (segment) await updateSegment(segment.id, payload);
         else await createSegment(payload);
@@ -269,171 +395,218 @@ function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: ()
           </div>
         </div>
 
-        <form onSubmit={submit} className="px-6 py-5 flex flex-col gap-4 flex-1">
-          <div className="grid grid-cols-[1fr_120px] gap-4">
-            <div className="flex flex-col gap-2">
+        <form
+          onSubmit={submit}
+          onFocusCapture={() => highlight && setHighlight(false)}
+          className="px-6 py-3 flex flex-col flex-1"
+        >
+          <Section title="Identity" defaultOpen>
+            {/* Draft with Claude — type a name + brief, Claude fills the rest. */}
+            <div className="flex flex-col gap-2 p-3 border border-graphite/60 bg-bitumen/40 rounded-[var(--radius)]">
+              <Label>Describe who you want — Claude drafts the rest</Label>
+              <Textarea
+                rows={2}
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+                placeholder="e.g. mid-market Ontario auto-parts manufacturers modernizing their ERP"
+                disabled={drafting}
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-bone-mute leading-relaxed">
+                  Fills the form below. Nothing is saved — review, then Save.
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onClick={draft}
+                  disabled={drafting || !name.trim() || !brief.trim()}
+                >
+                  <Sparkles size={13} strokeWidth={1.5} />
+                  {drafting ? "Drafting…" : "Draft with Claude"}
+                </Button>
+              </div>
+            </div>
+
+            {highlight && (
+              <div className="flex items-center gap-2 px-3 py-2 border border-track-gold/40 bg-track-gold-dim/5 rounded-[var(--radius)]">
+                <Sparkles size={13} strokeWidth={1.5} className="text-track-gold shrink-0" />
+                <span className="mono text-[9px] uppercase tracking-[0.12em] text-track-gold/90">
+                  Drafted — review &amp; Save
+                </span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-[1fr_120px] gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>
+                  Name <span className="text-flag-red">*</span>
+                </Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Automotive"
+                  required
+                  disabled={isPending}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>Priority</Label>
+                <Input
+                  type="number"
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  placeholder="0"
+                  disabled={isPending}
+                />
+              </div>
+            </div>
+
+            <div
+              className={cn(
+                "flex flex-col gap-2 transition-shadow duration-300",
+                highlight && "ring-1 ring-track-gold/40 rounded-[var(--radius)]",
+              )}
+            >
               <Label>
-                Name <span className="text-flag-red">*</span>
+                Description <span className="text-flag-red">*</span>
               </Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Automotive"
+              <Textarea
+                rows={2}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Who is this segment and why do we want them?"
                 required
                 disabled={isPending}
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label>Priority</Label>
-              <Input
-                type="number"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                placeholder="0"
-                disabled={isPending}
-              />
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>
-              Description <span className="text-flag-red">*</span>
-            </Label>
-            <Textarea
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Who is this segment and why do we want them?"
-              required
-              disabled={isPending}
-            />
-          </div>
+            <label className="flex items-center gap-2 text-[12px] text-bone-dim cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={(e) => setActive(e.target.checked)}
+                disabled={isPending}
+                className="accent-track-gold"
+              />
+              Enabled — available to run searches against
+            </label>
+          </Section>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>Revenue min (CAD)</Label>
-              <Input
-                type="number"
-                value={revenueMin}
-                onChange={(e) => setRevenueMin(e.target.value)}
-                placeholder="25000000"
-                disabled={isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Revenue max (CAD)</Label>
-              <Input
-                type="number"
-                value={revenueMax}
-                onChange={(e) => setRevenueMax(e.target.value)}
-                placeholder="200000000"
-                disabled={isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Employees min</Label>
-              <Input
-                type="number"
-                value={employeeMin}
-                onChange={(e) => setEmployeeMin(e.target.value)}
-                placeholder="100"
-                disabled={isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Employees max</Label>
-              <Input
-                type="number"
-                value={employeeMax}
-                onChange={(e) => setEmployeeMax(e.target.value)}
-                placeholder="2000"
-                disabled={isPending}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>Industries (one per line)</Label>
-              <Textarea
-                rows={4}
+          <Section title="Firmographics">
+            <div
+              className={cn(
+                "flex flex-col gap-2 transition-shadow duration-300",
+                highlight && "ring-1 ring-track-gold/40 rounded-[var(--radius)]",
+              )}
+            >
+              <Label>Industries</Label>
+              <TagInput
                 value={industries}
-                onChange={(e) => setIndustries(e.target.value)}
-                placeholder={"Automotive Manufacturing\nAuto Parts & Suppliers"}
+                onChange={setIndustries}
+                placeholder="Type an industry, press Enter…"
+                suggestions={INDUSTRY_SUGGESTIONS}
                 disabled={isPending}
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label>Geographies (one per line)</Label>
-              <Textarea
-                rows={4}
-                value={geographies}
-                onChange={(e) => setGeographies(e.target.value)}
-                placeholder={"Ontario\nCanada"}
-                disabled={isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Buyer personas (one per line)</Label>
-              <Textarea
-                rows={4}
-                value={buyerPersonas}
-                onChange={(e) => setBuyerPersonas(e.target.value)}
-                placeholder={"VP Operations\nCOO"}
-                disabled={isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Buying signals (one per line)</Label>
-              <Textarea
-                rows={4}
-                value={buyingSignals}
-                onChange={(e) => setBuyingSignals(e.target.value)}
-                placeholder={"New ERP rollout\nPlant expansion"}
-                disabled={isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Disqualifiers (one per line)</Label>
-              <Textarea
-                rows={4}
-                value={disqualifiers}
-                onChange={(e) => setDisqualifiers(e.target.value)}
-                placeholder={"Under $25M revenue\nEnterprise procurement"}
-                disabled={isPending}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Anchor companies (one per line)</Label>
-              <Textarea
-                rows={4}
-                value={anchorCompanies}
-                onChange={(e) => setAnchorCompanies(e.target.value)}
-                placeholder={"Magna International\nLinamar"}
-                disabled={isPending}
-              />
-            </div>
-          </div>
 
-          <label className="flex items-center gap-2 text-[12px] text-bone-dim cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={(e) => setActive(e.target.checked)}
+            <RevenueBand
+              min={revenueMin}
+              max={revenueMax}
+              onMin={setRevenueMin}
+              onMax={setRevenueMax}
               disabled={isPending}
-              className="accent-track-gold"
             />
-            Enabled — available to run searches against
-          </label>
+
+            <EmployeeBand
+              min={employeeMin}
+              max={employeeMax}
+              onMin={setEmployeeMin}
+              onMax={setEmployeeMax}
+              disabled={isPending}
+            />
+
+            <div
+              className={cn(
+                "flex flex-col gap-2 transition-shadow duration-300",
+                highlight && "ring-1 ring-track-gold/40 rounded-[var(--radius)]",
+              )}
+            >
+              <Label>Geographies</Label>
+              <GeographyPicker
+                value={geographies}
+                priorityLocation={priorityLocation}
+                onChange={handleGeographies}
+                onPriorityChange={setPriorityLocation}
+                disabled={isPending}
+              />
+            </div>
+          </Section>
+
+          <Section title="Who we sell to">
+            <div
+              className={cn(
+                "flex flex-col gap-2 transition-shadow duration-300",
+                highlight && "ring-1 ring-track-gold/40 rounded-[var(--radius)]",
+              )}
+            >
+              <Label>Personas</Label>
+              <PersonaRows value={personas} onChange={setPersonas} disabled={isPending} />
+            </div>
+          </Section>
+
+          <Section title="Signals & references">
+            <div
+              className={cn(
+                "flex flex-col gap-2 transition-shadow duration-300",
+                highlight && "ring-1 ring-track-gold/40 rounded-[var(--radius)]",
+              )}
+            >
+              <Label>Buying signals</Label>
+              <TagInput
+                value={buyingSignals}
+                onChange={setBuyingSignals}
+                placeholder="e.g. New ERP rollout"
+                disabled={isPending}
+              />
+            </div>
+            <div
+              className={cn(
+                "flex flex-col gap-2 transition-shadow duration-300",
+                highlight && "ring-1 ring-track-gold/40 rounded-[var(--radius)]",
+              )}
+            >
+              <Label>Disqualifiers</Label>
+              <TagInput
+                value={disqualifiers}
+                onChange={setDisqualifiers}
+                placeholder="e.g. Under $25M revenue"
+                disabled={isPending}
+              />
+            </div>
+            <div
+              className={cn(
+                "flex flex-col gap-2 transition-shadow duration-300",
+                highlight && "ring-1 ring-track-gold/40 rounded-[var(--radius)]",
+              )}
+            >
+              <Label>Anchor companies</Label>
+              <AnchorRows value={anchors} onChange={setAnchors} disabled={isPending} />
+            </div>
+          </Section>
+
+          <div className="pt-4">
+            <SearchIntentPreview state={intentState} />
+          </div>
 
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
+            <div className="flex items-start gap-2 px-3 py-2 mt-3 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-2 pt-1 mt-auto">
+          <div className="flex items-center justify-between gap-2 pt-4 mt-auto">
             {segment ? (
               <button
                 type="button"

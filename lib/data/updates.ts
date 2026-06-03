@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-03",
+    tag: "improved",
+    title: "Targeting builder — a guided, sectioned segment editor",
+    detail:
+      "Building a segment is now point-and-click instead of typing lists. Fields are grouped into collapsible sections (Identity, Firmographics, Who we sell to, Signals & references). Industries, signals, and disqualifiers are quick-add chips with suggestions; geographies come from a searchable list where you star one as the priority; you pick who you sell to as Department + Seniority rows; revenue and employee size offer one-click preset bands with formatted hints; and a live \"search intent\" line at the bottom reads back, in plain English, exactly who this segment will hunt.",
+  },
+  {
+    date: "2026-06-03",
     tag: "new",
     title: "Targeting — define who the Lead Agent hunts for",
     detail:

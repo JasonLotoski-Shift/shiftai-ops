@@ -895,11 +895,15 @@ model TargetSegment {
   employeeMin     Int?
   employeeMax     Int?
   geographies     String[]
-  buyerPersonas   String[]
   buyingSignals   String[]
   disqualifiers   String[]
   searchSpec      Json?
-  anchorCompanies String[]
+  // personas: Json array of { department: string, seniority: string }
+  personas        Json?
+  // anchors: Json array of { name: string, domain?: string }
+  anchors         Json?
+  // priorityLocation: the starred geography (must be one of geographies)
+  priorityLocation String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
