@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-03",
+    tag: "new",
+    title: "Run a lead search — the agent finds and rates companies for you",
+    detail:
+      "Each targeting segment now has a working \"Run search\" button. Click it and the agent goes out, finds companies that match your segment, rates each one for fit, pulls in contacts, and drops them into AI Found Leads. The run takes a couple of minutes — the card shows \"Searching…\" while it works, then \"Found N → View\". On any found lead you can now reveal a specific contact's email on demand, and a new \"Apollo credits\" meter at the top of Targeting shows how many emails you've revealed this month. Each segment also lets you choose whether to reveal just the best-fit contact's email per company or every contact's (uses more credits).",
+  },
+  {
+    date: "2026-06-03",
     tag: "improved",
     title: "Sending a cold email now puts the lead straight on your board",
     detail:

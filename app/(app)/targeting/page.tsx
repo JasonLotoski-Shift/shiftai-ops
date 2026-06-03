@@ -2,9 +2,14 @@ import { Header } from "@/components/header";
 import { prisma } from "@/lib/prisma";
 import { TargetingViews } from "@/components/targeting-views";
 import { getTargetingStats } from "@/app/(app)/targeting/stats-actions";
+import { getApolloCreditsThisMonth } from "@/lib/apollo-credits";
+
+// Give the background discovery work (scheduled via after() in runSegmentSearch)
+// wall-clock budget on Vercel — the server action runs in this route's function.
+export const maxDuration = 300;
 
 export default async function TargetingPage() {
-  const [segments, leadGroups, runGroups, initialStats] = await Promise.all([
+  const [segments, leadGroups, runGroups, runningRuns, initialStats, apolloCredits] = await Promise.all([
     prisma.targetSegment.findMany({
       orderBy: [{ active: "desc" }, { priority: "desc" }, { updatedAt: "desc" }],
     }),
@@ -22,8 +27,16 @@ export default async function TargetingPage() {
       where: { segmentId: { not: null } },
       _max: { startedAt: true },
     }),
+    // Currently-running LeadRuns — drives the "Searching…" indicator on first
+    // paint so an in-progress search shows immediately on any page load (FIX #2).
+    prisma.leadRun.findMany({
+      where: { status: "running", segmentId: { not: null } },
+      select: { segmentId: true },
+    }),
     // First-paint stats payload (All segments · Last 30d).
     getTargetingStats(null, 30),
+    // Apollo email-reveal usage this month (Part E credit box).
+    getApolloCreditsThisMonth(),
   ]);
 
   const leadCounts: Record<string, number> = {};
@@ -62,10 +75,17 @@ export default async function TargetingPage() {
     personas: (s.personas as { department: string; seniority: string }[] | null) ?? [],
     anchors: (s.anchors as { name: string; domain?: string }[] | null) ?? [],
     priorityLocation: s.priorityLocation ?? null,
+    revealAtDiscovery: (s.revealAtDiscovery === "all" ? "all" : "primary") as "primary" | "all",
     lastOptimizedAt: s.lastOptimizedAt?.toISOString() ?? null,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
   }));
+
+  // Per-segment "a run is in progress" map (FIX #2).
+  const runningSegments: Record<string, boolean> = {};
+  for (const r of runningRuns) {
+    if (r.segmentId) runningSegments[r.segmentId] = true;
+  }
 
   // Slim {id,name} list for the stats segment selector.
   const statsSegments = segments.map((s) => ({ id: s.id, name: s.name }));
@@ -77,8 +97,10 @@ export default async function TargetingPage() {
         segments={segmentProps}
         leadCounts={leadCounts}
         hasSuggestions={hasSuggestions}
+        runningSegments={runningSegments}
         initialStats={initialStats}
         statsSegments={statsSegments}
+        apolloCredits={apolloCredits}
       />
     </>
   );

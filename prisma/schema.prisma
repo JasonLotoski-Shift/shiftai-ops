@@ -930,6 +930,11 @@ model TargetSegment {
   // priorityLocation: the starred geography (must be one of geographies)
   priorityLocation String?
 
+  // revealAtDiscovery: per-segment Apollo email-reveal policy at discovery time.
+  // "primary" (default) reveals only the primary contact's email per company
+  // (1 credit); "all" reveals every found contact's email (1 credit each).
+  revealAtDiscovery String? @default("primary")
+
   // Set when a partner runs the Segment Optimizer (D39). A LeadRun newer than
   // this (or runs existing while this is null) means Claude has fresh tuning
   // suggestions for the segment — drives the "Claude has suggestions" nudge.

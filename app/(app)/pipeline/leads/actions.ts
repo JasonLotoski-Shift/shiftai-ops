@@ -14,6 +14,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { generate } from "@/lib/ai";
+import { apolloMatchPerson } from "@/lib/apollo";
 import type { Industry } from "@/lib/generated/prisma/enums";
 import type { ProspectPerson } from "@/lib/types";
 
@@ -247,6 +248,96 @@ export async function restoreLead(leadId: string): Promise<{ ok: true }> {
   revalidatePath("/pipeline");
   revalidatePath(`/pipeline/leads/${leadId}`);
   return { ok: true };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// revealLeadPersonEmail — spend 1 Apollo credit to reveal one candidate's work
+// email on demand (PART D, hybrid reveal policy).
+//
+// Loads the lead, takes people[personIndex], calls apolloMatchPerson (preferring
+// the stored apolloPersonId, else name-split + domain), then sets that person's
+// email + emailRevealed:true in the people Json. Writes a "reveal.apollo.email"
+// AuditLog row (counted by getApolloCreditsThisMonth) + an Activity row, in one
+// transaction. Surfaces APOLLO_CREDITS errors as a friendly "out of credits" msg.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function revealLeadPersonEmail(
+  leadId: string,
+  personIndex: number,
+): Promise<{ email: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const lead = await prisma.prospectLead.findUnique({ where: { id: leadId } });
+  if (!lead) throw new Error("Lead not found");
+
+  const people = (lead.people as unknown as ProspectPerson[]) ?? [];
+  const person = people[personIndex];
+  if (!person) throw new Error("Pick a person to reveal");
+  if (person.email?.trim()) return { email: person.email.trim() }; // already revealed
+
+  // Reveal: prefer the stored Apollo person id (exact match); else name + domain.
+  let revealed;
+  try {
+    if (person.apolloPersonId) {
+      revealed = await apolloMatchPerson({ id: person.apolloPersonId });
+    } else {
+      const parts = (person.name ?? "").trim().split(/\s+/);
+      const firstName = parts[0] || undefined;
+      const lastName = parts.length > 1 ? parts.slice(1).join(" ") : undefined;
+      revealed =
+        firstName && lastName
+          ? await apolloMatchPerson({ firstName, lastName, domain: lead.domain })
+          : await apolloMatchPerson({ domain: lead.domain });
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("APOLLO_CREDITS")) {
+      throw new Error("You're out of Apollo credits for this period — top up to reveal more emails.");
+    }
+    throw err;
+  }
+
+  const email = revealed.email?.trim();
+  if (!email) throw new Error("Apollo couldn't find a verified email for this person.");
+
+  // Merge the revealed email back into the people array (preserve order/shape).
+  const nextPeople = people.map((p, i) =>
+    i === personIndex
+      ? {
+          ...p,
+          email,
+          emailRevealed: true,
+          name: revealed.name ?? p.name,
+          title: revealed.title ?? p.title,
+        }
+      : p,
+  );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.prospectLead.update({
+      where: { id: leadId },
+      data: { people: nextPeople as unknown as object },
+    });
+    await writeAudit(tx, {
+      actor: agentActor("lead-discovery"),
+      action: "reveal.apollo.email",
+      targetType: "ProspectLead",
+      targetId: leadId,
+      changes: { domain: lead.domain, name: person.name, title: person.title },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "ai",
+      target: lead.companyName,
+      detail: `Revealed ${person.name}'s email (Apollo)`,
+      link: `/pipeline/leads/${leadId}`,
+    });
+  });
+
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  return { email };
 }
 
 // ──────────────────────────────────────────────────────────────────────

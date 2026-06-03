@@ -339,6 +339,7 @@ export type TargetSegment = {
   personas: { department: string; seniority: string }[]; // Prisma Json?
   anchors: { name: string; domain?: string }[]; // Prisma Json?
   priorityLocation: string | null; // the starred geography (must be one of geographies)
+  revealAtDiscovery?: "primary" | "all"; // Apollo email-reveal policy at discovery
   lastOptimizedAt?: string | null; // ISO date — last Segment Optimizer run (D39)
   createdAt: string; // ISO date
   updatedAt: string; // ISO date
@@ -353,9 +354,11 @@ export type LeadRunStatus = "running" | "done" | "error";
 export type ProspectPerson = {
   name: string;
   title: string;
-  email?: string;
+  email?: string | null;
   linkedin?: string;
   source?: string; // which connector found this person
+  apolloPersonId?: string; // Apollo person id (used for the 1-credit reveal)
+  emailRevealed?: boolean; // true once the work email has been revealed
 };
 
 export type ProspectLead = {

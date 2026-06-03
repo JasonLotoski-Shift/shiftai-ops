@@ -78,6 +78,8 @@ export type TargetSegmentInput = {
   anchors: { name: string; domain?: string }[];
   /** Starred geography — coerced to null if not present in geographies. */
   priorityLocation?: string | null;
+  /** Apollo email-reveal policy at discovery: "primary" (default) or "all". */
+  revealAtDiscovery?: "primary" | "all";
   revenueMin?: string | number | null;
   revenueMax?: string | number | null;
   employeeMin?: string | number | null;
@@ -101,6 +103,7 @@ function dataFromInput(input: TargetSegmentInput) {
     personas: cleanPersonas(input.personas),
     anchors: cleanAnchors(input.anchors),
     priorityLocation,
+    revealAtDiscovery: input.revealAtDiscovery === "all" ? "all" : "primary",
     revenueMin: parseBound(input.revenueMin),
     revenueMax: parseBound(input.revenueMax),
     employeeMin: parseBound(input.employeeMin),

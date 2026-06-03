@@ -34,9 +34,11 @@ type SeedSegment = {
 // Shared across all four (editable in the UI).
 const REVENUE_MIN = 25_000_000;
 const REVENUE_MAX = 200_000_000;
-// priorityLocation must be one of geographies — keep "British Columbia, Canada" in the list.
-const PRIORITY_LOCATION = "British Columbia, Canada";
-const GEOGRAPHIES = ["British Columbia, Canada", "Canada"];
+// Canada-wide targeting — the firm serves clients across Canada, and the target
+// industries (automotive, motorsport, etc.) are concentrated in Ontario/Quebec,
+// not BC. No single-province priority so out-of-province leads aren't penalised.
+const PRIORITY_LOCATION: string | null = null;
+const GEOGRAPHIES = ["Canada"];
 
 const SEGMENTS: SeedSegment[] = [
   {

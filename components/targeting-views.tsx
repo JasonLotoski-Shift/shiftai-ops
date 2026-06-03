@@ -28,6 +28,9 @@ import {
   draftSegmentAction,
   suggestSegmentTweaks,
 } from "@/app/(app)/targeting/actions";
+import { runSegmentSearch, getSegmentRunStatus } from "@/app/(app)/targeting/run-actions";
+import { ApolloCreditsBox } from "@/components/apollo-credits-box";
+import type { ApolloCreditUsage } from "@/lib/apollo-credits";
 import { TargetingStatsPanel, type StatsSegmentOption, type TargetingStats } from "@/components/targeting-stats-panel";
 import { Section } from "@/components/targeting-builder/section";
 import { TagInput } from "@/components/targeting-builder/tag-input";
@@ -68,6 +71,7 @@ type SegmentProp = {
   personas: Persona[];
   anchors: Anchor[];
   priorityLocation: string | null;
+  revealAtDiscovery: "primary" | "all";
   lastOptimizedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -84,21 +88,87 @@ function band(min: number | null, max: number | null, money: boolean): string | 
 
 type ViewMode = "active" | "archived";
 
+// ── Non-blocking run polling hook (FIX #2) ───────────────────────────────────
+// Drives a "Searching…" → "Found N → View" lifecycle for one segment WITHOUT
+// blocking the UI. `running` seeds from the server (a running LeadRun on first
+// paint) so the indicator survives navigation. While running, it polls
+// getSegmentRunStatus every 4s; on "done" it stops, exposes foundCount, and
+// refreshes so leadCounts update; on "error" it stops and surfaces the error.
+function useSegmentRun(segmentId: string, initiallyRunning: boolean) {
+  const router = useRouter();
+  const [running, setRunning] = useState(initiallyRunning);
+  const [runResult, setRunResult] = useState<{ found: number } | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  // Keep local `running` in sync if the server prop flips (e.g. router.refresh
+  // surfaces a newly-running run after a navigation back).
+  useEffect(() => {
+    if (initiallyRunning) setRunning(true);
+  }, [initiallyRunning]);
+
+  useEffect(() => {
+    if (!running) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const status = await getSegmentRunStatus(segmentId);
+        if (cancelled || !status) return;
+        if (status.status === "done") {
+          setRunning(false);
+          setRunResult({ found: status.foundCount });
+          router.refresh();
+        } else if (status.status === "error") {
+          setRunning(false);
+          setRunError("Search failed");
+        }
+      } catch {
+        /* transient poll failure — keep polling */
+      }
+    };
+    const id = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [running, segmentId, router]);
+
+  // Fire the (non-blocking) run, then start polling. Awaits only the {runId}
+  // return to confirm the run was created — NOT the discovery itself.
+  async function start() {
+    setRunError(null);
+    setRunResult(null);
+    try {
+      await runSegmentSearch(segmentId);
+      setRunning(true);
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : "Search failed");
+    }
+  }
+
+  return { running, runResult, runError, start };
+}
+
 export function TargetingViews({
   segments,
   leadCounts = {},
   hasSuggestions = {},
+  runningSegments = {},
   initialStats,
   statsSegments = [],
+  apolloCredits,
 }: {
   segments: SegmentProp[];
   leadCounts?: Record<string, number>;
   /** Per-segment id → true when Claude has fresh tuning suggestions (D39). */
   hasSuggestions?: Record<string, boolean>;
+  /** Per-segment id → true when a LeadRun is in progress (FIX #2). */
+  runningSegments?: Record<string, boolean>;
   /** First-paint stats payload (All segments · Last 30d). */
   initialStats?: TargetingStats;
   /** Slim {id,name} list for the stats segment selector. */
   statsSegments?: StatsSegmentOption[];
+  /** Apollo email-reveal usage this month (Part E credit box). */
+  apolloCredits?: ApolloCreditUsage;
 }) {
   // `open` is the segment being viewed/edited in the slide-over, or "new".
   const [open, setOpen] = useState<SegmentProp | "new" | null>(null);
@@ -141,6 +211,8 @@ export function TargetingViews({
           </Button>
         </div>
       </div>
+
+      {apolloCredits && <ApolloCreditsBox usage={apolloCredits} />}
 
       <TargetingStatsPanel initialStats={initialStats} segments={statsSegments} />
 
@@ -208,6 +280,7 @@ export function TargetingViews({
                   segment={s}
                   leadCount={leadCounts[s.id] ?? 0}
                   hasSuggestions={hasSuggestions[s.id] ?? false}
+                  initiallyRunning={runningSegments[s.id] ?? false}
                   onOpen={() => setOpen(s)}
                 />
               ))}
@@ -220,6 +293,7 @@ export function TargetingViews({
         <SegmentPanel
           segment={open === "new" ? undefined : open}
           hasSuggestions={open !== "new" && (hasSuggestions[open.id] ?? false)}
+          initiallyRunning={open !== "new" && (runningSegments[open.id] ?? false)}
           onClose={() => setOpen(null)}
         />
       )}
@@ -234,15 +308,24 @@ function SegmentCard({
   segment,
   leadCount,
   hasSuggestions,
+  initiallyRunning,
   onOpen,
 }: {
   segment: SegmentProp;
   leadCount: number;
   hasSuggestions: boolean;
+  initiallyRunning: boolean;
   onOpen: () => void;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  // Run-search live state (D17/D18 → FIX #2). Non-blocking: the run is kicked off
+  // and a LeadRun-driven poll surfaces "Searching…" → "Found N → View". The
+  // indicator survives navigation because `running` seeds from the server.
+  const { running: searching, runResult, runError, start: startSearch } = useSegmentRun(
+    segment.id,
+    initiallyRunning,
+  );
   const revenue = band(segment.revenueMin, segment.revenueMax, true);
   const summary = [
     segment.industries.length
@@ -267,6 +350,11 @@ function SegmentCard({
         /* surfaced on reload */
       }
     });
+  }
+
+  function runSearch(e: React.MouseEvent) {
+    e.stopPropagation();
+    void startSearch();
   }
 
   return (
@@ -316,8 +404,29 @@ function SegmentCard({
         <p className="text-[12px] text-bone-mute leading-relaxed flex-1">{summary || "No criteria yet"}</p>
 
         <div className="flex items-center justify-between gap-2 pt-1">
-          {/* Found-lead count → deep-link into the AI Found Leads tab, filtered. */}
-          {leadCount > 0 ? (
+          {/* Status / live "Searching…" pulse / run result, then found-lead link. */}
+          {searching ? (
+            <span className="mono text-[9px] uppercase tracking-[0.12em] text-track-gold/90 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-track-gold animate-pulse" />
+              Searching…
+            </span>
+          ) : runResult ? (
+            <Link
+              href={`/pipeline?tab=found&segment=${segment.id}`}
+              onClick={(e) => e.stopPropagation()}
+              title="View this segment's found leads"
+              className="mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border border-track-gold/30 text-track-gold/90 bg-track-gold-dim/5 hover:bg-track-gold-dim/10 flex items-center gap-1.5 transition-colors"
+            >
+              <Radar size={10} strokeWidth={1.5} />
+              Found {runResult.found} → View
+            </Link>
+          ) : runError ? (
+            <span className="mono text-[9px] uppercase tracking-[0.12em] text-flag-red flex items-center gap-1.5" title={runError}>
+              <span className="w-1.5 h-1.5 rounded-full bg-flag-red" />
+              Search failed
+            </span>
+          ) : leadCount > 0 ? (
+            // Found-lead count → deep-link into the AI Found Leads tab, filtered.
             <Link
               href={`/pipeline?tab=found&segment=${segment.id}`}
               onClick={(e) => e.stopPropagation()}
@@ -334,13 +443,13 @@ function SegmentCard({
             </span>
           )}
           <button
-            onClick={(e) => e.stopPropagation()}
-            disabled
-            title="Discovery wiring lands in Phase C"
-            className="mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border border-graphite text-bone-mute flex items-center gap-1.5 opacity-60 cursor-not-allowed"
+            onClick={runSearch}
+            disabled={searching}
+            title="Run the Discovery Engine for this segment (runs in the background — you can navigate away)"
+            className="mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border border-graphite text-bone-dim hover:text-track-gold hover:border-track-gold/40 flex items-center gap-1.5 transition-colors disabled:opacity-60 disabled:cursor-wait"
           >
             <Search size={11} strokeWidth={1.5} />
-            Run search
+            {searching ? "Searching…" : "Run search"}
           </button>
         </div>
       </div>
@@ -352,10 +461,12 @@ function SegmentCard({
 function SegmentPanel({
   segment,
   hasSuggestions = false,
+  initiallyRunning = false,
   onClose,
 }: {
   segment?: SegmentProp;
   hasSuggestions?: boolean;
+  initiallyRunning?: boolean;
   onClose: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
@@ -380,8 +491,28 @@ function SegmentPanel({
   const [buyingSignals, setBuyingSignals] = useState<string[]>(segment?.buyingSignals ?? []);
   const [disqualifiers, setDisqualifiers] = useState<string[]>(segment?.disqualifiers ?? []);
   const [anchors, setAnchors] = useState<Anchor[]>(segment?.anchors ?? []);
+  const [revealAtDiscovery, setRevealAtDiscovery] = useState<"primary" | "all">(
+    segment?.revealAtDiscovery ?? "primary",
+  );
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  // Run-search from the panel header (existing segments only, D17/D18 → FIX #2).
+  // Non-blocking: kicks off the run and polls the LeadRun for "Searching…" →
+  // "Found N → View". `segment.id` is "" for the new-segment panel (the header
+  // run button only renders when `segment` exists, so the poll never fires).
+  const {
+    running: searching,
+    runResult,
+    runError: searchError,
+    start: startSearch,
+  } = useSegmentRun(segment?.id ?? "", initiallyRunning);
+
+  function runSearch() {
+    if (!segment) return;
+    void startSearch();
+  }
 
   // ── Draft with Claude (panel-local; NEVER saved to the segment) ──
   const [brief, setBrief] = useState("");
@@ -393,6 +524,10 @@ function SegmentPanel({
   const [tweakResult, setTweakResult] = useState<Awaited<ReturnType<typeof suggestSegmentTweaks>> | null>(null);
   // Which suggestions are checked for "Apply selected" (defaults to all).
   const [picked, setPicked] = useState<Set<number>>(new Set());
+  // FIX #1: count of tweaks just applied (null = no confirmation banner). Set at
+  // the two tweak Apply call sites (NOT inside applyDraftFields, so "Draft with
+  // Claude" never triggers it). Drives an explicit "Applied N tweak(s)" banner.
+  const [appliedTweaks, setAppliedTweaks] = useState<number | null>(null);
 
   // Auto-clear the AI-filled ring after a few seconds.
   useEffect(() => {
@@ -400,6 +535,14 @@ function SegmentPanel({
     const t = setTimeout(() => setHighlight(false), 4000);
     return () => clearTimeout(t);
   }, [highlight]);
+
+  // Auto-clear the "Applied N tweak(s)" confirmation after a few seconds (lingers
+  // slightly past the field ring so the explicit confirmation reads last).
+  useEffect(() => {
+    if (appliedTweaks === null) return;
+    const t = setTimeout(() => setAppliedTweaks(null), 5000);
+    return () => clearTimeout(t);
+  }, [appliedTweaks]);
 
   // Removing a starred geography elsewhere clears priority; keep it consistent
   // if geographies no longer contain the starred value.
@@ -548,6 +691,7 @@ function SegmentPanel({
           personas,
           anchors,
           priorityLocation,
+          revealAtDiscovery,
         };
         if (segment) await updateSegment(segment.id, payload);
         else await createSegment(payload);
@@ -590,14 +734,41 @@ function SegmentPanel({
             <span className="title-md truncate">{segment ? segment.name : "New target segment"}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              disabled
-              title="Discovery wiring lands in Phase C"
-              className="mono text-[9px] uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-graphite text-bone-mute flex items-center gap-1.5 opacity-60 cursor-not-allowed"
-            >
-              <Search size={12} strokeWidth={1.5} />
-              Run search
-            </button>
+            {segment &&
+              (searching ? (
+                <span className="mono text-[9px] uppercase tracking-[0.12em] text-track-gold/90 flex items-center gap-1.5 px-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-track-gold animate-pulse" />
+                  Searching…
+                </span>
+              ) : runResult ? (
+                <Link
+                  href={`/pipeline?tab=found&segment=${segment.id}`}
+                  className="mono text-[9px] uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-track-gold/30 text-track-gold/90 bg-track-gold-dim/5 hover:bg-track-gold-dim/10 flex items-center gap-1.5 transition-colors"
+                >
+                  <Radar size={12} strokeWidth={1.5} />
+                  Found {runResult.found} → View
+                </Link>
+              ) : searchError ? (
+                <button
+                  type="button"
+                  onClick={runSearch}
+                  title={searchError}
+                  className="mono text-[9px] uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-flag-red/40 text-flag-red bg-flag-red/5 flex items-center gap-1.5 transition-colors"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-flag-red" />
+                  Search failed · Retry
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={runSearch}
+                  title="Run the Discovery Engine for this segment (runs in the background — you can navigate away)"
+                  className="mono text-[9px] uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-graphite text-bone-dim hover:text-track-gold hover:border-track-gold/40 flex items-center gap-1.5 transition-colors"
+                >
+                  <Search size={12} strokeWidth={1.5} />
+                  Run search
+                </button>
+              ))}
             <button onClick={onClose} className="text-bone-mute hover:text-bone">
               <X size={16} strokeWidth={1.5} />
             </button>
@@ -606,7 +777,10 @@ function SegmentPanel({
 
         <form
           onSubmit={submit}
-          onFocusCapture={() => highlight && setHighlight(false)}
+          onFocusCapture={() => {
+            if (highlight) setHighlight(false);
+            if (appliedTweaks !== null) setAppliedTweaks(null);
+          }}
           className="px-6 py-3 flex flex-col flex-1"
         >
           <Section title="Identity" defaultOpen>
@@ -762,6 +936,44 @@ function SegmentPanel({
               <Label>Personas</Label>
               <PersonaRows value={personas} onChange={setPersonas} disabled={isPending} />
             </div>
+
+            {/* Reveal-email policy at discovery (PART B). "All" reveals every found
+                contact's email — 1 Apollo credit each — so it can burn the monthly
+                budget faster than "Primary only". */}
+            <div className="flex flex-col gap-2">
+              <Label>Reveal emails at discovery</Label>
+              <div className="flex items-center gap-1.5 p-1 border border-graphite/60 bg-bitumen/40 rounded-[var(--radius)] w-fit">
+                {(
+                  [
+                    { key: "primary" as const, label: "Primary only" },
+                    { key: "all" as const, label: "All contacts" },
+                  ]
+                ).map((opt) => {
+                  const on = revealAtDiscovery === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setRevealAtDiscovery(opt.key)}
+                      disabled={isPending}
+                      className={cn(
+                        "mono text-[9px] uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-[var(--radius-sm)] transition-colors",
+                        on
+                          ? "bg-track-gold-dim/15 text-track-gold border border-track-gold/40"
+                          : "text-bone-mute hover:text-bone border border-transparent",
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="text-[11px] text-bone-mute leading-relaxed">
+                {revealAtDiscovery === "all"
+                  ? "Reveals every found contact's email — spends 1 Apollo credit per contact, per company."
+                  : "Reveals only the best-fit contact's email per company (1 credit each)."}
+              </span>
+            </div>
           </Section>
 
           <Section title="Signals & references">
@@ -897,7 +1109,15 @@ function SegmentPanel({
                   )}
 
                   <div className="flex items-center justify-end gap-2">
-                    <Button variant="ghost" size="sm" type="button" onClick={() => applyDraftFields(tweakResult.proposed)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      type="button"
+                      onClick={() => {
+                        applyDraftFields(tweakResult.proposed);
+                        setAppliedTweaks(tweakResult.suggestions.length);
+                      }}
+                    >
                       Apply all
                     </Button>
                     <Button
@@ -906,17 +1126,34 @@ function SegmentPanel({
                       type="button"
                       disabled={picked.size === 0}
                       onClick={() => {
+                        const count = picked.size;
                         const keys = new Set<string>();
                         tweakResult.suggestions.forEach((s, i) => {
                           if (picked.has(i)) proposedKeysForField(s.field).forEach((k) => keys.add(k));
                         });
                         applyDraftFields(tweakResult.proposed, keys);
+                        setAppliedTweaks(count);
                       }}
                     >
                       <Sparkles size={13} strokeWidth={1.5} />
                       Apply selected ({picked.size})
                     </Button>
                   </div>
+
+                  {/* FIX #1: explicit confirmation banner — nothing is saved until Save. */}
+                  {appliedTweaks !== null && (
+                    <div className="flex items-start gap-2 px-3 py-2 border border-track-gold/40 bg-track-gold-dim/5 rounded-[var(--radius)]">
+                      <Wand2 size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
+                      <div className="flex flex-col gap-0.5">
+                        <span className="mono text-[9px] uppercase tracking-[0.12em] text-track-gold/90">
+                          Applied {appliedTweaks} tweak{appliedTweaks === 1 ? "" : "s"}
+                        </span>
+                        <span className="text-[11px] text-bone-mute leading-relaxed">
+                          Review the highlighted fields below — nothing is saved until you press Save.
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

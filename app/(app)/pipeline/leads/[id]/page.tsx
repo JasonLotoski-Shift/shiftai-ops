@@ -4,12 +4,13 @@ import { Header } from "@/components/header";
 import { Card, Label, Badge, Button } from "@/components/ui";
 import { AddToFunnelPanel } from "@/components/add-to-funnel-panel";
 import { LeadEmailPanel } from "@/components/lead-email-panel";
+import { LeadPeopleList } from "@/components/lead-people-list";
 import { RestoreLeadButton } from "@/components/restore-lead-button";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
 import type { ProspectLead, ProspectPerson } from "@/lib/types";
-import { ArrowLeft, ExternalLink, Mail, Linkedin } from "lucide-react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
 
 function scoreTone(score: number): { cls: string; style?: React.CSSProperties } {
   if (score >= 8) return { cls: "bg-track-gold-dim/20 text-track-gold border-track-gold/40" };
@@ -170,39 +171,11 @@ export default async function LeadDetailPage({
           {/* People */}
           <Card className="p-5 flex flex-col gap-4">
             <Label gold>Candidate people ({people.length})</Label>
-            <div className="flex flex-col divide-y divide-graphite">
-              {people.length === 0 && <span className="text-[13px] text-bone-mute">No people found.</span>}
-              {people.map((p, i) => (
-                <div key={i} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                  <div className="flex flex-col">
-                    <span className="text-[13px] text-bone">{p.name}</span>
-                    <span className="text-[12px] text-bone-mute">{p.title}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {p.email && (
-                      <a
-                        href={`mailto:${p.email}`}
-                        className="inline-flex items-center gap-1 text-[12px] text-bone-dim hover:text-track-gold"
-                      >
-                        <Mail size={12} strokeWidth={1.5} />
-                        {p.email}
-                      </a>
-                    )}
-                    {p.linkedin && (
-                      <a
-                        href={p.linkedin}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[12px] text-bone-dim hover:text-track-gold"
-                      >
-                        <Linkedin size={12} strokeWidth={1.5} />
-                        LinkedIn
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <LeadPeopleList
+              leadId={lead.id}
+              people={people}
+              canReveal={lead.status === "pending" || lead.status === "added"}
+            />
           </Card>
 
           {/* Provenance */}
