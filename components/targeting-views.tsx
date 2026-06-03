@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Crosshair, Plus, X, ShieldAlert, Pencil, Trash2, Power } from "lucide-react";
-import { Card, Label, Badge, Button, Input, Textarea, EmptyState } from "@/components/ui";
+import { useEffect, useState, useTransition } from "react";
+import { Crosshair, Plus, X, ShieldAlert, Trash2, Power, Search } from "lucide-react";
+import { Card, Label, Button, Input, Textarea, EmptyState } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatCAD } from "@/lib/format";
 import {
@@ -42,18 +42,18 @@ function band(min: number | null, max: number | null, money: boolean): string | 
 }
 
 export function TargetingViews({ segments }: { segments: SegmentProp[] }) {
-  const [editing, setEditing] = useState<SegmentProp | null>(null);
-  const [creating, setCreating] = useState(false);
+  // `open` is the segment being viewed/edited in the slide-over, or "new".
+  const [open, setOpen] = useState<SegmentProp | "new" | null>(null);
 
   return (
     <div className="px-8 py-8 flex flex-col gap-8">
       <div className="flex items-start justify-between gap-6">
         <p className="text-[13px] text-bone-mute max-w-[640px] leading-relaxed">
           Define <span className="text-bone">who the Lead Agent hunts for</span> — the kinds of companies you want as
-          clients. Each segment is a spec: industries, revenue and size bands, geographies, the buyers you sell to, the
-          signals worth chasing, and the disqualifiers. Switch a segment on or off; every field is editable.
+          clients. Each segment is a spec the agent searches and rates against. Click a segment to open its builder; run
+          a search when you&apos;re ready.
         </p>
-        <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+        <Button variant="primary" size="sm" onClick={() => setOpen("new")}>
           <Plus size={13} strokeWidth={1.5} />
           New segment
         </Button>
@@ -65,68 +65,48 @@ export function TargetingViews({ segments }: { segments: SegmentProp[] }) {
           title="No target segments yet"
           hint="Define the first ideal-customer spec."
           action={
-            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+            <Button variant="primary" size="sm" onClick={() => setOpen("new")}>
               <Plus size={13} strokeWidth={1.5} />
               New segment
             </Button>
           }
         />
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {segments.map((s) => (
-            <SegmentCard key={s.id} segment={s} onEdit={() => setEditing(s)} />
+            <SegmentCard key={s.id} segment={s} onOpen={() => setOpen(s)} />
           ))}
         </div>
       )}
 
-      {creating && <SegmentModal onClose={() => setCreating(false)} />}
-      {editing && <SegmentModal segment={editing} onClose={() => setEditing(null)} />}
+      {open && (
+        <SegmentPanel
+          segment={open === "new" ? undefined : open}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ChipRow({ label, items }: { label: string; items: string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label>{label}</Label>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((t, i) => (
-          <span
-            key={i}
-            className="text-[11px] text-bone-dim border border-graphite px-2 py-0.5 rounded-[var(--radius-pill)]"
-          >
-            {t}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BulletList({ label, items }: { label: string; items: string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label>{label}</Label>
-      <ul className="flex flex-col gap-1">
-        {items.map((t, i) => (
-          <li key={i} className="text-[12px] text-bone-dim flex items-start gap-2">
-            <span className="text-track-gold mt-0.5">·</span>
-            <span>{t}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function SegmentCard({ segment, onEdit }: { segment: SegmentProp; onEdit: () => void }) {
+// ── Card ────────────────────────────────────────────────────────────────────
+// Clean: name + one-line summary + status + run. The whole card opens the
+// builder; the inline controls (enable toggle, run) stop propagation.
+function SegmentCard({ segment, onOpen }: { segment: SegmentProp; onOpen: () => void }) {
   const [isPending, startTransition] = useTransition();
   const revenue = band(segment.revenueMin, segment.revenueMax, true);
-  const headcount = band(segment.employeeMin, segment.employeeMax, false);
+  const summary = [
+    segment.industries.length
+      ? `${segment.industries.length} ${segment.industries.length === 1 ? "industry" : "industries"}`
+      : null,
+    revenue,
+    segment.geographies[0] ?? null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-  function toggle() {
+  function toggleEnabled(e: React.MouseEvent) {
+    e.stopPropagation();
     startTransition(async () => {
       try {
         await toggleSegmentActive(segment.id, !segment.active);
@@ -136,74 +116,52 @@ function SegmentCard({ segment, onEdit }: { segment: SegmentProp; onEdit: () => 
     });
   }
 
-  function remove() {
-    if (!confirm(`Delete the "${segment.name}" target segment?`)) return;
-    startTransition(async () => {
-      try {
-        await deleteSegment(segment.id);
-      } catch {
-        /* surfaced on reload */
-      }
-    });
-  }
-
   return (
-    <Card className={cn("flex flex-col", isPending && "opacity-60", !segment.active && "opacity-75")}>
-      <div className="px-5 py-4 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <Crosshair size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
-          <span className="title-md truncate">{segment.name}</span>
-        </div>
-        <Badge tone={segment.active ? "gold" : "neutral"}>{segment.active ? "active" : "paused"}</Badge>
-      </div>
-      <div className="px-5 py-4 flex flex-col gap-4 flex-1">
-        <p className="text-[13px] text-bone-dim leading-relaxed">{segment.description}</p>
-
-        {(revenue || headcount) && (
-          <div className="flex flex-wrap gap-x-6 gap-y-2">
-            {revenue && (
-              <div className="flex flex-col">
-                <Label>Revenue</Label>
-                <span className="text-[12px] text-bone-dim">{revenue}</span>
-              </div>
-            )}
-            {headcount && (
-              <div className="flex flex-col">
-                <Label>Headcount</Label>
-                <span className="text-[12px] text-bone-dim">{headcount}</span>
-              </div>
-            )}
+    <Card
+      onClick={onOpen}
+      className={cn(
+        "flex flex-col cursor-pointer transition-colors hover:border-bone-mute",
+        (isPending || !segment.active) && "opacity-60",
+      )}
+    >
+      <div className="px-5 py-4 flex flex-col gap-3 min-h-[124px]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Crosshair size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
+            <span className="title-md truncate">{segment.name}</span>
           </div>
-        )}
-
-        <ChipRow label="Industries" items={segment.industries} />
-        <ChipRow label="Geographies" items={segment.geographies} />
-        <BulletList label="Buyer personas" items={segment.buyerPersonas} />
-        <BulletList label="Buying signals" items={segment.buyingSignals} />
-        <BulletList label="Disqualifiers" items={segment.disqualifiers} />
-        <ChipRow label="Anchor companies" items={segment.anchorCompanies} />
-      </div>
-      <div className="px-5 py-3 flex items-center justify-between gap-2">
-        <button
-          onClick={toggle}
-          disabled={isPending}
-          className={cn(
-            "mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 border rounded-[var(--radius-sm)] transition-colors flex items-center gap-1.5",
-            segment.active
-              ? "border-graphite text-bone-mute hover:text-bone hover:border-bone-mute"
-              : "border-track-gold/40 text-track-gold bg-track-gold-dim/10",
-          )}
-          title={segment.active ? "Pause segment" : "Activate segment"}
-        >
-          <Power size={11} strokeWidth={1.5} />
-          {segment.active ? "Pause" : "Activate"}
-        </button>
-        <div className="flex items-center gap-2">
-          <button onClick={onEdit} disabled={isPending} className="text-bone-mute hover:text-bone" title="Edit">
-            <Pencil size={13} strokeWidth={1.5} />
+          <button
+            onClick={toggleEnabled}
+            disabled={isPending}
+            title={segment.active ? "Disable segment" : "Enable segment"}
+            className={cn(
+              "mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border flex items-center gap-1.5 shrink-0 transition-colors",
+              segment.active
+                ? "border-track-gold/30 text-track-gold/90 bg-track-gold-dim/5"
+                : "border-graphite text-bone-mute hover:text-bone",
+            )}
+          >
+            <Power size={10} strokeWidth={1.5} />
+            {segment.active ? "Enabled" : "Disabled"}
           </button>
-          <button onClick={remove} disabled={isPending} className="text-bone-mute hover:text-flag-red" title="Delete">
-            <Trash2 size={13} strokeWidth={1.5} />
+        </div>
+
+        <p className="text-[12px] text-bone-mute leading-relaxed flex-1">{summary || "No criteria yet"}</p>
+
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {/* Idle by default; becomes a live "Searching…" pulse during a run (Phase C). */}
+          <span className="mono text-[9px] uppercase tracking-[0.12em] text-bone-mute flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-graphite" />
+            Idle · never run
+          </span>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            disabled
+            title="Discovery wiring lands in Phase C"
+            className="mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border border-graphite text-bone-mute flex items-center gap-1.5 opacity-60 cursor-not-allowed"
+          >
+            <Search size={11} strokeWidth={1.5} />
+            Run search
           </button>
         </div>
       </div>
@@ -211,7 +169,13 @@ function SegmentCard({ segment, onEdit }: { segment: SegmentProp; onEdit: () => 
   );
 }
 
-function SegmentModal({ segment, onClose }: { segment?: SegmentProp; onClose: () => void }) {
+// ── Slide-over builder ───────────────────────────────────────────────────────
+function SegmentPanel({ segment, onClose }: { segment?: SegmentProp; onClose: () => void }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [name, setName] = useState(segment?.name ?? "");
   const [description, setDescription] = useState(segment?.description ?? "");
   const [priority, setPriority] = useState(String(segment?.priority ?? 0));
@@ -259,25 +223,53 @@ function SegmentModal({ segment, onClose }: { segment?: SegmentProp; onClose: ()
     });
   }
 
+  function remove() {
+    if (!segment) return;
+    if (!confirm(`Delete the "${segment.name}" target segment?`)) return;
+    startTransition(async () => {
+      try {
+        await deleteSegment(segment.id);
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete segment");
+      }
+    });
+  }
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex justify-end bg-bitumen/85 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[640px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
+        className={cn(
+          "h-full w-full max-w-[560px] bg-asphalt shadow-[var(--shadow-lg)] overflow-y-auto flex flex-col transition-transform duration-200 ease-out",
+          mounted ? "translate-x-0" : "translate-x-full",
+        )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4">
-          <div className="flex items-center gap-3">
-            <Crosshair size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>{segment ? "Edit target segment" : "New target segment"}</Label>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-graphite/60 sticky top-0 bg-asphalt z-10">
+          <div className="flex items-center gap-3 min-w-0">
+            <Crosshair size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
+            <span className="title-md truncate">{segment ? segment.name : "New target segment"}</span>
           </div>
-          <button onClick={onClose} className="text-bone-mute hover:text-bone">
-            <X size={16} strokeWidth={1.5} />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              disabled
+              title="Discovery wiring lands in Phase C"
+              className="mono text-[9px] uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-graphite text-bone-mute flex items-center gap-1.5 opacity-60 cursor-not-allowed"
+            >
+              <Search size={12} strokeWidth={1.5} />
+              Run search
+            </button>
+            <button onClick={onClose} className="text-bone-mute hover:text-bone">
+              <X size={16} strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
-        <form onSubmit={submit} className="px-5 py-5 flex flex-col gap-4">
+
+        <form onSubmit={submit} className="px-6 py-5 flex flex-col gap-4 flex-1">
           <div className="grid grid-cols-[1fr_120px] gap-4">
             <div className="flex flex-col gap-2">
               <Label>
@@ -431,7 +423,7 @@ function SegmentModal({ segment, onClose }: { segment?: SegmentProp; onClose: ()
               disabled={isPending}
               className="accent-track-gold"
             />
-            Active — the Lead Agent hunts against this segment
+            Enabled — available to run searches against
           </label>
 
           {error && (
@@ -440,18 +432,34 @@ function SegmentModal({ segment, onClose }: { segment?: SegmentProp; onClose: ()
               <span className="text-[12px] text-bone-dim">{error}</span>
             </div>
           )}
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" size="sm" type="button" onClick={onClose} disabled={isPending}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              type="submit"
-              disabled={isPending || !name.trim() || !description.trim()}
-            >
-              {isPending ? "Saving…" : segment ? "Save changes" : "Create segment"}
-            </Button>
+
+          <div className="flex items-center justify-between gap-2 pt-1 mt-auto">
+            {segment ? (
+              <button
+                type="button"
+                onClick={remove}
+                disabled={isPending}
+                className="text-[12px] text-bone-mute hover:text-flag-red flex items-center gap-1.5"
+              >
+                <Trash2 size={13} strokeWidth={1.5} />
+                Delete
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" type="button" onClick={onClose} disabled={isPending}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                type="submit"
+                disabled={isPending || !name.trim() || !description.trim()}
+              >
+                {isPending ? "Saving…" : segment ? "Save changes" : "Create segment"}
+              </Button>
+            </div>
           </div>
         </form>
       </div>

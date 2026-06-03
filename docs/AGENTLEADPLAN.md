@@ -55,6 +55,9 @@ The original sketch was "3 agents that search and cross-reference each other." W
 | D20 | People depth (Q6) | **Apollo pulls 3–5 people/company**, filtered by the segment's `buyerPersonas` titles |
 | D21 | Run status | A lightweight **`LeadRun`** record (segment, status `running`/`done`, counts, timestamps) powers the live indicator + future run history |
 | D22 | Guideline style (Q9) | Each source `SKILL.md` uses **principles + parameterized templates** (segment field → query mapping the model adapts) |
+| D23 | Segment status UI | **No "Active" badge.** Card states are **Idle** (calm, default) / **Searching** (green live pulse, only during a run) + a subtle **"Enabled"** toggle (disable a segment without deleting) |
+| D24 | Card interaction | Clean cards (name + one-line summary + last-run); **click → right-side slide-over panel** with the full builder (replaces the dense inline card + centered modal) |
+| D25 | Run trigger | **"Run search" lives on the segment** (card + slide-over) on the Targeting page; results land in the AI Found Leads tab (Phase B). Discovery wiring itself is Phase C — the button is a present-but-disabled affordance until then |
 
 ---
 

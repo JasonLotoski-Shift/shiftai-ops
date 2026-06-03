@@ -51,7 +51,10 @@ const quickActions: QuickAction[] = [
   { icon: Sparkles, label: "Run an action", hint: "Pick a contact — Claude enriches the record from its interaction log", type: "contact", qa: "enrich" },
 ];
 
-type ProjectWithClient = Project & { client: Client };
+// originationPct is a Prisma Decimal in the DB; it's serialized to a number in
+// the page before crossing to this client component (Decimals can't be passed
+// to Client Components). This view doesn't read it, but the type must match.
+type ProjectWithClient = Omit<Project, "originationPct"> & { originationPct: number; client: Client };
 type PickRecord = { id: string; label: string; sub?: string };
 
 interface DashboardViewsProps {

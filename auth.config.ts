@@ -10,11 +10,16 @@ import type { NextAuthConfig } from "next-auth";
 // looks for the Auth.js default names (__Secure-authjs.session-token etc.),
 // can't find them, treats every request as unauthenticated → redirect loop
 // between /login and /dashboard.
+// `secure` cookies are only sent/stored over HTTPS. Production
+// (ops.shiftai.partners) is HTTPS → true. Local `next dev` runs on plain
+// http://localhost, where the browser silently drops secure cookies — which
+// breaks the OAuth PKCE round-trip ("InvalidCheck: pkceCodeVerifier value
+// could not be parsed" → Configuration 500). So gate on NODE_ENV.
 const cookieDefaults = {
   httpOnly: true,
   sameSite: "lax" as const,
   path: "/",
-  secure: true,
+  secure: process.env.NODE_ENV === "production",
 };
 
 export const authConfig: NextAuthConfig = {

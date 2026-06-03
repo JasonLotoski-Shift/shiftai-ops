@@ -39,6 +39,13 @@ export default async function DashboardPage() {
       }),
     ]);
 
+  // Prisma Decimal (originationPct) can't be passed to a Client Component —
+  // serialize to a plain number at the boundary.
+  const activeProjectsSerialized = activeProjects.map((p) => ({
+    ...p,
+    originationPct: Number(p.originationPct),
+  }));
+
   const atRiskCount = activeProjects.filter((p) => p.status === "at_risk" || p.status === "blocked").length;
   const openPipelineValue = openDeals.reduce((sum, d) => sum + d.valueEstimate, 0);
   const outstandingAR = openInvoices.reduce((sum, i) => sum + i.amount, 0);
@@ -76,7 +83,7 @@ export default async function DashboardPage() {
         </section>
 
         <DashboardViews
-          activeProjects={activeProjects}
+          activeProjects={activeProjectsSerialized}
           activities={activities}
           teamUpdates={teamUpdates}
           news={news}
