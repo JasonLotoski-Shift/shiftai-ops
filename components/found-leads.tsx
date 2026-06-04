@@ -70,38 +70,36 @@ export function FoundLeads({
           })}
         </div>
 
-        {lane === "new" && (
-          <div className="flex items-center gap-1">
-            {(
-              [
-                { key: "score", label: "Sort by score" },
-                { key: "segment", label: "Group by segment" },
-              ] as { key: SortMode; label: string }[]
-            ).map((opt) => {
-              const on = mode === opt.key;
-              return (
-                <button
-                  key={opt.key}
-                  onClick={() => setMode(opt.key)}
-                  className={`px-2.5 py-1 border font-mono text-[9px] uppercase tracking-wide rounded-[var(--radius-pill)] transition-colors ${
-                    on
-                      ? "border-track-gold/40 text-track-gold bg-track-gold-dim/10"
-                      : "border-graphite-2 text-bone-mute hover:text-bone-dim"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <div className="flex items-center gap-1">
+          {(
+            [
+              { key: "score", label: "Sort by score" },
+              { key: "segment", label: "Group by segment" },
+            ] as { key: SortMode; label: string }[]
+          ).map((opt) => {
+            const on = mode === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={() => setMode(opt.key)}
+                className={`px-2.5 py-1 border font-mono text-[9px] uppercase tracking-wide rounded-[var(--radius-pill)] transition-colors ${
+                  on
+                    ? "border-track-gold/40 text-track-gold bg-track-gold-dim/10"
+                    : "border-graphite-2 text-bone-mute hover:text-bone-dim"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {lane === "new" && (
         <NewLane leads={sortedPending} mode={mode} />
       )}
 
-      {lane === "filtered" && <FilteredLane leads={filteredF} />}
+      {lane === "filtered" && <FilteredLane leads={filteredF} mode={mode} />}
     </div>
   );
 }
@@ -136,7 +134,7 @@ function NewLane({ leads, mode }: { leads: ProspectLead[]; mode: SortMode }) {
 }
 
 // ── Filtered lane — ghosts + disqualified, with Restore ────────────────────
-function FilteredLane({ leads }: { leads: ProspectLead[] }) {
+function FilteredLane({ leads, mode }: { leads: ProspectLead[]; mode: SortMode }) {
   if (leads.length === 0) {
     return (
       <EmptyState
@@ -146,15 +144,36 @@ function FilteredLane({ leads }: { leads: ProspectLead[] }) {
       />
     );
   }
+  const sorted = [...leads].sort(byScoreDesc);
+  if (mode === "segment") {
+    return (
+      <div className="flex flex-col gap-8">
+        {groupBySegment(sorted).map((group) => (
+          <div key={group.key} className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Label gold>{group.name}</Label>
+              <span className="text-[11px] text-bone-mute font-mono">{group.leads.length}</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {group.leads.map((lead) => <FilteredCard key={lead.id} lead={lead} />)}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      {[...leads].sort(byScoreDesc).map((lead) => (
-        <div key={lead.id} className="relative">
-          <LeadCard lead={lead} muted />
-          {/* Restore only for ghosts (disqualified leads stay filtered). */}
-          {lead.status === "ghost" && <RestoreButton leadId={lead.id} />}
-        </div>
-      ))}
+      {sorted.map((lead) => <FilteredCard key={lead.id} lead={lead} />)}
+    </div>
+  );
+}
+
+function FilteredCard({ lead }: { lead: ProspectLead }) {
+  return (
+    <div className="relative">
+      <LeadCard lead={lead} muted />
+      {lead.status === "ghost" && <RestoreButton leadId={lead.id} />}
     </div>
   );
 }
@@ -189,20 +208,23 @@ function RestoreButton({ leadId }: { leadId: string }) {
   );
 }
 
-function GroupedBySegment({ leads }: { leads: ProspectLead[] }) {
-  // Preserve a stable group order by first-appearance (already score-desc input).
-  const groups = new Map<string, { name: string; leads: ProspectLead[] }>();
+// Group leads by segment, preserving first-appearance order (score-desc input).
+function groupBySegment(leads: ProspectLead[]): { key: string; name: string; leads: ProspectLead[] }[] {
+  const groups = new Map<string, { key: string; name: string; leads: ProspectLead[] }>();
   for (const lead of leads) {
     const key = lead.segmentId ?? "__unmatched";
     const name = lead.segmentName ?? "Unmatched";
-    if (!groups.has(key)) groups.set(key, { name, leads: [] });
+    if (!groups.has(key)) groups.set(key, { key, name, leads: [] });
     groups.get(key)!.leads.push(lead);
   }
+  return [...groups.values()];
+}
 
+function GroupedBySegment({ leads }: { leads: ProspectLead[] }) {
   return (
     <div className="flex flex-col gap-8">
-      {[...groups.values()].map((group) => (
-        <div key={group.name} className="flex flex-col gap-3">
+      {groupBySegment(leads).map((group) => (
+        <div key={group.key} className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <Label gold>{group.name}</Label>
             <span className="text-[11px] text-bone-mute font-mono">{group.leads.length}</span>

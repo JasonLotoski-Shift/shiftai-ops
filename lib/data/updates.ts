@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-04",
     tag: "improved",
+    title: "Targeting polish",
+    detail:
+      "A finished search now keeps its result on the segment card after you navigate away, and you can group the Filtered leads by segment just like the New ones.",
+  },
+  {
+    date: "2026-06-04",
+    tag: "improved",
     title: "Lead search casts a wider net — and finds far more companies",
     detail:
       "Running a search on a segment now works in two stages. First it pulls a wide, free list of matching companies (up to 150), orders them by signals it already has — companies that are growing their headcount rise to the top, and revenue inside your band breaks ties. Then it does the deeper, slower work (site scrape, contacts, fit rating) only on the best ~40, so you get more and better-matched leads for the same run. A work email is only revealed once a lead clears the bar, so credits aren't spent on weak fits. Each finished run also tells you roughly how many matching companies are still left to explore, so re-running a segment keeps reaching new ones.",
