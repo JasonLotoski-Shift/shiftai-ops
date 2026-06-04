@@ -1,13 +1,12 @@
 "use server";
 
-// Contact-scan server actions — the cost-controlled core.
-//
-// startContactScan creates a ScanRun synchronously and returns its id, then
-// runs the work in the BACKGROUND via after() (small lists scored inline;
-// large lists submitted to the Anthropic Message Batches API). getScanRunStatus
-// is the UI poll: for a batch run it checks the batch and, once ended, ingests
-// the results EXACTLY ONCE (guarded by an atomic submitted→scoring flip). The
-// /import route sets maxDuration = 300 so the background submit has budget.
+// Contact-scan server actions. A scan rates the partner's contacts against a
+// CRITERIA set (the scan settings) and records the run as a deletable report
+// (ScanRun + ScanResult rows). startContactScan creates the run synchronously
+// and runs the work in the BACKGROUND via after() (inline for small lists; the
+// Message Batches API for large). getScanRunStatus is the UI poll; for a batch
+// run it ingests the results once when the batch ends. The /import route sets
+// maxDuration = 300 so the background submit has budget.
 //
 // PRIVACY: every query is scoped to the signed-in partner via requirePartner().
 
@@ -22,59 +21,62 @@ import {
   INLINE_SCAN_THRESHOLD,
   SCAN_CHUNK_SIZE,
   type ScanRow,
-  type ScanSegment,
 } from "@/lib/contact-scan";
+import type { ScanCriteria } from "@/lib/types";
 
-// Local (not exported): a "use server" module must only export async functions.
-type ScanStatus = {
-  id: string;
-  status: string;
-  total: number;
-  done: number;
-};
+type ScanStatus = { id: string; status: string; total: number; done: number };
 
-export async function startContactScan(): Promise<{ scanRunId: string }> {
+// Normalize/clamp partner-supplied criteria before it's stored + sent to the model.
+function cleanCriteria(input: Partial<ScanCriteria> | undefined): ScanCriteria {
+  const arr = (v: unknown) =>
+    Array.isArray(v) ? v.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 40) : [];
+  const num = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.trunc(v) : undefined;
+  return {
+    industries: arr(input?.industries),
+    employeeMin: num(input?.employeeMin),
+    employeeMax: num(input?.employeeMax),
+    revenueMin: num(input?.revenueMin),
+    revenueMax: num(input?.revenueMax),
+    geographies: arr(input?.geographies),
+    keywords: arr(input?.keywords),
+    seededFromSegmentId:
+      typeof input?.seededFromSegmentId === "string" ? input.seededFromSegmentId : undefined,
+    seededFromName: typeof input?.seededFromName === "string" ? input.seededFromName : undefined,
+  };
+}
+
+export async function startContactScan(input: {
+  title: string;
+  criteria: ScanCriteria;
+  contactIds?: string[];
+}): Promise<{ scanRunId: string }> {
   const { partnerId, label } = await requirePartner();
+  const criteria = cleanCriteria(input.criteria);
+  const title = (input.title || "").trim().slice(0, 80) || "Scan";
 
-  // Name-only rows can't be scored — retire them from the pending queue up front
-  // (no AI/credit spend). They stay visible, flagged for enrich-on-demand.
-  const skipped = await prisma.importedContact.updateMany({
-    where: { partnerLeadId: partnerId, completeness: "needs_identification", scanStatus: "pending" },
-    data: { scanStatus: "skipped" },
-  });
-
+  // Scope: a provided subset, else ALL complete contacts (a scan is a fresh
+  // report under its own criteria). Name-only rows are never scanned.
+  const where = {
+    partnerLeadId: partnerId,
+    completeness: "complete" as const,
+    ...(input.contactIds?.length ? { id: { in: input.contactIds } } : {}),
+  };
   const rows: ScanRow[] = await prisma.importedContact.findMany({
-    where: { partnerLeadId: partnerId, completeness: "complete", scanStatus: "pending" },
+    where,
     select: { id: true, name: true, title: true, company: true, domain: true, email: true },
     orderBy: { createdAt: "asc" },
   });
-  if (rows.length === 0) throw new Error("Nothing new to scan.");
-
-  const segments: ScanSegment[] = await prisma.targetSegment.findMany({
-    where: { active: true },
-    orderBy: { priority: "desc" },
-    select: {
-      id: true,
-      name: true,
-      industries: true,
-      revenueMin: true,
-      revenueMax: true,
-      employeeMin: true,
-      employeeMax: true,
-      geographies: true,
-      buyingSignals: true,
-      disqualifiers: true,
-    },
-  });
-  if (segments.length === 0) throw new Error("Add an active Target Segment before scanning.");
+  if (rows.length === 0) throw new Error("No scannable contacts to scan.");
 
   const scanRun = await prisma.scanRun.create({
     data: {
       partnerLeadId: partnerId,
+      title,
       status: "pending",
+      criteria: criteria as object,
       totalCount: rows.length,
-      skippedCount: skipped.count,
-      segmentScope: segments.map((s) => s.id),
+      segmentScope: [],
       contactIds: rows.map((r) => r.id),
       createdBy: label,
     },
@@ -83,9 +85,9 @@ export async function startContactScan(): Promise<{ scanRunId: string }> {
   after(async () => {
     try {
       if (rows.length <= INLINE_SCAN_THRESHOLD) {
-        await runInlineScan({ scanRunId: scanRun.id, partnerId, rows, segments });
+        await runInlineScan({ scanRunId: scanRun.id, partnerId, rows, criteria });
       } else {
-        await submitBatchScan({ scanRunId: scanRun.id, rows, segments });
+        await submitBatchScan({ scanRunId: scanRun.id, rows, criteria });
       }
     } catch (err) {
       console.error("[scan-actions] background scan failed:", err);
@@ -105,50 +107,35 @@ export async function getScanRunStatus(scanRunId: string): Promise<ScanStatus | 
   const run = await prisma.scanRun.findFirst({
     where: { id: scanRunId, partnerLeadId: partnerId },
     select: {
-      id: true,
-      status: true,
-      batchApiId: true,
-      totalCount: true,
-      scoredCount: true,
-      errorCount: true,
-      contactIds: true,
-      segmentScope: true,
+      id: true, status: true, batchApiId: true, totalCount: true,
+      scoredCount: true, errorCount: true, contactIds: true,
     },
   });
   if (!run) return null;
 
   const payload = (status: string, done: number): ScanStatus => ({
-    id: run.id,
-    status,
-    total: run.totalCount,
-    done: Math.min(run.totalCount, done),
+    id: run.id, status, total: run.totalCount, done: Math.min(run.totalCount, done),
   });
 
-  // Inline runs (and terminal runs) report real per-contact counts directly.
   if (run.status !== "submitted" || !run.batchApiId) {
     return payload(run.status, run.scoredCount + run.errorCount);
   }
 
-  // Batch run in flight — check it; ingest once when it ends.
+  // Batch in flight — check it; ingest once when it ends.
   let processingStatus = "in_progress";
   let progressDone = 0;
   try {
     const batch = await getAnthropicClient().messages.batches.retrieve(run.batchApiId);
     processingStatus = batch.processing_status;
     const rc = batch.request_counts;
-    const finishedChunks = rc.succeeded + rc.errored + rc.canceled + rc.expired;
-    progressDone = finishedChunks * SCAN_CHUNK_SIZE;
+    progressDone = (rc.succeeded + rc.errored + rc.canceled + rc.expired) * SCAN_CHUNK_SIZE;
   } catch (err) {
     console.error("[scan-actions] batch retrieve failed:", err);
     return payload("submitted", run.scoredCount + run.errorCount);
   }
 
-  if (processingStatus !== "ended") {
-    return payload("submitted", progressDone);
-  }
+  if (processingStatus !== "ended") return payload("submitted", progressDone);
 
-  // Ended — claim the ingest with an atomic submitted→scoring flip so two
-  // concurrent polls can't both write back.
   const claim = await prisma.scanRun.updateMany({
     where: { id: run.id, status: "submitted" },
     data: { status: "scoring" },
@@ -160,7 +147,6 @@ export async function getScanRunStatus(scanRunId: string): Promise<ScanStatus | 
         partnerId,
         batchApiId: run.batchApiId,
         contactIds: run.contactIds,
-        segmentScope: run.segmentScope,
       });
     } catch (err) {
       console.error("[scan-actions] ingest failed:", err);

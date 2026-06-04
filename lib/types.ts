@@ -480,19 +480,47 @@ export type ImportedContact = {
   updatedAt: string; // ISO date
 };
 
+/* The scan settings a report rated against — seeded from a Target Segment, then
+ * editable per scan, and snapshotted on the ScanRun. */
+export type ScanCriteria = {
+  industries: string[];
+  employeeMin?: number;
+  employeeMax?: number;
+  revenueMin?: number; // whole CAD
+  revenueMax?: number; // whole CAD
+  geographies: string[];
+  keywords: string[]; // company-type / signal keywords
+  seededFromSegmentId?: string;
+  seededFromName?: string;
+};
+
 export type ScanRun = {
   id: string;
   partnerLeadId: string;
   batchId?: string;
+  title: string;
   status: ScanRunStatus;
+  criteria?: ScanCriteria | null;
   batchApiId?: string; // Anthropic Message Batches id (bulk async path)
   contactIds: string[]; // imported-contact ids in request order (result mapping)
   totalCount: number;
   scoredCount: number;
   skippedCount: number;
   errorCount: number;
-  segmentScope: string[]; // active TargetSegment ids used as the fit definition
+  segmentScope: string[]; // legacy — superseded by `criteria`
   createdBy: string;
   startedAt: string; // ISO date
   finishedAt?: string; // ISO date
+};
+
+/* One scan's ranking of one contact — the per-scan "result column". */
+export type ScanResult = {
+  id: string;
+  scanRunId: string;
+  importedContactId: string;
+  partnerLeadId: string;
+  score: number; // 1–10
+  leadType: ImportLeadType;
+  rationale?: string;
+  createdAt: string; // ISO date
 };

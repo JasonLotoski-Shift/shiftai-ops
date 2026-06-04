@@ -1,17 +1,17 @@
-// Contact scan engine — rate a partner's imported contacts for fit.
+// Contact scan engine — rate a partner's imported contacts for fit against a
+// configurable CRITERIA set (the scan settings, seeded from a Target Segment
+// then edited), and record each scan as its own REPORT: one ScanResult row per
+// scored contact, linked to the same master ImportedContact (no duplication).
 //
 // Two execution paths, chosen by list size in scan-actions:
-//   • inline  (small lists ≤ INLINE_SCAN_THRESHOLD) — loop chunks, one
-//     messages.create per chunk, write results immediately. Runs in after().
-//   • batch   (large lists) — submit ONE Anthropic Message Batch (~20 contacts
-//     per request, half-price, timeout-proof), then a later UI poll retrieves +
-//     ingests the results once. The stable cached prefix (firm context + scan
-//     skill + the active segments) is shared across all requests, so prompt
-//     caching makes the fan-out cheap.
+//   • inline  (≤ INLINE_SCAN_THRESHOLD) — loop chunks, one messages.create per
+//     chunk, write results immediately. Runs in after().
+//   • batch   (larger) — submit ONE Anthropic Message Batch (~20 contacts per
+//     request, half-price, timeout-proof); a later UI poll retrieves + ingests
+//     the results once. The cached prefix (firm context + scan skill + the
+//     criteria) is shared across all requests, so prompt caching is cheap.
 //
-// Plain async (NO "use server") so it's tsx-unit-testable, mirroring
-// lib/lead-discovery.ts. All writes are scoped to partnerId (the privacy
-// invariant) and the batch result write-back is idempotent.
+// Plain async (NO "use server") so it's tsx-unit-testable.
 
 import { prisma } from "@/lib/prisma";
 import {
@@ -21,6 +21,7 @@ import {
   type CachedSystemBlock,
 } from "@/lib/ai";
 import { writeAudit, agentActor } from "@/lib/audit";
+import type { ScanCriteria } from "@/lib/types";
 
 export const SCAN_CHUNK_SIZE = 20;
 // At/below this many scannable rows, run inline (batch latency isn't worth it).
@@ -36,24 +37,11 @@ export type ScanRow = {
   email: string | null;
 };
 
-export type ScanSegment = {
-  id: string;
-  name: string;
-  industries: string[];
-  revenueMin: number | null;
-  revenueMax: number | null;
-  employeeMin: number | null;
-  employeeMax: number | null;
-  geographies: string[];
-  buyingSignals: string[];
-  disqualifiers: string[];
-};
-
-export type ScanResult = {
+// The model's per-contact verdict.
+export type ScanVerdict = {
   index: number;
   score: number;
   leadType: "decision_maker" | "connector" | "none";
-  matchedSegmentIndex: number | null;
   rationale: string;
 };
 
@@ -73,28 +61,26 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-// The active segments rendered as a NUMBERED "fitting company" definition.
-// matchedSegmentIndex in the model output refers to these `Segment N` numbers.
-export function segmentsBlock(segments: ScanSegment[]): string {
-  const body = segments
-    .map((s, i) =>
-      [
-        `Segment ${i} — ${s.name}`,
-        `  Industries: ${s.industries.join(", ") || "—"}`,
-        `  Revenue band (CAD): ${s.revenueMin ?? "?"} – ${s.revenueMax ?? "?"}`,
-        `  Employees: ${s.employeeMin ?? "?"} – ${s.employeeMax ?? "?"}`,
-        `  Geographies: ${s.geographies.join(", ") || "—"}`,
-        `  Buying signals: ${s.buyingSignals.join(", ") || "—"}`,
-        `  Disqualifiers: ${s.disqualifiers.join(", ") || "—"}`,
-      ].join("\n"),
-    )
-    .join("\n\n");
-  return `# Target segments (the fitting-company definition)\n\n${body}`;
+// The scan criteria rendered as the "fitting company" definition (cached block).
+export function criteriaBlock(c: ScanCriteria): string {
+  const band = (min?: number, max?: number) =>
+    min == null && max == null ? "any" : `${min ?? "?"} – ${max ?? "?"}`;
+  return [
+    "# Target criteria (the fitting-company definition)",
+    `Industries: ${c.industries.join(", ") || "any"}`,
+    `Revenue band (CAD): ${band(c.revenueMin, c.revenueMax)}`,
+    `Employees: ${band(c.employeeMin, c.employeeMax)}`,
+    `Geographies: ${c.geographies.join(", ") || "any"}`,
+    `Company-type / signal keywords: ${c.keywords.join(", ") || "—"}`,
+    c.seededFromName ? `(Seeded from segment: ${c.seededFromName})` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function contactsUserText(contacts: ScanContact[]): string {
   return [
-    'Score each contact below for fit. Output ONLY the JSON array (one object per contact, keyed by "index") described in your instructions.',
+    'Score each contact below for fit against the target criteria. Output ONLY the JSON array (one object per contact, keyed by "index") described in your instructions.',
     "",
     "Contacts:",
     JSON.stringify(contacts, null, 2),
@@ -110,8 +96,6 @@ function buildScanParams(blocks: CachedSystemBlock[], contacts: ScanContact[]) {
   };
 }
 
-// Loosely-typed text extraction — works for a messages.create response and a
-// batch result's `.message` (same content-block shape).
 function extractText(message: unknown): string {
   const m = message as { content?: { type: string; text?: string }[] } | null;
   if (!m?.content) return "";
@@ -121,8 +105,7 @@ function extractText(message: unknown): string {
     .join("");
 }
 
-// Parse the model's JSON array (fence-tolerant) into validated ScanResults.
-export function parseScanResults(raw: string): ScanResult[] {
+export function parseScanResults(raw: string): ScanVerdict[] {
   let text = raw.trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) text = fence[1].trim();
@@ -138,7 +121,7 @@ export function parseScanResults(raw: string): ScanResult[] {
     return [];
   }
   if (!Array.isArray(parsed)) return [];
-  const out: ScanResult[] = [];
+  const out: ScanVerdict[] = [];
   for (const item of parsed) {
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
@@ -147,36 +130,15 @@ export function parseScanResults(raw: string): ScanResult[] {
     if (Number.isNaN(score)) score = 1;
     score = Math.min(10, Math.max(1, score));
     const lt = o.leadType;
-    const leadType: ScanResult["leadType"] =
+    const leadType: ScanVerdict["leadType"] =
       lt === "decision_maker" || lt === "connector" ? lt : "none";
-    const msi =
-      typeof o.matchedSegmentIndex === "number" && Number.isInteger(o.matchedSegmentIndex)
-        ? o.matchedSegmentIndex
-        : null;
     const rationale =
       typeof o.rationale === "string" && o.rationale.trim()
         ? o.rationale.trim()
         : "No rationale returned.";
-    out.push({ index: o.index, score, leadType, matchedSegmentIndex: msi, rationale });
+    out.push({ index: o.index, score, leadType, rationale });
   }
   return out;
-}
-
-function resultData(res: ScanResult, segIds: string[]) {
-  const matchedSegmentId =
-    res.matchedSegmentIndex != null &&
-    res.matchedSegmentIndex >= 0 &&
-    res.matchedSegmentIndex < segIds.length
-      ? segIds[res.matchedSegmentIndex]
-      : null;
-  return {
-    scanStatus: "scored" as const,
-    scanScore: res.score,
-    leadType: res.leadType,
-    matchedSegmentId,
-    scanRationale: res.rationale.slice(0, 400),
-    scannedAt: new Date(),
-  };
 }
 
 function toScanContacts(rows: ScanRow[], indexBase: number): ScanContact[] {
@@ -189,20 +151,40 @@ function toScanContacts(rows: ScanRow[], indexBase: number): ScanContact[] {
   }));
 }
 
+// Write one contact's result: the per-scan ScanResult row (the report "column")
+// + the contact's denormalized latest score (for the master view). Idempotent
+// via the (scanRunId, importedContactId) upsert.
+async function writeResult(
+  scanRunId: string,
+  partnerId: string,
+  contactId: string,
+  v: ScanVerdict,
+): Promise<void> {
+  const rationale = v.rationale.slice(0, 400);
+  await prisma.scanResult.upsert({
+    where: { scanRunId_importedContactId: { scanRunId, importedContactId: contactId } },
+    create: { scanRunId, importedContactId: contactId, partnerLeadId: partnerId, score: v.score, leadType: v.leadType, rationale },
+    update: { score: v.score, leadType: v.leadType, rationale },
+  });
+  await prisma.importedContact.updateMany({
+    where: { id: contactId, partnerLeadId: partnerId },
+    data: { scanStatus: "scored", scannedAt: new Date(), scanScore: v.score, leadType: v.leadType, scanRationale: rationale },
+  });
+}
+
 // ── Inline path ─────────────────────────────────────────────────────────────
 
 export async function runInlineScan(opts: {
   scanRunId: string;
   partnerId: string;
   rows: ScanRow[];
-  segments: ScanSegment[];
+  criteria: ScanCriteria;
 }): Promise<void> {
-  const { scanRunId, partnerId, rows, segments } = opts;
+  const { scanRunId, partnerId, rows, criteria } = opts;
   await prisma.scanRun.update({ where: { id: scanRunId }, data: { status: "scoring" } });
 
-  const blocks = await buildSystemBlocks("contact-scan", segmentsBlock(segments));
+  const blocks = await buildSystemBlocks("contact-scan", criteriaBlock(criteria));
   const client = getAnthropicClient();
-  const segIds = segments.map((s) => s.id);
 
   let scored = 0;
   let errored = 0;
@@ -213,35 +195,20 @@ export async function runInlineScan(opts: {
     const contacts = toScanContacts(ch, base);
     try {
       const res = await client.messages.create(buildScanParams(blocks, contacts));
-      const results = parseScanResults(extractText(res));
-      const byIndex = new Map(results.map((r) => [r.index, r]));
+      const verdicts = parseScanResults(extractText(res));
+      const byIndex = new Map(verdicts.map((v) => [v.index, v]));
       for (let i = 0; i < ch.length; i++) {
-        const r = byIndex.get(base + i);
-        if (r) {
-          await prisma.importedContact.updateMany({
-            where: { id: ch[i].id, partnerLeadId: partnerId, scanStatus: { not: "scored" } },
-            data: resultData(r, segIds),
-          });
+        const v = byIndex.get(base + i);
+        if (v) {
+          await writeResult(scanRunId, partnerId, ch[i].id, v);
           scored++;
         } else {
-          await prisma.importedContact.updateMany({
-            where: { id: ch[i].id, partnerLeadId: partnerId, scanStatus: { not: "scored" } },
-            data: { scanStatus: "error" },
-          });
           errored++;
         }
       }
     } catch (err) {
       console.error(`[contact-scan] inline chunk failed (base ${base}):`, err);
-      for (const row of ch) {
-        await prisma.importedContact
-          .updateMany({
-            where: { id: row.id, partnerLeadId: partnerId, scanStatus: { not: "scored" } },
-            data: { scanStatus: "error" },
-          })
-          .catch(() => {});
-        errored++;
-      }
+      errored += ch.length;
     }
     base += ch.length;
     await prisma.scanRun
@@ -257,10 +224,10 @@ export async function runInlineScan(opts: {
 export async function submitBatchScan(opts: {
   scanRunId: string;
   rows: ScanRow[];
-  segments: ScanSegment[];
+  criteria: ScanCriteria;
 }): Promise<void> {
-  const { scanRunId, rows, segments } = opts;
-  const blocks = await buildSystemBlocks("contact-scan", segmentsBlock(segments));
+  const { scanRunId, rows, criteria } = opts;
+  const blocks = await buildSystemBlocks("contact-scan", criteriaBlock(criteria));
   const client = getAnthropicClient();
 
   const contacts = toScanContacts(rows, 0);
@@ -279,18 +246,16 @@ export async function submitBatchScan(opts: {
 }
 
 /**
- * Retrieve a finished batch's results and write scores back to the contacts.
- * Idempotent: only updates rows not already `scored`, and the caller flips the
- * run submitted→scoring before calling so two concurrent polls can't both run.
+ * Retrieve a finished batch's results and write the report rows. Idempotent: the
+ * ScanResult upsert + the submitted→scoring claim guard against double-ingest.
  */
 export async function ingestScanResults(opts: {
   scanRunId: string;
   partnerId: string;
   batchApiId: string;
   contactIds: string[];
-  segmentScope: string[];
 }): Promise<void> {
-  const { scanRunId, partnerId, batchApiId, contactIds, segmentScope } = opts;
+  const { scanRunId, partnerId, batchApiId, contactIds } = opts;
   const client = getAnthropicClient();
 
   const processed = new Set<number>();
@@ -299,16 +264,13 @@ export async function ingestScanResults(opts: {
   try {
     for await (const entry of await client.messages.batches.results(batchApiId)) {
       const result = entry.result;
-      if (result.type !== "succeeded") continue; // failed chunk → handled below
-      const results = parseScanResults(extractText(result.message));
-      for (const res of results) {
-        const contactId = contactIds[res.index];
-        if (!contactId || processed.has(res.index)) continue;
-        processed.add(res.index);
-        await prisma.importedContact.updateMany({
-          where: { id: contactId, partnerLeadId: partnerId, scanStatus: { not: "scored" } },
-          data: resultData(res, segmentScope),
-        });
+      if (result.type !== "succeeded") continue;
+      const verdicts = parseScanResults(extractText(result.message));
+      for (const v of verdicts) {
+        const contactId = contactIds[v.index];
+        if (!contactId || processed.has(v.index)) continue;
+        processed.add(v.index);
+        await writeResult(scanRunId, partnerId, contactId, v);
         scored++;
       }
     }
@@ -316,15 +278,8 @@ export async function ingestScanResults(opts: {
     console.error(`[contact-scan] batch results read failed for ${batchApiId}:`, err);
   }
 
-  // Anything still `pending` got no usable result (errored/expired chunk, or a
-  // missing index in an otherwise-succeeded chunk) → error, so nothing is left
-  // silently unscanned. Scored rows are already terminal and untouched.
-  const errRes = await prisma.importedContact.updateMany({
-    where: { id: { in: contactIds }, partnerLeadId: partnerId, scanStatus: "pending" },
-    data: { scanStatus: "error" },
-  });
-
-  await finalizeScan(scanRunId, partnerId, scored, errRes.count, "batch");
+  const errored = Math.max(0, contactIds.length - scored);
+  await finalizeScan(scanRunId, partnerId, scored, errored, "batch");
 }
 
 async function finalizeScan(
@@ -336,12 +291,7 @@ async function finalizeScan(
 ): Promise<void> {
   await prisma.scanRun.update({
     where: { id: scanRunId },
-    data: {
-      status: "done",
-      finishedAt: new Date(),
-      scoredCount: scored,
-      errorCount: errored,
-    },
+    data: { status: "done", finishedAt: new Date(), scoredCount: scored, errorCount: errored },
   });
   await writeAudit(prisma, {
     actor: agentActor("contact-scan"),

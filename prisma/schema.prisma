@@ -1185,6 +1185,8 @@ model ImportedContact {
   promotedProspectLeadId String? // loose string (match loose-coupling convention)
   promotedAt             DateTime?
 
+  scanResults ScanResult[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1207,7 +1209,15 @@ model ScanRun {
   batch   ImportBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
   batchId String?
 
+  // Partner-facing report title/tag (e.g. "Construction owners — Jun 3").
+  title  String        @default("Scan")
   status ScanRunStatus @default(pending)
+
+  // The criteria this scan rated against (the saved scan settings, seeded from a
+  // segment then edited). Shape: { industries[], employeeMin?, employeeMax?,
+  // revenueMin?, revenueMax?, geographies[], keywords[], seededFromSegmentId?,
+  // seededFromName? }. Snapshotted so each report records what it looked for.
+  criteria Json?
 
   // Anthropic Message Batches API id (the bulk async path). Null on the inline path.
   batchApiId String?
@@ -1231,7 +1241,37 @@ model ScanRun {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
 
+  results ScanResult[]
+
   @@index([partnerLeadId, startedAt])
+}
+
+// One scan's ranking of one imported contact — the "result column" per scan.
+// A scan (ScanRun) produces one ScanResult per scanned contact, linking back to
+// the SAME master ImportedContact (no contact duplication). Deleting a scan
+// report cascades its results; deleting a contact cascades its results too.
+model ScanResult {
+  id String @id @default(cuid())
+
+  scanRun   ScanRun @relation(fields: [scanRunId], references: [id], onDelete: Cascade)
+  scanRunId String
+
+  importedContact   ImportedContact @relation(fields: [importedContactId], references: [id], onDelete: Cascade)
+  importedContactId String
+
+  // Denormalized partner scope (the report reads are scoped through the run, but
+  // this keeps every ScanResult query filterable without a join).
+  partnerLeadId String
+
+  score     Int // 1–10
+  leadType  ImportLeadType
+  rationale String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([scanRunId, importedContactId])
+  @@index([scanRunId, score])
+  @@index([importedContactId])
 }
 
 // ──────────────────────────────────────────────────────────────────────

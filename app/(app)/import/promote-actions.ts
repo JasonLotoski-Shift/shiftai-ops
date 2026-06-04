@@ -48,9 +48,21 @@ function mergePerson(people: ProspectPerson[], incoming: ProspectPerson): Prospe
 
 export async function promoteImportedContacts(
   ids: string[],
+  scanRunId?: string,
 ): Promise<{ promoted: number; skipped: number; errors: number }> {
   const { partnerId, label } = await requirePartner();
   const actor = partnerActor(partnerId, label);
+
+  // When promoting from a specific report, use THAT scan's score/leadType for
+  // each contact (not the denormalized latest). One query, mapped by contact id.
+  const resultMap = new Map<string, { score: number; leadType: string; rationale: string | null }>();
+  if (scanRunId) {
+    const results = await prisma.scanResult.findMany({
+      where: { scanRunId, partnerLeadId: partnerId, importedContactId: { in: ids } },
+      select: { importedContactId: true, score: true, leadType: true, rationale: true },
+    });
+    for (const r of results) resultMap.set(r.importedContactId, r);
+  }
 
   let promoted = 0;
   let skipped = 0;
@@ -82,8 +94,11 @@ export async function promoteImportedContacts(
       // domain via Apollo. Two contacts at the same company share a key → merge.
       const key = realDomain || companySlug(company);
 
+      // Prefer the chosen report's verdict; fall back to the contact's latest.
+      const sr = resultMap.get(contact.id);
+      const verdictLeadType = sr?.leadType ?? contact.leadType;
       const roleType: "decision_maker" | "connector" =
-        contact.leadType === "connector" ? "connector" : "decision_maker";
+        verdictLeadType === "connector" ? "connector" : "decision_maker";
       const person: ProspectPerson = {
         name: contact.name,
         title: contact.title || "—",
@@ -93,9 +108,10 @@ export async function promoteImportedContacts(
         emailRevealed: !!contact.email?.trim(),
         roleType,
       };
-      const score = contact.scanScore ?? 5;
+      const score = sr?.score ?? contact.scanScore ?? 5;
       const rationale =
-        contact.scanRationale?.trim() || `Imported and promoted by ${label}.`;
+        (sr?.rationale ?? contact.scanRationale)?.trim() ||
+        `Imported and promoted by ${label}.`;
 
       await prisma.$transaction(async (tx) => {
         const existing = await tx.prospectLead.findUnique({ where: { domain: key } });

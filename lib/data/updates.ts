@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-04",
+    tag: "improved",
+    title: "Import Contacts: set your own scan criteria, and every scan is its own saved report",
+    detail:
+      "Before scanning your imported list you now set what a good company looks like — industries, company size, revenue, location, and keywords — seeded from one of your Targeting segments and editable for that scan. Each scan saves as its own report tab with the ranked contacts, so you can compare runs instead of overwriting the last one. Delete a report you don't need, and select-and-delete contacts from the master list. Promote the strong ones to Pipeline leads straight from a report.",
+  },
+  {
     date: "2026-06-03",
     tag: "new",
     title: "Import your contacts, scan them for fit, and push the best into the pipeline",
