@@ -94,10 +94,30 @@ type ViewMode = "active" | "archived";
 // paint) so the indicator survives navigation. While running, it polls
 // getSegmentRunStatus every 4s; on "done" it stops, exposes foundCount, and
 // refreshes so leadCounts update; on "error" it stops and surfaces the error.
+type RunResult = {
+  found: number;
+  rescued: number;
+  ghost: number;
+  rejudged: number;
+  remaining: number;
+};
+
+// Plain, partner-facing one-liner for a finished run, e.g.
+// "5 new + 2 rescued · 33 filtered · ~70 left". Falls back to the legacy
+// foundCount when the audit breakdown isn't available.
+function runResultSummary(r: RunResult): string {
+  const parts: string[] = [];
+  parts.push(`${r.found} new${r.rescued ? ` + ${r.rescued} rescued` : ""}`);
+  const filtered = r.ghost + r.rejudged;
+  if (filtered) parts.push(`${filtered} filtered`);
+  if (r.remaining) parts.push(`~${r.remaining} left`);
+  return parts.join(" · ");
+}
+
 function useSegmentRun(segmentId: string, initiallyRunning: boolean) {
   const router = useRouter();
   const [running, setRunning] = useState(initiallyRunning);
-  const [runResult, setRunResult] = useState<{ found: number } | null>(null);
+  const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
   // Keep local `running` in sync if the server prop flips (e.g. router.refresh
@@ -115,7 +135,15 @@ function useSegmentRun(segmentId: string, initiallyRunning: boolean) {
         if (cancelled || !status) return;
         if (status.status === "done") {
           setRunning(false);
-          setRunResult({ found: status.foundCount });
+          // Prefer the stage-aware breakdown (audit row); fall back to the legacy
+          // aggregate columns if it isn't available.
+          setRunResult({
+            found: status.found ?? status.foundCount,
+            rescued: status.rescued ?? 0,
+            ghost: status.ghost ?? status.ghostCount,
+            rejudged: status.rejudged ?? 0,
+            remaining: status.remaining ?? 0,
+          });
           router.refresh();
         } else if (status.status === "error") {
           setRunning(false);
@@ -414,11 +442,11 @@ function SegmentCard({
             <Link
               href={`/pipeline?tab=found&segment=${segment.id}`}
               onClick={(e) => e.stopPropagation()}
-              title="View this segment's found leads"
+              title={`${runResultSummary(runResult)} — view this segment's found leads`}
               className="mono text-[9px] uppercase tracking-[0.1em] px-2 py-1 rounded-[var(--radius-sm)] border border-track-gold/30 text-track-gold/90 bg-track-gold-dim/5 hover:bg-track-gold-dim/10 flex items-center gap-1.5 transition-colors"
             >
               <Radar size={10} strokeWidth={1.5} />
-              Found {runResult.found} → View
+              {runResultSummary(runResult)} → View
             </Link>
           ) : runError ? (
             <span className="mono text-[9px] uppercase tracking-[0.12em] text-flag-red flex items-center gap-1.5" title={runError}>
@@ -743,10 +771,11 @@ function SegmentPanel({
               ) : runResult ? (
                 <Link
                   href={`/pipeline?tab=found&segment=${segment.id}`}
+                  title={`${runResultSummary(runResult)} — view this segment's found leads`}
                   className="mono text-[9px] uppercase tracking-[0.1em] px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-track-gold/30 text-track-gold/90 bg-track-gold-dim/5 hover:bg-track-gold-dim/10 flex items-center gap-1.5 transition-colors"
                 >
                   <Radar size={12} strokeWidth={1.5} />
-                  Found {runResult.found} → View
+                  {runResultSummary(runResult)} → View
                 </Link>
               ) : searchError ? (
                 <button

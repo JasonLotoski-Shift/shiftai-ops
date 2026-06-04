@@ -61,8 +61,15 @@ export async function runSegmentSearch(segmentId: string): Promise<{ runId: stri
 }
 
 /** Read-only poll endpoint: the latest LeadRun for a segment. The card/panel poll
- *  this every ~4s while a run is active; when status flips to "done" it shows
- *  "Found N → View" and refreshes so leadCounts update. */
+ *  this every ~4s while a run is active; when status flips to "done" it shows the
+ *  run breakdown ("N new + M rescued, K filtered, ~R left") and refreshes so
+ *  leadCounts update.
+ *
+ *  The LeadRun row only persists the aggregate columns (foundCount includes
+ *  rescued; ghostCount includes rejudged). The stage-aware breakdown — new vs
+ *  rescued, ghost vs rejudged, and the companies-remaining estimate — lives in the
+ *  `run.leadDiscovery` audit row's `changes` (no new LeadRun columns / migration).
+ *  For a finished run we read that audit row to surface the honest breakdown. */
 export async function getSegmentRunStatus(segmentId: string): Promise<{
   id: string;
   status: string;
@@ -70,6 +77,12 @@ export async function getSegmentRunStatus(segmentId: string): Promise<{
   foundCount: number;
   ghostCount: number;
   finishedAt: string | null;
+  /** Stage-aware breakdown (from the audit row); null until the run is finished. */
+  found: number | null;
+  rescued: number | null;
+  ghost: number | null;
+  rejudged: number | null;
+  remaining: number | null;
 } | null> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
@@ -88,5 +101,42 @@ export async function getSegmentRunStatus(segmentId: string): Promise<{
     },
   });
   if (!run) return null;
-  return { ...run, finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null };
+
+  // For a finished run, pull the stage-aware breakdown from the audit row.
+  let breakdown: {
+    found: number | null;
+    rescued: number | null;
+    ghost: number | null;
+    rejudged: number | null;
+    remaining: number | null;
+  } = { found: null, rescued: null, ghost: null, rejudged: null, remaining: null };
+
+  if (run.status === "done") {
+    const audit = await prisma.auditLog.findFirst({
+      where: { action: "run.leadDiscovery", targetType: "LeadRun", targetId: run.id },
+      orderBy: { ts: "desc" },
+      select: { changes: true },
+    });
+    const c = (audit?.changes ?? null) as Record<string, unknown> | null;
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    if (c) {
+      breakdown = {
+        found: num(c.found),
+        rescued: num(c.rescued),
+        ghost: num(c.ghost),
+        rejudged: num(c.rejudged),
+        remaining: num(c.remaining),
+      };
+    }
+  }
+
+  return {
+    id: run.id,
+    status: run.status,
+    evaluatedCount: run.evaluatedCount,
+    foundCount: run.foundCount,
+    ghostCount: run.ghostCount,
+    finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null,
+    ...breakdown,
+  };
 }
