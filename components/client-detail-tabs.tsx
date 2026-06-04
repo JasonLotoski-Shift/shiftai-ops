@@ -103,7 +103,7 @@ export function ClientDetailTabs({
           <Card>
             <div className="px-5 pt-4 pb-2"><span className="title-md">Partner lead</span></div>
             <CardBody className="flex items-center gap-3 pt-0">
-              <Avatar initials={partner?.initials ?? ""} size="lg" gold />
+              <Avatar initials={partner?.initials ?? ""} size="lg" />
               <div>
                 <div className="text-[14px] text-bone">{partner?.name}</div>
                 <div className="text-[11px] text-bone-mute">{partner?.role}</div>

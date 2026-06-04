@@ -23,7 +23,7 @@ import {
   KanbanSquare,
   Flag,
   Calculator,
-  Crosshair,
+  Target,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -442,15 +442,15 @@ type Flow = {
 
 const flows: Flow[] = [
   {
-    icon: <Crosshair size={16} strokeWidth={1.5} />,
+    icon: <Target size={16} strokeWidth={1.5} />,
     title: "Hunt for new leads",
     blurb: "Define who you want, run the search, then review the companies the agent found.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Targeting → build a segment (who you want), pick Reveal emails: Primary only or All contacts" },
+      { tone: "trigger", kind: "You do", label: "Import → AI Targeting → build a segment (who you want), pick Reveal emails: Primary only or All contacts" },
       { tone: "trigger", kind: "You do", label: "Hit Run search on the segment — it works for up to ~3.5 min (the card shows \"Searching…\")" },
       { tone: "claude", kind: "Claude", label: "Finds + rates matching companies, reveals contact emails, writes them to AI Found Leads" },
       { tone: "review", kind: "You review", label: "Open a lead → Reveal email on any contact (1 Apollo credit), draft a cold intro, or add to the funnel" },
-      { tone: "write", kind: "Saved", label: "Leads + reveals + AuditLog; the Apollo-credits meter on Targeting tracks emails revealed this month" },
+      { tone: "write", kind: "Saved", label: "Leads + reveals + AuditLog; the Apollo-credits meter on AI Targeting tracks emails revealed this month" },
     ],
   },
   {
@@ -458,7 +458,7 @@ const flows: Flow[] = [
     title: "Import contacts & scan for fit",
     blurb: "Upload a contact export, scan it against your criteria, and push the best into the pipeline.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Import Contacts → upload a CSV (LinkedIn / Google / any export) into your PRIVATE master list" },
+      { tone: "trigger", kind: "You do", label: "Import → Contacts → upload a CSV (LinkedIn / Google / any export) into your PRIVATE master list" },
       { tone: "trigger", kind: "You do", label: "New scan → set the criteria (industries, size, revenue, location, keywords), seeded from a segment + editable" },
       { tone: "claude", kind: "Claude", label: "Rates every contact 1–10 against the criteria — decision-maker, connector, or no fit — saved as its own report tab" },
       { tone: "review", kind: "You review", label: "Open the report, tick the strong ones (name-only set aside) → Add to Pipeline Leads. Delete reports/contacts anytime" },

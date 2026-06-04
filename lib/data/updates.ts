@@ -25,6 +25,20 @@ export const updates: Update[] = [
   {
     date: "2026-06-04",
     tag: "improved",
+    title: "The sidebar is reorganised — four clear groups",
+    detail:
+      "The left menu is grouped by what you're doing. Up top: Dashboard, Pipeline, Projects, Task Board — the day-to-day. A new collapsible Import group holds the three ways leads come in — Contacts (your uploads), AI Targeting (the lead hunt), and Ingest. Firm gathers Financials, your Contacts and Clients lists, Messages, and Library. Other holds What's new, How it works, Agents & MCPs, and Settings. A few names changed to say what they are: \"Import Contacts\" is now just Contacts, \"Targeting\" is AI Targeting, and the two list pages read \"Contacts List\" and \"Clients List\".",
+  },
+  {
+    date: "2026-06-04",
+    tag: "new",
+    title: "The Agents & MCPs tab now shows the live MCP server",
+    detail:
+      "The MCPs view used to show a planned surface — it's now the real, running server. Claude Code and scheduled agents read firm state (clients, projects, contacts, pipeline, deliverables) and write it back (register a deliverable, create a task, log an interaction, update a project's status) through it. Every write lands an audit-log row and a feed entry, tagged AGENT · MCP, exactly like a partner's action. The event stream that fires a skill on its own is the next piece, still to build.",
+  },
+  {
+    date: "2026-06-04",
+    tag: "improved",
     title: "Clearer lead tags, and promoted leads tidy up as you work them",
     detail:
       "Leads now carry the right source tag: ones you promote from your imports show \"Imported\", and the agent's discoveries show \"AI Found\" (instead of both reading \"Outbound\"). On the Promoted Leads tab, once you enrich a lead its Enrich button becomes an \"Enriched\" marker, and once a lead is added to the funnel it greys out and drops to the bottom so the ones still to work stay on top.",

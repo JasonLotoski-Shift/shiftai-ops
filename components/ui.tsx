@@ -300,6 +300,29 @@ export function EmptyState({
    Avatar — circular initials chip. One shape app-wide.
    ────────────────────────────────────────────────────────────────────── */
 
+// Distinct, prominent per-person colors so JL / JG / JN / SD read apart at a
+// glance. Deterministic: the same initials always get the same color. The
+// firm's four initials hash to four different slots (sum-of-char-codes % 8).
+const AVATAR_PALETTE: { bg: string; text: string }[] = [
+  { bg: "#d98a32", text: "#1a1206" }, // amber
+  { bg: "#4f9d57", text: "#f2eee6" }, // green
+  { bg: "#4f93b8", text: "#0c1820" }, // sky
+  { bg: "#cf4f47", text: "#f6ece9" }, // red
+  { bg: "#9170c9", text: "#f3eef9" }, // purple
+  { bg: "#3aa6a0", text: "#06201d" }, // teal
+  { bg: "#d4b25a", text: "#1a1505" }, // gold
+  { bg: "#d2738f", text: "#23090f" }, // rose
+];
+
+/** A stable bright color for a set of initials. Empty → neutral grey. */
+export function avatarColor(initials: string): { bg: string; text: string } {
+  const key = (initials ?? "").trim().toUpperCase();
+  if (!key) return { bg: "var(--color-graphite-2)", text: "var(--color-bone-dim)" };
+  let sum = 0;
+  for (let i = 0; i < key.length; i++) sum += key.charCodeAt(i);
+  return AVATAR_PALETTE[sum % AVATAR_PALETTE.length];
+}
+
 export function Avatar({
   initials,
   size = "md",
@@ -312,14 +335,18 @@ export function Avatar({
   className?: string;
 }) {
   const dims = { sm: "w-5 h-5 text-[9px]", md: "w-6 h-6 text-[10px]", lg: "w-7 h-7 text-[11px]" }[size];
+  const c = avatarColor(initials);
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center shrink-0 rounded-[var(--radius-pill)] font-mono tabular-nums",
-        gold ? "bg-track-gold-dim/30 text-track-gold border border-track-gold/40" : "bg-graphite-2 text-bone-dim",
+        "inline-flex items-center justify-center shrink-0 rounded-[var(--radius-pill)] font-mono font-semibold tabular-nums",
+        gold
+          ? "bg-track-gold-dim/30 text-track-gold border border-track-gold/40"
+          : "border border-black/15",
         dims,
         className,
       )}
+      style={gold ? undefined : { backgroundColor: c.bg, color: c.text }}
     >
       {initials}
     </span>

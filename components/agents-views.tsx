@@ -64,36 +64,42 @@ const KIND_COPY: Record<PlanKind, { tasksLabel: string; tasksPlaceholder: string
   },
 };
 
-// The MCP surface the ops tool plans to expose to Claude Code workspaces and
-// scheduled agents — the canonical roadmap, kept in sync with
-// docs/mcp-contract.md. This is the "here" the team copies a good MCP plan into.
-const PLANNED_MCPS: { name: string; purpose: string; tools: string[] }[] = [
+// The MCP surface the ops tool exposes to Claude Code workspaces and scheduled
+// agents — kept in sync with the live server at mcp/server.ts and the contract
+// at docs/mcp-contract.md. The read/write tools are SHIPPED (stdio transport);
+// the event stream is the next piece, still to build. This is also the "here"
+// the team copies a good MCP plan into.
+type McpStatus = "live" | "planned";
+const MCP_SURFACE: { name: string; status: McpStatus; purpose: string; tools: string[] }[] = [
   {
     name: "Ops MCP server — read tools",
+    status: "live",
     purpose: "How Claude pulls firm state from inside a workspace or a scheduled run.",
     tools: [
       "get_client(id)",
       "get_project(id)",
-      "list_pipeline(filters)",
+      "get_contact(id)",
+      "list_pipeline(stage?)",
       "list_active_engagements()",
-      "get_team_hours(period, filters)",
-      "list_artifacts(scope, filters)",
-      "get_ip_library_index()",
+      "list_contacts(query?)",
+      "list_artifacts(scope)",
     ],
   },
   {
     name: "Ops MCP server — write tools",
-    purpose: "How Claude updates firm state — each wrapped by the audit ledger.",
+    status: "live",
+    purpose: "How Claude updates firm state — each wrapped by the audit ledger, tagged AGENT · MCP.",
     tools: [
-      "create_engagement(client_id, scope_payload)",
-      "log_hours(project_id, hours, description, partner_id)",
-      "update_project_status(project_id, status, notes)",
-      "create_artifact(type, title, driveUrl, scope, generatedFromSkill?)",
+      "create_artifact(type, title, driveUrl, scope, …)",
+      "create_task(title, ownerId, due, …)",
+      "log_interaction(contactId, type, date, summary)",
+      "update_project_status(projectId, status, notes?)",
     ],
   },
   {
     name: "Event stream",
-    purpose: "Events Claude listens for (webhooks or polling) to fire a skill.",
+    status: "planned",
+    purpose: "Events Claude will listen for (webhooks or polling) to fire a skill — next to build.",
     tools: [
       "engagement.created → /onboard-client",
       "engagement.closed → /harvest-engagement",
@@ -101,6 +107,11 @@ const PLANNED_MCPS: { name: string; purpose: string; tools: string[] }[] = [
     ],
   },
 ];
+
+const MCP_STATUS_TONE: Record<McpStatus, "gold" | "neutral"> = {
+  live: "gold",
+  planned: "neutral",
+};
 
 export function AgentsViews({
   plans,
@@ -125,7 +136,7 @@ export function AgentsViews({
         tabs={[
           { key: "plans", label: "Agent plans", count: agentPlans.length },
           { key: "live", label: "Agent (skills)", count: skills.length },
-          { key: "mcps", label: "MCPs", count: PLANNED_MCPS.length + mcpPlans.length },
+          { key: "mcps", label: "MCPs", count: MCP_SURFACE.length + mcpPlans.length },
         ]}
         active={tab}
         onChange={setTab}
@@ -192,8 +203,11 @@ function McpsTab({
       <div className="flex items-start justify-between gap-6">
         <p className="text-[13px] text-bone-mute max-w-[640px] leading-relaxed">
           The MCP server is how Claude Code workspaces and scheduled agents read and write firm state — same Prisma
-          client, same Postgres as this UI. Below is the <span className="text-bone">planned surface</span> from the
-          contract; the team can draft MCP plans of their own, and a good one gets copied up to the plan later.
+          client, same Postgres as this UI. It&apos;s <span className="text-bone">live over stdio</span>: a workspace
+          registers it in <span className="mono text-[11px] text-bone">.claude/settings.json</span> and calls these
+          tools. Every write lands an <span className="text-bone">AuditLog</span> row + a feed entry, tagged{" "}
+          <span className="mono text-[11px] text-bone">AGENT · MCP</span>. The team can draft MCP plans of their own,
+          and a good one gets copied up to the surface.
         </p>
         <Button variant="primary" size="sm" onClick={onNew}>
           <Plus size={13} strokeWidth={1.5} />
@@ -201,21 +215,21 @@ function McpsTab({
         </Button>
       </div>
 
-      {/* Planned MCPs — canonical roadmap (read-only). */}
+      {/* The MCP surface — live read/write tools + the planned event stream (read-only). */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
-          <Label gold>Planned MCPs</Label>
-          <span className="text-[11px] text-bone-mute">— from the MCP contract</span>
+          <Label gold>MCP surface</Label>
+          <span className="text-[11px] text-bone-mute">— live server (mcp/server.ts) + what&apos;s next</span>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          {PLANNED_MCPS.map((m) => (
+          {MCP_SURFACE.map((m) => (
             <Card key={m.name} className="flex flex-col">
               <div className="px-5 py-4 flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <Plug size={15} strokeWidth={1.5} className="text-track-gold shrink-0" />
                   <span className="title-md truncate">{m.name}</span>
                 </div>
-                <Badge tone="gold">planned</Badge>
+                <Badge tone={MCP_STATUS_TONE[m.status]}>{m.status}</Badge>
               </div>
               <div className="px-5 py-4 flex flex-col gap-3 flex-1">
                 <p className="text-[13px] text-bone-dim leading-relaxed">{m.purpose}</p>

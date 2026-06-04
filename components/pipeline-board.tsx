@@ -66,14 +66,18 @@ const AGE_DOT: Record<StageAgeTier, string> = {
 // Lead-source accent — a left border on each card colored by where the lead
 // came from (from contact.sourceCategory). CSS vars (not Tailwind classes) so
 // the color always renders regardless of safelisting. null → graphite.
+// The four common sources — intro, referral, AI Found, Imported — get distinct
+// hues; the rarer ones (outbound, inbound) intentionally share with AI Found /
+// Imported since the firm's "found" leads now come through the agent (AI Found)
+// and its inbound/network leads through Imported.
 const SOURCE_ACCENT: Record<LeadSource, string> = {
-  intro: "var(--color-track-gold)",
+  intro: "var(--color-track-gold)",       // gold — personal intro
+  referral: "var(--color-signal-fresh)",  // green — referral
+  ai_found: "var(--color-signal-warming)",// amber — surfaced by the agent
+  imported: "var(--color-diagnostic-steel)", // steel-blue — your imported network
   outbound: "var(--color-signal-warming)",
-  referral: "var(--color-signal-fresh)",
-  event: "var(--color-bone)",
   inbound: "var(--color-diagnostic-steel)",
-  ai_found: "var(--color-track-gold)",
-  imported: "var(--color-diagnostic-steel)",
+  event: "var(--color-bone)",
   other: "var(--color-graphite)",
 };
 const SOURCE_FALLBACK = "var(--color-graphite)";
@@ -81,10 +85,12 @@ const SOURCE_FALLBACK = "var(--color-graphite)";
 // Legend rows for the board header (label + the same color).
 const SOURCE_LEGEND: { source: LeadSource; label: string }[] = [
   { source: "intro", label: "Intro" },
-  { source: "outbound", label: "Outbound" },
   { source: "referral", label: "Referral" },
-  { source: "event", label: "Event" },
+  { source: "ai_found", label: "AI Found" },
+  { source: "imported", label: "Imported" },
+  { source: "outbound", label: "Outbound" },
   { source: "inbound", label: "Inbound" },
+  { source: "event", label: "Event" },
   { source: "other", label: "Other" },
 ];
 
