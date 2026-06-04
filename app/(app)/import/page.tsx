@@ -10,7 +10,7 @@ import type { ScanCriteria } from "@/lib/types";
 export const maxDuration = 300;
 
 // How many master rows we hydrate into the client table.
-const TABLE_CAP = 1000;
+const TABLE_CAP = 2000;
 
 export default async function ImportPage() {
   // Gate + scope: every query below is the signed-in partner's PRIVATE data.
@@ -20,7 +20,9 @@ export default async function ImportPage() {
     prisma.importBatch.count({ where: { partnerLeadId: partnerId } }),
     prisma.importedContact.findMany({
       where: { partnerLeadId: partnerId },
-      orderBy: [{ scanScore: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+      // The master list is the raw uploaded data, alphabetical by name. Rankings
+      // live in the per-scan report tabs, not here.
+      orderBy: { name: "asc" },
       take: TABLE_CAP,
       select: {
         id: true, name: true, title: true, company: true, email: true,
