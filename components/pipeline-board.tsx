@@ -72,6 +72,8 @@ const SOURCE_ACCENT: Record<LeadSource, string> = {
   referral: "var(--color-signal-fresh)",
   event: "var(--color-bone)",
   inbound: "var(--color-diagnostic-steel)",
+  ai_found: "var(--color-track-gold)",
+  imported: "var(--color-diagnostic-steel)",
   other: "var(--color-graphite)",
 };
 const SOURCE_FALLBACK = "var(--color-graphite)";

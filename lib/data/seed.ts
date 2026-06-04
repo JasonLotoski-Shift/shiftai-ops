@@ -501,10 +501,12 @@ export const stageLabels: Record<Deal["stage"], string> = {
 // Lead-source bucket → human label (capture dropdowns + detail display).
 export const leadSourceLabels: Record<string, string> = {
   intro: "Intro",
-  outbound: "Outbound (found)",
+  outbound: "Outbound",
   referral: "Referral",
   event: "Event",
   inbound: "Inbound",
+  ai_found: "AI Found",
+  imported: "Imported",
   other: "Other",
 };
 

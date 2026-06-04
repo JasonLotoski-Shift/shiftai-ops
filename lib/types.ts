@@ -56,7 +56,7 @@ export type Interaction = {
   channel?: string; // optional: "Zoom", "On-site", "Phone"
 };
 
-export type LeadSource = "intro" | "outbound" | "referral" | "event" | "inbound" | "other";
+export type LeadSource = "intro" | "outbound" | "referral" | "event" | "inbound" | "ai_found" | "imported" | "other";
 
 export type DealStage = "lead" | "qualified" | "discovery" | "discussion" | "proposal" | "negotiation" | "signed";
 

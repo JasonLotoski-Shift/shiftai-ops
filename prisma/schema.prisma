@@ -50,10 +50,12 @@ enum DealStage {
 // human "where exactly" note; this is the closed set for coloring + filtering.
 enum LeadSource {
   intro
-  outbound // a.k.a. "found"
+  outbound
   referral
   event
   inbound
+  ai_found // surfaced by the discovery agent (AI Found Leads)
+  imported // promoted from a partner's imported contacts
   other
 }
 

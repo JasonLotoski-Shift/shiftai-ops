@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-04",
     tag: "improved",
+    title: "Clearer lead tags, and promoted leads tidy up as you work them",
+    detail:
+      "Leads now carry the right source tag: ones you promote from your imports show \"Imported\", and the agent's discoveries show \"AI Found\" (instead of both reading \"Outbound\"). On the Promoted Leads tab, once you enrich a lead its Enrich button becomes an \"Enriched\" marker, and once a lead is added to the funnel it greys out and drops to the bottom so the ones still to work stay on top.",
+  },
+  {
+    date: "2026-06-04",
+    tag: "improved",
     title: "Import Contacts: set your own scan criteria, and every scan is its own saved report",
     detail:
       "Before scanning your imported list you now set what a good company looks like — industries, company size, revenue, location, and keywords — seeded from one of your Targeting segments and editable for that scan. Each scan saves as its own report tab with the ranked contacts, so you can compare runs instead of overwriting the last one. Delete a report you don't need, and select-and-delete contacts from the master list. Promote the strong ones to Pipeline leads straight from a report.",

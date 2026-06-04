@@ -2,23 +2,31 @@
 
 // PromotedLeads — the Pipeline "Promoted Leads" sub-tab body. Renders the
 // firm-wide ProspectLeads a partner promoted from their imported contacts
-// (origin = imported), reusing the same LeadCard as AI Found Leads (clicking a
-// card opens the existing /pipeline/leads/[id] detail page, where reveal /
-// add-to-funnel already work). Each card adds an "Enrich" action that runs the
-// Apollo + Firecrawl search to fill firmographics and reveal a work email.
+// (origin = imported), reusing the same LeadCard as AI Found Leads. Each active
+// card offers an "Enrich" action (Apollo + Firecrawl). Once a lead is enriched
+// the action is replaced with an "Enriched" marker; once it's been added to the
+// pipeline it greys out and sinks to the bottom.
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, EmptyState } from "@/components/ui";
 import { LeadCard } from "@/components/lead-card";
 import { enrichPromotedLead } from "@/app/(app)/pipeline/promoted/enrich-actions";
-import { Radar, Sparkles, ShieldAlert } from "lucide-react";
+import { Radar, Sparkles, ShieldAlert, CheckCircle2, KanbanSquare } from "lucide-react";
 import type { ProspectLead } from "@/lib/types";
 
 const byScoreDesc = (a: ProspectLead, b: ProspectLead) => b.score - a.score;
 
+// Enriched = the Apollo/Firecrawl search has tagged it. (foundBy starts ["import"].)
+const isEnriched = (l: ProspectLead) =>
+  l.foundBy.includes("apollo") || l.foundBy.includes("firecrawl");
+
 export function PromotedLeads({ leads }: { leads: ProspectLead[] }) {
-  const active = [...leads].filter((l) => l.status !== "ghost").sort(byScoreDesc);
+  const visible = [...leads].filter((l) => l.status !== "ghost");
+  // Active (still to work) on top by score; in-pipeline (added) greyed at the bottom.
+  const activeLeads = visible.filter((l) => l.status === "pending").sort(byScoreDesc);
+  const inPipeline = visible.filter((l) => l.status !== "pending").sort(byScoreDesc);
+  const ordered = [...activeLeads, ...inPipeline];
 
   if (leads.length === 0) {
     return (
@@ -39,12 +47,28 @@ export function PromotedLeads({ leads }: { leads: ProspectLead[] }) {
         reveal a work email, then open a lead to add it to the funnel.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {active.map((lead) => (
-          <div key={lead.id} className="flex flex-col gap-2">
-            <LeadCard lead={lead} />
-            <EnrichButton leadId={lead.id} />
-          </div>
-        ))}
+        {ordered.map((lead) => {
+          const done = lead.status !== "pending";
+          const enriched = isEnriched(lead);
+          return (
+            <div key={lead.id} className="flex flex-col gap-2">
+              <LeadCard lead={lead} muted={done} />
+              {done ? (
+                <span className="inline-flex items-center justify-center gap-1.5 h-7 text-[11px] text-bone-mute">
+                  <KanbanSquare size={12} strokeWidth={1.5} />
+                  In pipeline
+                </span>
+              ) : enriched ? (
+                <span className="inline-flex items-center justify-center gap-1.5 h-7 text-[11px] text-track-gold">
+                  <CheckCircle2 size={12} strokeWidth={1.5} />
+                  Enriched — open to add to the funnel
+                </span>
+              ) : (
+                <EnrichButton leadId={lead.id} />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

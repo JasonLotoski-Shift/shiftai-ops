@@ -26,6 +26,8 @@ const VALID_LEAD_SOURCES: LeadSource[] = [
   "referral",
   "event",
   "inbound",
+  "ai_found",
+  "imported",
   "other",
 ];
 
