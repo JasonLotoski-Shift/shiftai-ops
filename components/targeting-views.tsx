@@ -114,11 +114,16 @@ function runResultSummary(r: RunResult): string {
   return parts.join(" · ");
 }
 
-function useSegmentRun(segmentId: string, initiallyRunning: boolean) {
+function useSegmentRun(
+  segmentId: string,
+  initiallyRunning: boolean,
+  initialResult: RunResult | null = null,
+  initialError: string | null = null,
+) {
   const router = useRouter();
   const [running, setRunning] = useState(initiallyRunning);
-  const [runResult, setRunResult] = useState<RunResult | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<RunResult | null>(initialResult);
+  const [runError, setRunError] = useState<string | null>(initialError);
 
   // Keep local `running` in sync if the server prop flips (e.g. router.refresh
   // surfaces a newly-running run after a navigation back).
@@ -181,6 +186,7 @@ export function TargetingViews({
   leadCounts = {},
   hasSuggestions = {},
   runningSegments = {},
+  lastRuns = {},
   initialStats,
   statsSegments = [],
   apolloCredits,
@@ -191,6 +197,8 @@ export function TargetingViews({
   hasSuggestions?: Record<string, boolean>;
   /** Per-segment id → true when a LeadRun is in progress (FIX #2). */
   runningSegments?: Record<string, boolean>;
+  /** Per-segment id → latest LeadRun outcome, so a finished run seeds the card. */
+  lastRuns?: Record<string, { status: string; found: number; ghost: number }>;
   /** First-paint stats payload (All segments · Last 30d). */
   initialStats?: TargetingStats;
   /** Slim {id,name} list for the stats segment selector. */
@@ -309,6 +317,7 @@ export function TargetingViews({
                   leadCount={leadCounts[s.id] ?? 0}
                   hasSuggestions={hasSuggestions[s.id] ?? false}
                   initiallyRunning={runningSegments[s.id] ?? false}
+                  lastRun={lastRuns[s.id]}
                   onOpen={() => setOpen(s)}
                 />
               ))}
@@ -337,12 +346,14 @@ function SegmentCard({
   leadCount,
   hasSuggestions,
   initiallyRunning,
+  lastRun,
   onOpen,
 }: {
   segment: SegmentProp;
   leadCount: number;
   hasSuggestions: boolean;
   initiallyRunning: boolean;
+  lastRun?: { status: string; found: number; ghost: number };
   onOpen: () => void;
 }) {
   const router = useRouter();
@@ -350,9 +361,13 @@ function SegmentCard({
   // Run-search live state (D17/D18 → FIX #2). Non-blocking: the run is kicked off
   // and a LeadRun-driven poll surfaces "Searching…" → "Found N → View". The
   // indicator survives navigation because `running` seeds from the server.
+  const initialRunResult: RunResult | null =
+    lastRun && lastRun.status === "done"
+      ? { found: lastRun.found, rescued: 0, ghost: lastRun.ghost, rejudged: 0, remaining: 0 }
+      : null;
+  const initialRunError = lastRun && lastRun.status === "error" ? "Last run failed" : null;
   const { running: searching, runResult, runError, start: startSearch } = useSegmentRun(
-    segment.id,
-    initiallyRunning,
+    segment.id, initiallyRunning, initialRunResult, initialRunError,
   );
   const revenue = band(segment.revenueMin, segment.revenueMax, true);
   const summary = [

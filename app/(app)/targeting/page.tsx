@@ -9,7 +9,7 @@ import { getApolloCreditsThisMonth } from "@/lib/apollo-credits";
 export const maxDuration = 300;
 
 export default async function TargetingPage() {
-  const [segments, leadGroups, runGroups, runningRuns, initialStats, apolloCredits] = await Promise.all([
+  const [segments, leadGroups, runGroups, runningRuns, latestRuns, initialStats, apolloCredits] = await Promise.all([
     prisma.targetSegment.findMany({
       orderBy: [{ active: "desc" }, { priority: "desc" }, { updatedAt: "desc" }],
     }),
@@ -32,6 +32,13 @@ export default async function TargetingPage() {
     prisma.leadRun.findMany({
       where: { status: "running", segmentId: { not: null } },
       select: { segmentId: true },
+    }),
+    // Latest LeadRun per segment WITH status + counts — seeds the card so a
+    // FINISHED run's outcome survives navigation (not just running ones).
+    prisma.leadRun.findMany({
+      where: { segmentId: { not: null } },
+      orderBy: { startedAt: "desc" },
+      select: { segmentId: true, status: true, foundCount: true, ghostCount: true },
     }),
     // First-paint stats payload (All segments · Last 30d).
     getTargetingStats(null, 30),
@@ -87,6 +94,15 @@ export default async function TargetingPage() {
     if (r.segmentId) runningSegments[r.segmentId] = true;
   }
 
+  // Per-segment latest-run outcome → seeds the card's result so a finished run
+  // survives navigation. First row per segment = latest (rows are startedAt desc).
+  const lastRuns: Record<string, { status: string; found: number; ghost: number }> = {};
+  for (const r of latestRuns) {
+    if (r.segmentId && !lastRuns[r.segmentId]) {
+      lastRuns[r.segmentId] = { status: r.status, found: r.foundCount, ghost: r.ghostCount };
+    }
+  }
+
   // Slim {id,name} list for the stats segment selector.
   const statsSegments = segments.map((s) => ({ id: s.id, name: s.name }));
 
@@ -98,6 +114,7 @@ export default async function TargetingPage() {
         leadCounts={leadCounts}
         hasSuggestions={hasSuggestions}
         runningSegments={runningSegments}
+        lastRuns={lastRuns}
         initialStats={initialStats}
         statsSegments={statsSegments}
         apolloCredits={apolloCredits}
