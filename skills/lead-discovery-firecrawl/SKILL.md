@@ -1,48 +1,34 @@
-# Skill — Lead discovery (Firecrawl query crafting + result reading)
+---
+description: Firecrawl enrichment (site scrape for buying signals) within the lead discovery engine.
+---
 
-Turn a **TargetSegment** into ONE compact Firecrawl `/search` query string that surfaces real candidate company websites, and read the results to extract a company's website + bare domain. This is a discovery aid for the firm's lead engine — Apollo is the primary structured source; Firecrawl widens the net with open-web discovery and confirms firmographics/buying signals via `/scrape`.
+# Skill — Lead discovery (Firecrawl enrichment)
 
-The firm's voice, identity, and hard rules are in the firm context above. The no-hallucination rule applies: never invent a company or a domain — only extract what a result actually shows.
+Scrape a **single chosen company's own website** for buying signals during stage-2 enrichment of the firm's lead engine. Apollo finds and structures the candidate pool; Firecrawl's only job here is to read one finalist's site and surface a short signal snippet that sharpens the AI re-rank. Firecrawl no longer sources or discovers companies — it does not craft search queries and it does not read `/search` results.
+
+The firm's voice, identity, and hard rules are in the firm context above. The no-hallucination rule applies: never invent a company, a fact, or a signal — only report what the scraped page actually shows.
 
 ## What you're invoked to do
 
-When called via `generate({ skill: "lead-discovery-firecrawl" })`, you receive the segment spec (industries, geographies, priorityLocation, employee/revenue bands, buyingSignals) as the context block and an instruction to craft a query. **Return ONLY a single-line compact search query string** — no prose, no quotes, no JSON, no markdown. The pipeline feeds your line straight into `/search`.
+During stage 2, once a finalist domain is selected, the pipeline calls `firecrawlScrape` on that one company's own site (homepage, or `/about` / `/news` when available). You read the returned markdown and extract a compact signal snippet that confirms firmographics and surfaces buying signals for the segment.
 
-## Query construction (the D22 templates)
+## Scope
 
-Build a short, real search query — the kind a person types, not a sentence:
+- Scrape **only the one candidate's own domain**. Never branch out to other sites, aggregators, directories, social, or news.
+- Pull a **short signal snippet**, not the whole site. A few sentences of evidence is enough.
 
-- Lead with the **1–2 strongest verticals** from `industries` (the most concrete named ones).
-- Add the **geography** — prefer `priorityLocation`; else the first entry in `geographies`. Use the place name as a human would ("Ontario", "Texas", "United Kingdom").
-- Optionally add **one** intent/buying-signal keyword from `buyingSignals` when it sharpens discovery (e.g. "ERP rollout", "Series B", "expanding").
-- Phrase for **site discovery**, not articles. Templates:
-  - `<industry> companies in <geo>`
-  - `<industry> <geo> <signal>`
-  - `<industry> manufacturers <geo>`
-- Keep it under ~12 words. A tighter query beats a stuffed one.
+## What to look for
 
-**Deterministic fallback** (what the pipeline builds without calling you, so mirror its spirit): `${industries[0]} companies ${priorityLocation ?? geographies[0]} ${buyingSignals[0] ?? ""}`.
-
-## Reading `/search` results
-
-Each result has `title`, `url`, `description`, and optionally `markdown`. To get a candidate company:
-
-- Extract the **root domain** from `url`: strip scheme, `www.`, and any path; lowercase. `https://www.acme-parts.com/about` → `acme-parts.com`.
-- **Skip aggregators, directories, social, and news** — they are not companies. Exclude hosts containing: `linkedin.com`, `facebook.com`, `twitter.com`, `x.com`, `instagram.com`, `youtube.com`, `crunchbase.com`, `wikipedia.org`, `glassdoor.com`, `indeed.com`, `yelp.com`, `bloomberg.com`, `reuters.com`, `forbes.com`, `medium.com`, `reddit.com`, and obvious directory/marketplace domains.
-- Prefer a result whose domain looks like a single company's own site (the `title`/`description` describe one business, not a list).
-
-## When to `/scrape` a candidate site
-
-After a domain is chosen, scrape its site (homepage or `/about`, `/news`) when Apollo enrich is thin, to confirm:
+Read the page for firmographic confirmation and any buying signals that match the segment's `buyingSignals`:
 
 - **Firmographics** — what they do, rough size, HQ location, the vertical.
-- **Buying signals** — recent funding, expansion, a new exec, a system rollout, a regulatory deadline — anything matching the segment's `buyingSignals`.
+- **Buying signals** — expansion or new facility, an ERP / MES rollout, recent funding, a new executive hire, reshoring, a regulatory or compliance deadline — anything that signals readiness to buy.
 
-Keep scrapes scoped to the one candidate's own domain. Pull a short signal snippet, not the whole site.
+Report only signals the page actually states. If the page is thin or shows nothing relevant, say so rather than inferring.
 
 ## Hard rules
 
-- Output (when crafting a query) is exactly one line: the query string. Nothing else.
-- Never fabricate a company or a domain — extract only what a result shows.
-- Exclude aggregator/social/news/directory hosts from candidate domains.
-- Domains are bare and lowercase (no scheme, no `www.`, no path).
+- Scrape is scoped to the single finalist's own domain — never widen the net.
+- Pull a short snippet, not the full site.
+- Never fabricate a company, a fact, or a buying signal — report only what the scraped page shows.
+- This skill does not discover companies, craft search queries, or read `/search` results.
