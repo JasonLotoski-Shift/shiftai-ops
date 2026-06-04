@@ -444,13 +444,15 @@ const flows: Flow[] = [
   {
     icon: <Target size={16} strokeWidth={1.5} />,
     title: "Hunt for new leads",
-    blurb: "Define who you want, run the search, then review the companies the agent found.",
+    blurb: "Define who you want, run the search, then review the companies the agent found. The search casts wide and free, ranks the pool by signals, then digs deep on the best.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Import → AI Targeting → build a segment (who you want), pick Reveal emails: Primary only or All contacts" },
       { tone: "trigger", kind: "You do", label: "Hit Run search on the segment — it works for up to ~3.5 min (the card shows \"Searching…\")" },
-      { tone: "claude", kind: "Claude", label: "Finds + rates matching companies, reveals contact emails, writes them to AI Found Leads" },
-      { tone: "review", kind: "You review", label: "Open a lead → Reveal email on any contact (1 Apollo credit), draft a cold intro, or add to the funnel" },
-      { tone: "write", kind: "Saved", label: "Leads + reveals + AuditLog; the Apollo-credits meter on AI Targeting tracks emails revealed this month" },
+      { tone: "claude", kind: "Claude", label: "Stage 1 (free): pulls a wide pool (up to 150 matching companies), skips any already in your contacts or pipeline, and ranks it — headcount growth first, revenue-in-band breaks ties" },
+      { tone: "claude", kind: "Claude", label: "Stage 2 (deep): on the top ~40 only, scrapes the site for buying signals, finds people, and rates fit 1–10 — revealing the best contact's email only when the lead clears the bar (score ≥ 6)" },
+      { tone: "claude", kind: "Claude", label: "Optimized a segment? It also re-judges companies it previously filtered (never reviewed) against the new criteria — rescuing good leads that just missed before" },
+      { tone: "review", kind: "You review", label: "Open a lead → Reveal email on any contact (1 Apollo credit), draft a cold intro, or add to the funnel. Restoring a filtered lead reveals its best contact's email too" },
+      { tone: "write", kind: "Saved", label: "Leads + reveals + AuditLog; the run shows new + rescued + filtered and ~how many companies are left to explore; the Apollo-credits meter tracks emails revealed this month" },
     ],
   },
   {

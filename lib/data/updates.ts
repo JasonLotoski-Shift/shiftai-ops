@@ -25,6 +25,20 @@ export const updates: Update[] = [
   {
     date: "2026-06-04",
     tag: "improved",
+    title: "Lead search casts a wider net — and finds far more companies",
+    detail:
+      "Running a search on a segment now works in two stages. First it pulls a wide, free list of matching companies (up to 150), orders them by signals it already has — companies that are growing their headcount rise to the top, and revenue inside your band breaks ties. Then it does the deeper, slower work (site scrape, contacts, fit rating) only on the best ~40, so you get more and better-matched leads for the same run. A work email is only revealed once a lead clears the bar, so credits aren't spent on weak fits. Each finished run also tells you roughly how many matching companies are still left to explore, so re-running a segment keeps reaching new ones.",
+  },
+  {
+    date: "2026-06-04",
+    tag: "improved",
+    title: "Optimizing a segment re-checks the leads it filtered before",
+    detail:
+      "When you tune and optimize a segment, the next search takes a fresh look at companies it previously set aside (the ones it filtered out on the old criteria, that you never reviewed) and re-judges them against the new criteria — so a tweak can rescue good leads that just missed last time, instead of only ever looking at brand-new companies. A filtered lead you move back up to AI Found by hand now also reveals its best contact's email on the spot.",
+  },
+  {
+    date: "2026-06-04",
+    tag: "improved",
     title: "The sidebar is reorganised — four clear groups",
     detail:
       "The left menu is grouped by what you're doing. Up top: Dashboard, Pipeline, Projects, Task Board — the day-to-day. A new collapsible Import group holds the three ways leads come in — Contacts (your uploads), AI Targeting (the lead hunt), and Ingest. Firm gathers Financials, your Contacts and Clients lists, Messages, and Library. Other holds What's new, How it works, Agents & MCPs, and Settings. A few names changed to say what they are: \"Import Contacts\" is now just Contacts, \"Targeting\" is AI Targeting, and the two list pages read \"Contacts List\" and \"Clients List\".",
