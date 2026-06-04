@@ -187,6 +187,15 @@ export function computeCompleteness(
   return hasCompany || hasTitle ? "complete" : "needs_identification";
 }
 
+// A stable, dot-free key derived from a company name — used to key a promoted
+// ProspectLead when the imported contact has no real domain yet (LinkedIn
+// exports rarely include one). The missing dot is exactly how the enrichment
+// step recognizes an unresolved key and resolves the real domain via Apollo.
+export function companySlug(company: string): string {
+  const slug = company.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return slug ? slug.slice(0, 60) : "unknown";
+}
+
 // Stable per-partner dedupe key. Email is the strongest signal; then the
 // LinkedIn profile URL (unique per person); then name|company as a last resort.
 export function computeDedupeKey(

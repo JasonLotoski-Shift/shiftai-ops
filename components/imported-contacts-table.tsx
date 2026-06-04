@@ -44,16 +44,18 @@ function scoreTone(score: number): "gold" | "bone" | "neutral" {
   return "neutral";
 }
 
-// A row can be promoted into a firm-wide lead only when it's scannable, carries
-// a company domain (the lead is keyed on domain), and isn't already promoted.
+// A row can be promoted into a firm-wide lead when it's scannable, has a company
+// (the lead is keyed on the domain when present, else the company name), and
+// isn't already promoted. A LinkedIn export rarely carries a domain, so we gate
+// on the company name — enrichment resolves the domain later.
 function isPromotable(r: ImportedRow): boolean {
-  return r.completeness === "complete" && !!r.domain && r.promotion === "none";
+  return r.completeness === "complete" && !!r.company && r.promotion === "none";
 }
 
 function promoteBlockReason(r: ImportedRow): string {
   if (r.promotion === "promoted") return "Already promoted to the pipeline.";
   if (r.completeness === "needs_identification") return "Name-only — identify this contact first.";
-  if (!r.domain) return "No company domain yet — enrich to identify the company first.";
+  if (!r.company) return "No company — can't create a company lead.";
   return "";
 }
 

@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requirePartner } from "@/lib/import-auth";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { companySlug } from "@/lib/import-shared";
 import type { ProspectPerson } from "@/lib/types";
 
 // Identity key for de-duping people within a lead's people[] array.
@@ -60,8 +61,7 @@ export async function promoteImportedContacts(
       const contact = await prisma.importedContact.findFirst({
         where: { id, partnerLeadId: partnerId },
       });
-      // Skip the unpromotable: gone, already promoted, name-only, or no domain
-      // (Case C — nothing to key the company lead on).
+      // Skip the unpromotable: gone, already promoted, or name-only.
       if (
         !contact ||
         contact.promotion === "promoted" ||
@@ -70,11 +70,17 @@ export async function promoteImportedContacts(
         skipped++;
         continue;
       }
-      const domain = (contact.domain ?? "").trim().toLowerCase();
-      if (!domain) {
+      const realDomain = (contact.domain ?? "").trim().toLowerCase();
+      const company = (contact.company ?? "").trim();
+      // Need at least a domain or a company to key the company lead on.
+      if (!realDomain && !company) {
         skipped++;
         continue;
       }
+      // Key on a real domain when we have one (the 12/1357 with email/website),
+      // else a stable company-name slug. Enrichment resolves the slug → real
+      // domain via Apollo. Two contacts at the same company share a key → merge.
+      const key = realDomain || companySlug(company);
 
       const roleType: "decision_maker" | "connector" =
         contact.leadType === "connector" ? "connector" : "decision_maker";
@@ -92,7 +98,7 @@ export async function promoteImportedContacts(
         contact.scanRationale?.trim() || `Imported and promoted by ${label}.`;
 
       await prisma.$transaction(async (tx) => {
-        const existing = await tx.prospectLead.findUnique({ where: { domain } });
+        const existing = await tx.prospectLead.findUnique({ where: { domain: key } });
         let leadId: string;
 
         if (existing) {
@@ -114,8 +120,8 @@ export async function promoteImportedContacts(
         } else {
           const created = await tx.prospectLead.create({
             data: {
-              companyName: contact.company?.trim() || domain,
-              domain,
+              companyName: company || key,
+              domain: key,
               industryTags: [],
               score,
               rationale,
@@ -149,7 +155,7 @@ export async function promoteImportedContacts(
           changes: {
             contact: contact.name,
             company: contact.company,
-            domain,
+            domain: key,
             roleType,
             fromImportedContact: contact.id,
           },
