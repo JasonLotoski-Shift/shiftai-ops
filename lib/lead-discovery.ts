@@ -14,15 +14,17 @@
 
 import { prisma } from "@/lib/prisma";
 import { generate } from "@/lib/ai";
-import { firecrawlSearch, firecrawlScrape } from "@/lib/firecrawl";
+import { firecrawlScrape } from "@/lib/firecrawl";
 import {
-  apolloSearchCompanies,
+  apolloSearchCompaniesWide,
   apolloSearchPeople,
   apolloMatchPerson,
   apolloEnrichOrg,
   normalizeDomain,
   type ApolloPerson,
 } from "@/lib/apollo";
+import { prerank } from "@/lib/lead-prerank";
+import { assemblePool } from "@/lib/lead-pool";
 import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
 
 // ── Mapping tables (the lead-discovery-apollo skill, encoded) ─────────────────
@@ -224,6 +226,11 @@ export async function runDiscovery(opts: {
   segmentId: string;
   companyCap?: number;
   timeBudgetMs?: number;
+  /** Stage-1 Apollo wide-search pool size (free). Added in the discovery
+   *  redesign; the targeting dials are wired in a later task. */
+  wideLimit?: number;
+  /** Stage-2 bounded parallelism for finalist enrichment. */
+  concurrency?: number;
   /** When set, run against this PRE-CREATED LeadRun (status running) instead of
    *  creating a new one. Lets a server action create the run synchronously and
    *  return its id immediately, then execute the heavy work in the background
@@ -290,97 +297,70 @@ export async function runDiscovery(opts: {
   };
 
   try {
-    // (3) SOURCE A — Apollo companies.
-    const candidates = new Map<string, Candidate>();
-    const addCandidate = (c: { companyName: string; domain: string; website?: string; source: string }) => {
-      const domain = normalizeDomain(c.domain);
-      if (!domain || isExcludedHost(domain)) return;
-      const existing = candidates.get(domain);
-      if (existing) {
-        existing.foundBy.add(c.source);
-        if (!existing.website && c.website) existing.website = c.website;
-        if (!existing.companyName && c.companyName) existing.companyName = c.companyName;
-      } else {
-        candidates.set(domain, {
-          companyName: c.companyName || domain,
-          domain,
-          website: c.website,
-          foundBy: new Set([c.source]),
-        });
-      }
-    };
+    // ── STAGE 1 (pure, free): wide search → pool assembly → pre-rank → finalists.
 
+    const WIDE_LIMIT = opts.wideLimit ?? 150;
+    const FINALISTS = opts.companyCap ?? 40;
+
+    // (1) Wide, free Apollo search.
+    let wide: Awaited<ReturnType<typeof apolloSearchCompaniesWide>> = { companies: [], total: 0 };
     try {
-      const { companies } = await apolloSearchCompanies({
+      wide = await apolloSearchCompaniesWide({
         locations: segment.geographies,
         employeeRanges: buildEmployeeRanges(segment.employeeMin, segment.employeeMax),
         keywordTags: segment.industries,
-        perPage: Math.min(Math.max(companyCap * 2, 25), 100),
+        limit: WIDE_LIMIT,
       });
-      for (const co of companies) {
-        addCandidate({ companyName: co.name, domain: co.domain, website: co.website, source: "apollo" });
-      }
     } catch (err) {
-      console.error("[lead-discovery] Apollo company search failed:", err);
+      console.error("[lead-discovery] Apollo wide search failed:", err);
     }
 
-    // SOURCE B — Firecrawl. Craft a query (LLM), fall back to deterministic.
-    let query = "";
-    const priority = segment.priorityLocation ?? segment.geographies[0] ?? "";
-    try {
-      const ctx = [
-        `Industries: ${segment.industries.join(", ")}`,
-        `Geographies: ${segment.geographies.join(", ")}`,
-        `Priority location: ${priority || "—"}`,
-        `Buying signals: ${segment.buyingSignals.join(", ") || "—"}`,
-      ].join("\n");
-      const raw = await generate({
-        skill: "lead-discovery-firecrawl",
-        context: ctx,
-        intake: "Craft one compact Firecrawl search query for this segment. Return ONLY the query string.",
-        maxTokens: 120,
-      });
-      query = raw.trim().split("\n")[0].replace(/^["']|["']$/g, "").trim();
-    } catch (err) {
-      console.error("[lead-discovery] Firecrawl query generation failed:", err);
-    }
-    if (!query) {
-      query = `${segment.industries[0] ?? ""} companies ${priority} ${segment.buyingSignals[0] ?? ""}`
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-
-    try {
-      const results = await firecrawlSearch(query, { limit: 15 });
-      for (const r of results) {
-        const domain = extractDomainFromUrl(r.url);
-        if (!domain || isExcludedHost(domain)) continue;
-        addCandidate({ companyName: r.title || domain, domain, website: r.url, source: "firecrawl" });
-      }
-    } catch (err) {
-      console.error("[lead-discovery] Firecrawl search failed:", err);
-    }
-
-    // (4) DEDUP against existing ProspectLead.domain + Contact.domain (FIX #2).
-    // Load EVERY existing ProspectLead.domain (any status) and EVERY Contact.domain,
-    // push BOTH through normalizeDomain into one Set, and normalize each candidate
-    // the SAME way before checking. (No `{ in: domains }` filter: a stored domain
-    // in a non-normalized form would slip past an IN clause and the engine would
-    // re-create a ProspectLead it already has — the cascadeprocess.ca dedup miss.)
-    const seen = new Set<string>();
+    // (2) Load existing leads + contacts (read-only) for pool assembly.
     const [existingLeads, existingContacts] = await Promise.all([
-      prisma.prospectLead.findMany({ select: { domain: true } }),
+      prisma.prospectLead.findMany({
+        select: {
+          domain: true,
+          origin: true,
+          status: true,
+          reviewedBy: true,
+          segmentId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
       prisma.contact.findMany({ select: { domain: true } }),
     ]);
-    for (const l of existingLeads) {
-      const d = normalizeDomain(l.domain);
-      if (d) seen.add(d);
-    }
-    for (const c of existingContacts) {
-      const d = normalizeDomain(c.domain);
-      if (d) seen.add(d);
-    }
-    const fresh = [...candidates.values()].filter((c) => !seen.has(normalizeDomain(c.domain)));
+
+    // (3) Assemble pool (fresh inserts + re-admitted updates, origin-scoped).
+    const { freshCompanies, readmitLeads } = assemblePool({
+      fresh: wide.companies,
+      existingLeads: existingLeads as unknown as Parameters<typeof assemblePool>[0]["existingLeads"],
+      contactDomains: existingContacts
+        .map((c) => c.domain)
+        .filter((d): d is string => !!d),
+      segmentId: segment.id,
+      lastOptimizedAt: segment.lastOptimizedAt ?? null,
+    });
+
+    // (4) Pre-rank fresh + re-admitted together (re-admitted carry domain only; load
+    //     their growth/revenue lazily in stage 2 via enrich — pre-rank them neutral).
+    type Finalist =
+      | { kind: "insert"; company: (typeof freshCompanies)[number] }
+      | { kind: "update"; leadDomain: string };
+    const bands = { revenueMin: segment.revenueMin, revenueMax: segment.revenueMax };
+    const rankedFresh = prerank(freshCompanies, bands).map(
+      (company): Finalist => ({ kind: "insert", company }),
+    );
+    const rankedReadmit = readmitLeads.map(
+      (l): Finalist => ({ kind: "update", leadDomain: normalizeDomain(l.domain) }),
+    );
+    // Re-admitted leads interleave after the signal-ranked fresh ones (neutral signal),
+    // then everything is capped at FINALISTS.
+    const finalists = [...rankedFresh, ...rankedReadmit].slice(0, FINALISTS);
+    const remainingEstimate = Math.max(
+      0,
+      rankedFresh.length + rankedReadmit.length - FINALISTS,
+    );
 
     // Precompute people-search filters from personas.
     const titleSeeds = personasToTitles(personas);
