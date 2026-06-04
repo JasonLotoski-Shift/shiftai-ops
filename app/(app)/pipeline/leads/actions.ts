@@ -220,15 +220,62 @@ export async function restoreLead(leadId: string): Promise<{ ok: true }> {
 
   const lead = await prisma.prospectLead.findUnique({
     where: { id: leadId },
-    select: { status: true, companyName: true },
+    select: { status: true, companyName: true, domain: true, people: true },
   });
   if (!lead) throw new Error("Lead not found");
   if (lead.status !== "ghost") throw new Error("Only set-aside leads can be restored");
 
+  // Moving a filtered lead up to AI Found makes it actionable, so reveal the
+  // primary person's work email now (mirrors the on-pass reveal in discovery).
+  // The primary is people[0]; only reveal if it has no email yet.
+  const people = (lead.people as unknown as ProspectPerson[]) ?? [];
+  const primary = people[0];
+  let revealedPrimary: ProspectPerson | null = null;
+  if (primary && !primary.email?.trim()) {
+    try {
+      let revealed;
+      if (primary.apolloPersonId) {
+        revealed = await apolloMatchPerson({ id: primary.apolloPersonId });
+      } else {
+        const parts = (primary.name ?? "").trim().split(/\s+/);
+        const firstName = parts[0] || undefined;
+        const lastName = parts.length > 1 ? parts.slice(1).join(" ") : undefined;
+        revealed =
+          firstName && lastName
+            ? await apolloMatchPerson({ firstName, lastName, domain: lead.domain })
+            : await apolloMatchPerson({ domain: lead.domain });
+      }
+      const email = revealed.email?.trim();
+      if (email) {
+        revealedPrimary = {
+          ...primary,
+          email,
+          emailRevealed: true,
+          name: revealed.name ?? primary.name,
+          title: revealed.title ?? primary.title,
+        };
+      }
+    } catch (err) {
+      // Out of credits (or any reveal failure): restore the lead anyway; the
+      // partner can reveal the email later via the on-demand button.
+      if (!(err instanceof Error && err.message.startsWith("APOLLO_CREDITS"))) throw err;
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.prospectLead.update({
       where: { id: leadId },
-      data: { status: "pending", reviewedAt: null },
+      data: {
+        status: "pending",
+        reviewedAt: null,
+        ...(revealedPrimary
+          ? {
+              people: people.map((p, i) =>
+                i === 0 ? revealedPrimary : p,
+              ) as unknown as object,
+            }
+          : {}),
+      },
     });
     await writeAudit(tx, {
       actor,
@@ -237,6 +284,15 @@ export async function restoreLead(leadId: string): Promise<{ ok: true }> {
       targetId: leadId,
       changes: { status: { before: "ghost", after: "pending" } },
     });
+    if (revealedPrimary) {
+      await writeAudit(tx, {
+        actor: agentActor("lead-discovery"),
+        action: "reveal.apollo.email",
+        targetType: "ProspectLead",
+        targetId: leadId,
+        changes: { domain: lead.domain, via: "restore", name: revealedPrimary.name, title: revealedPrimary.title },
+      });
+    }
     await writeActivity(tx, {
       actor,
       type: "status",
