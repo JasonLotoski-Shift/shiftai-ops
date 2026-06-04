@@ -359,7 +359,12 @@ export type ProspectPerson = {
   source?: string; // which connector found this person
   apolloPersonId?: string; // Apollo person id (used for the 1-credit reveal)
   emailRevealed?: boolean; // true once the work email has been revealed
+  // For imported leads: is this person the buyer (decision_maker) or a bridge
+  // (connector who can intro us to one)? Steers the enrichment SEARCH.
+  roleType?: "decision_maker" | "connector";
 };
+
+export type ProspectLeadOrigin = "discovery" | "imported";
 
 export type ProspectLead = {
   id: string;
@@ -381,6 +386,8 @@ export type ProspectLead = {
   sources?: Record<string, unknown> | null; // raw per-source payloads (Prisma Json?)
   createdBy: string; // "AGENT · CLAUDE"
   generatedFromSkill?: string;
+  origin?: ProspectLeadOrigin; // "discovery" (default) | "imported"
+  promotedBy?: string; // for imported leads: the partner who promoted it
   convertedContactId?: string;
   convertedDealId?: string;
   reviewedBy?: string;
@@ -401,6 +408,90 @@ export type LeadRun = {
   evaluatedCount: number;
   foundCount: number;
   ghostCount: number;
+  createdBy: string;
+  startedAt: string; // ISO date
+  finishedAt?: string; // ISO date
+};
+
+/* Import Contacts — PRIVATE per-partner staging (CSV import → scan → promote).
+ * Brand-new enums: plain underscored values, no hyphen mapping. */
+
+export type ImportContactCompleteness = "complete" | "needs_identification";
+export type ImportLeadType = "decision_maker" | "connector" | "none";
+export type ImportScanStatus = "pending" | "scored" | "skipped" | "error";
+export type ScanRunStatus = "pending" | "submitted" | "scoring" | "done" | "error";
+export type ImportContactPromotion = "none" | "promoted";
+
+/* The header→field mapping a CSV upload resolved to. Values are the source
+ * CSV column names (or undefined when the file has no such column). name is a
+ * single column when present; firstName/lastName cover split-name exports
+ * (LinkedIn) where the full name is composed from two columns. */
+export type ImportColumnMapping = {
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  title?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  linkedin?: string;
+  companyDomain?: string;
+};
+
+export type ImportBatch = {
+  id: string;
+  partnerLeadId: string;
+  filename: string;
+  source: "linkedin" | "google" | "other";
+  columnMapping?: ImportColumnMapping | null;
+  totalRows: number;
+  importedRows: number;
+  duplicateRows: number;
+  needsIdCount: number;
+  createdBy: string;
+  createdAt: string; // ISO date
+  updatedAt: string; // ISO date
+};
+
+export type ImportedContact = {
+  id: string;
+  partnerLeadId: string;
+  batchId: string;
+  name: string;
+  title?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  linkedin?: string;
+  domain?: string; // normalized bare domain — may be "" / undefined
+  raw: Record<string, unknown>; // original CSV row (Prisma Json)
+  completeness: ImportContactCompleteness;
+  dedupeKey: string;
+  scanStatus: ImportScanStatus;
+  scanScore?: number; // 1–10
+  leadType?: ImportLeadType;
+  matchedSegmentId?: string;
+  scanRationale?: string;
+  scannedAt?: string; // ISO date
+  promotion: ImportContactPromotion;
+  promotedProspectLeadId?: string;
+  promotedAt?: string; // ISO date
+  createdAt: string; // ISO date
+  updatedAt: string; // ISO date
+};
+
+export type ScanRun = {
+  id: string;
+  partnerLeadId: string;
+  batchId?: string;
+  status: ScanRunStatus;
+  batchApiId?: string; // Anthropic Message Batches id (bulk async path)
+  contactIds: string[]; // imported-contact ids in request order (result mapping)
+  totalCount: number;
+  scoredCount: number;
+  skippedCount: number;
+  errorCount: number;
+  segmentScope: string[]; // active TargetSegment ids used as the fit definition
   createdBy: string;
   startedAt: string; // ISO date
   finishedAt?: string; // ISO date

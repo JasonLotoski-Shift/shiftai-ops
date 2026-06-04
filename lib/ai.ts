@@ -40,6 +40,48 @@ function client(): Anthropic {
   return _client;
 }
 
+/** The shared Anthropic client — for callers that need the raw API surface the
+ *  generate()/generateStream() helpers don't cover (e.g. the Message Batches
+ *  API used by the contact scan). Same singleton, same key handling. */
+export function getAnthropicClient(): Anthropic {
+  return client();
+}
+
+/** The default model id, exported so batch callers stamp the same model. */
+export const DEFAULT_MODEL_ID = DEFAULT_MODEL;
+
+export type CachedSystemBlock = {
+  type: "text";
+  text: string;
+  cache_control: { type: "ephemeral" };
+};
+
+/**
+ * Build the cached system prefix used by a Quick Action / scan: the firm brain
+ * + a skill's SKILL.md, plus an OPTIONAL third stable block (e.g. the active
+ * Target Segments for the contact scan). All three carry cache_control so a
+ * fan-out of many requests sharing this prefix pays for it once — the rest read
+ * the cache at ~0.1x. The CHANGING per-request data must go in the user message
+ * (after this prefix), never inside these blocks, or caching breaks.
+ */
+export async function buildSystemBlocks(
+  skill: string,
+  extraCached?: string,
+): Promise<CachedSystemBlock[]> {
+  const [firmContext, skillContent] = await Promise.all([
+    loadFirmContext(),
+    loadSkill(skill),
+  ]);
+  const blocks: CachedSystemBlock[] = [
+    { type: "text", text: firmContext, cache_control: { type: "ephemeral" } },
+    { type: "text", text: skillContent, cache_control: { type: "ephemeral" } },
+  ];
+  if (extraCached && extraCached.trim()) {
+    blocks.push({ type: "text", text: extraCached, cache_control: { type: "ephemeral" } });
+  }
+  return blocks;
+}
+
 async function loadFirmContext(): Promise<string> {
   return readFile(path.join(SKILLS_DIR, "_firm", "context.md"), "utf8");
 }

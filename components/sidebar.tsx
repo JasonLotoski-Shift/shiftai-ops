@@ -18,6 +18,7 @@ import {
   FileInput,
   Crosshair,
   Sparkles,
+  Upload,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -28,6 +29,7 @@ const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
   { href: "/contacts", label: "Contacts", icon: Users },
+  { href: "/import", label: "Import Contacts", icon: Upload },
   { href: "/clients", label: "Clients", icon: Briefcase },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "Task Board", icon: CheckSquare },

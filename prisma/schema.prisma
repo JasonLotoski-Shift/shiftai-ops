@@ -255,6 +255,64 @@ enum TaskStatus {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Import Contacts (Phase: CSV import → scan → promote). These enums are
+// BRAND-NEW (no legacy data), so values are plain underscored identifiers
+// with NO @map — Prisma returns exactly what's stored and lib/types.ts
+// mirrors them verbatim (no hyphen/underscore conversion, sidesteps the
+// EngagementStatus-style mapping gotcha). Display labels live in the UI.
+// ──────────────────────────────────────────────────────────────────────
+
+// Did an imported row carry enough to judge fit (company + title), or is it
+// effectively a name-only row that must be identified before it can be scored?
+enum ImportContactCompleteness {
+  complete
+  needs_identification
+}
+
+// The scan's person-role verdict: a decision-maker we can sell to directly, a
+// senior/management CONNECTOR who can intro us to a decision-maker at a fitting
+// company, or neither.
+enum ImportLeadType {
+  decision_maker
+  connector
+  none
+}
+
+// Per-row scan lifecycle. `skipped` = a needs_identification row the scan did
+// not rate (no AI/credit spend); `error` = the batch request for this row failed.
+enum ImportScanStatus {
+  pending
+  scored
+  skipped
+  error
+}
+
+// A scan pass lifecycle. `submitted` = an Anthropic Message Batch is in flight;
+// `scoring` = results are being written back (the idempotency guard state).
+enum ScanRunStatus {
+  pending
+  submitted
+  scoring
+  done
+  error
+}
+
+// Has an imported contact been pushed into a firm-wide ProspectLead yet?
+enum ImportContactPromotion {
+  none
+  promoted
+}
+
+// Where a ProspectLead came from. `discovery` = surfaced by runDiscovery (the
+// existing AI Found Leads behavior); `imported` = promoted from a partner's
+// imported contacts (the new Pipeline "Promoted Leads" sub-tab). Default keeps
+// every existing row as `discovery` on migrate.
+enum ProspectLeadOrigin {
+  discovery
+  imported
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Partner — firm members. Doubles as the actor reference for owner /
 // lead fields. NextAuth tables will be added when SSO is wired —
 // Partner links via email match at first login.
@@ -280,6 +338,11 @@ model Partner {
   messagesAuthored   Message[]
   originations       Origination[]
 
+  // Import Contacts — a partner's PRIVATE imported network + scan passes.
+  importBatches    ImportBatch[]     @relation("PartnerImportBatch")
+  importedContacts ImportedContact[] @relation("PartnerImportedContact")
+  scanRuns         ScanRun[]         @relation("PartnerScanRun")
+
   // Optional link to a Consultant roster entry — a partner who is ALSO paid as
   // a consultant on projects (rare). Externals (sub-consultants) have no Partner.
   consultantProfile Consultant? @relation("PartnerConsultant")
@@ -296,20 +359,20 @@ model Partner {
 // ──────────────────────────────────────────────────────────────────────
 
 model Contact {
-  id          String   @id @default(cuid())
-  name        String
-  title       String
-  company     String
-  email       String
-  phone       String?
-  industry    Industry
-  source      String      // free-text "where exactly" note
+  id             String      @id @default(cuid())
+  name           String
+  title          String
+  company        String
+  email          String
+  phone          String?
+  industry       Industry
+  source         String // free-text "where exactly" note
   sourceCategory LeadSource? // structured bucket — color-codes lead cards
   // Normalized bare domain (lowercase, no scheme/www) — powers the
   // "already in pipeline" dedup against discovered ProspectLeads (D15). NOT unique.
   domain         String?
-  notes       String?
-  lastTouchAt DateTime
+  notes          String?
+  lastTouchAt    DateTime
 
   partnerLead   Partner @relation("PartnerContactLead", fields: [partnerLeadId], references: [id])
   partnerLeadId String
@@ -359,22 +422,22 @@ model Interaction {
 // ──────────────────────────────────────────────────────────────────────
 
 model Deal {
-  id              String    @id @default(cuid())
-  company         String
-  stage           DealStage
-  valueEstimate   Int
-  industry        Industry
-  closeTargetDate DateTime
-  lastTouchAt     DateTime
+  id                String    @id @default(cuid())
+  company           String
+  stage             DealStage
+  valueEstimate     Int
+  industry          Industry
+  closeTargetDate   DateTime
+  lastTouchAt       DateTime
   // When the deal entered its CURRENT stage — drives the board's aging colors
   // (green < 14d, orange < 28d, red beyond). Reset on every stage move.
-  stageEnteredAt  DateTime  @default(now())
+  stageEnteredAt    DateTime  @default(now())
   // Cold-outreach funnel (D36): set when a lead enters via a sent cold email;
   // outreachRepliedAt stamped when the partner marks the prospect as replied
   // (lead → qualified). Both null for normal Add-to-funnel conversions.
   coldOutreachAt    DateTime?
   outreachRepliedAt DateTime?
-  notes           String?
+  notes             String?
 
   contact   Contact @relation(fields: [contactId], references: [id])
   contactId String
@@ -909,24 +972,24 @@ model AgentPlan {
 // ──────────────────────────────────────────────────────────────────────
 
 model TargetSegment {
-  id              String   @id @default(cuid())
-  name            String
-  description     String
-  active          Boolean  @default(true)
-  priority        Int      @default(0)
-  industries      String[]
-  revenueMin      Int?
-  revenueMax      Int?
-  employeeMin     Int?
-  employeeMax     Int?
-  geographies     String[]
-  buyingSignals   String[]
-  disqualifiers   String[]
-  searchSpec      Json?
+  id               String   @id @default(cuid())
+  name             String
+  description      String
+  active           Boolean  @default(true)
+  priority         Int      @default(0)
+  industries       String[]
+  revenueMin       Int?
+  revenueMax       Int?
+  employeeMin      Int?
+  employeeMax      Int?
+  geographies      String[]
+  buyingSignals    String[]
+  disqualifiers    String[]
+  searchSpec       Json?
   // personas: Json array of { department: string, seniority: string }
-  personas        Json?
+  personas         Json?
   // anchors: Json array of { name: string, domain?: string }
-  anchors         Json?
+  anchors          Json?
   // priorityLocation: the starred geography (must be one of geographies)
   priorityLocation String?
 
@@ -956,11 +1019,11 @@ model TargetSegment {
 // ──────────────────────────────────────────────────────────────────────
 
 model ProspectLead {
-  id          String @id @default(cuid())
-  companyName String
+  id               String   @id @default(cuid())
+  companyName      String
   // Normalized bare domain (lowercase, no scheme/www). UNIQUE so a company
   // can't be discovered twice across runs (D15 dedup key).
-  domain           String  @unique
+  domain           String   @unique
   website          String?
   industryTags     String[]
   revenueEstimate  Int? // whole CAD
@@ -986,6 +1049,14 @@ model ProspectLead {
   createdBy          String  @default("AGENT · CLAUDE")
   generatedFromSkill String?
 
+  // Where this lead came from. `discovery` (default) keeps every existing row
+  // on the AI Found Leads surface; `imported` rows show in the new Pipeline
+  // "Promoted Leads" sub-tab. The two sub-tabs filter on this.
+  origin     ProspectLeadOrigin @default(discovery)
+  // For imported leads: the partner who promoted it (provenance only — the lead
+  // itself is firm-wide and visible to everyone, like a discovery lead).
+  promotedBy String?
+
   // Set on Add-to-funnel; loose strings (match loose-coupling convention).
   convertedContactId String?
   convertedDealId    String?
@@ -1007,6 +1078,9 @@ model ProspectLead {
 
   @@index([status, score])
   @@index([segmentId])
+  // The new "Promoted Leads" sub-tab filters origin=imported; AI Found Leads
+  // filters origin=discovery. Index both reads.
+  @@index([origin, status, score])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1026,6 +1100,138 @@ model LeadRun {
   finishedAt     DateTime?
 
   @@index([segmentId, startedAt])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Import Contacts — PRIVATE per-partner staging. A partner uploads a CSV
+// (LinkedIn / Google Contacts export); rows land here, get scanned for fit,
+// and the qualified ones are PROMOTED into firm-wide ProspectLeads.
+//
+// PRIVACY INVARIANT (new in this codebase — nothing else filters by partner):
+// every read/write of ImportBatch / ImportedContact / ScanRun MUST be scoped
+// to session.user.partnerId. partnerLeadId is denormalized onto every row so
+// a read can filter without a join. See lib/import-auth.ts requirePartner().
+// ──────────────────────────────────────────────────────────────────────
+
+// One CSV upload.
+model ImportBatch {
+  id String @id @default(cuid())
+
+  // PRIVATE scope — the importing partner.
+  partnerLead   Partner @relation("PartnerImportBatch", fields: [partnerLeadId], references: [id])
+  partnerLeadId String
+
+  filename      String
+  source        String // "linkedin" | "google" | "other" — detected at upload
+  // The header→field mapping used for this file (provenance + re-import).
+  columnMapping Json?
+
+  totalRows     Int @default(0)
+  importedRows  Int @default(0) // rows actually written (post-dedupe)
+  duplicateRows Int @default(0) // skipped as dupes within this partner's space
+  needsIdCount  Int @default(0) // rows flagged needs_identification
+
+  createdBy String // partner display label
+
+  contacts ImportedContact[]
+  scanRuns ScanRun[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerLeadId, createdAt])
+}
+
+// One imported person.
+model ImportedContact {
+  id String @id @default(cuid())
+
+  // PRIVATE scope (denormalized for filter-without-join).
+  partnerLead   Partner @relation("PartnerImportedContact", fields: [partnerLeadId], references: [id])
+  partnerLeadId String
+
+  batch   ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batchId String
+
+  // ── Identity (cleaned) ──
+  name     String
+  title    String?
+  company  String?
+  email    String?
+  phone    String?
+  linkedin String?
+  // Normalized bare domain (lowercase, no scheme/www) from email or a website
+  // column. May be "" / null when unknown. NOT unique (private; may be empty).
+  domain   String?
+
+  // The original CSV row as parsed (provenance — lets us re-derive on remap).
+  raw Json
+
+  // ── Completeness / dedupe ──
+  completeness ImportContactCompleteness @default(complete)
+  // Stable per-partner dedupe key: normalized email, else lower(name)|lower(company).
+  dedupeKey    String
+
+  // ── Scan results (written by the scan) ──
+  scanStatus       ImportScanStatus @default(pending)
+  scanScore        Int? // 1–10
+  leadType         ImportLeadType?
+  matchedSegmentId String? // which TargetSegment the company fit (nullable)
+  scanRationale    String?
+  scannedAt        DateTime?
+
+  // ── Promotion ──
+  promotion              ImportContactPromotion @default(none)
+  promotedProspectLeadId String? // loose string (match loose-coupling convention)
+  promotedAt             DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // DB-level per-partner dedupe (belt-and-suspenders on top of the app check).
+  @@unique([partnerLeadId, dedupeKey])
+  // Hot read path: this partner's rows, newest/highest score.
+  @@index([partnerLeadId, scanStatus, scanScore])
+  @@index([batchId])
+  @@index([matchedSegmentId])
+}
+
+// One scan pass over a partner's imported set.
+model ScanRun {
+  id String @id @default(cuid())
+
+  partnerLead   Partner @relation("PartnerScanRun", fields: [partnerLeadId], references: [id])
+  partnerLeadId String
+
+  // Scoped to one batch, or null = all of this partner's unscanned rows.
+  batch   ImportBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  batchId String?
+
+  status ScanRunStatus @default(pending)
+
+  // Anthropic Message Batches API id (the bulk async path). Null on the inline path.
+  batchApiId String?
+
+  // The imported-contact ids in this scan, in request order. Each batch result
+  // carries a global `index` that maps back to contactIds[index] — so ingest
+  // (a LATER request than submit) never depends on unstable row ordering.
+  contactIds String[]
+
+  // Counts — drive the progress UI (mirrors LeadRun's count fields).
+  totalCount   Int @default(0) // rows in scope (excludes needs_identification)
+  scoredCount  Int @default(0)
+  skippedCount Int @default(0)
+  errorCount   Int @default(0)
+
+  // Snapshot of the active TargetSegment ids used as the "fitting company"
+  // definition for this run.
+  segmentScope String[]
+
+  createdBy  String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([partnerLeadId, startedAt])
 }
 
 // ──────────────────────────────────────────────────────────────────────

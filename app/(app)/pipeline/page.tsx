@@ -8,6 +8,10 @@ import { stageAgeTier } from "@/lib/format";
 import type { ProspectLead, ProspectPerson } from "@/lib/types";
 import { Filter } from "lucide-react";
 
+// The promoted-lead enrichment SEARCH (Apollo + Firecrawl) runs synchronously
+// from this route — give it wall-clock budget.
+export const maxDuration = 300;
+
 type LeadRow = Awaited<ReturnType<typeof loadLeads>>[number];
 
 function loadLeads() {
@@ -38,6 +42,8 @@ function toLead(row: LeadRow): ProspectLead {
     sources: (row.sources as Record<string, unknown> | null) ?? null,
     createdBy: row.createdBy,
     generatedFromSkill: row.generatedFromSkill ?? undefined,
+    origin: row.origin,
+    promotedBy: row.promotedBy ?? undefined,
     convertedContactId: row.convertedContactId ?? undefined,
     convertedDealId: row.convertedDealId ?? undefined,
     reviewedBy: row.reviewedBy ?? undefined,
@@ -76,8 +82,12 @@ export default async function PipelinePage({
   const staleCount = openDeals.filter((d) => stageAgeTier(d.stageEnteredAt) === "stale").length;
 
   const allLeads = leadRows.map(toLead);
-  const foundLeads = allLeads.filter((l) => l.status === "pending" && !l.disqualified);
-  const filteredLeads = allLeads.filter((l) => l.status === "ghost" || l.disqualified);
+  // AI Found Leads = discovery-origin; Promoted Leads = imported-origin. The two
+  // sub-tabs never overlap.
+  const discoveryLeads = allLeads.filter((l) => l.origin !== "imported");
+  const promotedLeads = allLeads.filter((l) => l.origin === "imported");
+  const foundLeads = discoveryLeads.filter((l) => l.status === "pending" && !l.disqualified);
+  const filteredLeads = discoveryLeads.filter((l) => l.status === "ghost" || l.disqualified);
 
   return (
     <>
@@ -100,7 +110,8 @@ export default async function PipelinePage({
         stats={{ totalValue, openDeals: openDeals.length, staleCount }}
         foundLeads={foundLeads}
         filteredLeads={filteredLeads}
-        initialTab={tab === "found" ? "leads" : "board"}
+        promotedLeads={promotedLeads}
+        initialTab={tab === "found" ? "leads" : tab === "promoted" ? "promoted" : "board"}
         segment={segment}
       />
     </>

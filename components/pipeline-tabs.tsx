@@ -11,6 +11,7 @@ import { useState } from "react";
 import { Card, Stat, Tabs } from "@/components/ui";
 import { PipelineBoard } from "@/components/pipeline-board";
 import { FoundLeads } from "@/components/found-leads";
+import { PromotedLeads } from "@/components/promoted-leads";
 import { formatCAD } from "@/lib/format";
 import type {
   DealModel as Deal,
@@ -21,11 +22,14 @@ import type { ProspectLead } from "@/lib/types";
 
 type DealWithRel = Deal & { contact: Contact; partnerLead: Partner };
 
+type PipelineTab = "board" | "leads" | "promoted";
+
 export function PipelineTabs({
   deals,
   stats,
   foundLeads,
   filteredLeads,
+  promotedLeads,
   initialTab = "board",
   segment,
 }: {
@@ -33,10 +37,11 @@ export function PipelineTabs({
   stats: { totalValue: number; openDeals: number; staleCount: number };
   foundLeads: ProspectLead[];
   filteredLeads: ProspectLead[];
-  initialTab?: "board" | "leads";
+  promotedLeads: ProspectLead[];
+  initialTab?: PipelineTab;
   segment?: string;
 }) {
-  const [tab, setTab] = useState<"board" | "leads">(initialTab);
+  const [tab, setTab] = useState<PipelineTab>(initialTab);
 
   return (
     <div className="flex flex-col">
@@ -45,13 +50,14 @@ export function PipelineTabs({
           tabs={[
             { key: "board", label: "Board" },
             { key: "leads", label: "AI Found Leads", count: foundLeads.length },
+            { key: "promoted", label: "Promoted Leads", count: promotedLeads.length },
           ]}
           active={tab}
-          onChange={(k) => setTab(k as "board" | "leads")}
+          onChange={(k) => setTab(k as PipelineTab)}
         />
       </div>
 
-      {tab === "board" ? (
+      {tab === "board" && (
         <div className="px-8 py-8 flex flex-col gap-8">
           <div className="grid grid-cols-3 gap-4">
             <Card className="p-5">
@@ -67,13 +73,13 @@ export function PipelineTabs({
 
           <PipelineBoard initialDeals={deals} />
         </div>
-      ) : (
-        <FoundLeads
-          pending={foundLeads}
-          filtered={filteredLeads}
-          segment={segment}
-        />
       )}
+
+      {tab === "leads" && (
+        <FoundLeads pending={foundLeads} filtered={filteredLeads} segment={segment} />
+      )}
+
+      {tab === "promoted" && <PromotedLeads leads={promotedLeads} />}
     </div>
   );
 }

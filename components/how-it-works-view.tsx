@@ -454,6 +454,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <FileUp size={16} strokeWidth={1.5} />,
+    title: "Import contacts & scan for fit",
+    blurb: "Upload a contact export, scan it for target clients, and push the best into the pipeline.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Import Contacts → upload a CSV (LinkedIn / Google / any export); confirm the column mapping" },
+      { tone: "claude", kind: "Claude", label: "Cleans + de-dupes into your PRIVATE list; \"Scan contacts\" rates each 1–10 — decision-maker, connector, or no fit" },
+      { tone: "review", kind: "You review", label: "Filter the ranked list; tick the strong ones (name-only rows are set aside) → Add to Pipeline Leads" },
+      { tone: "write", kind: "Saved", label: "Picks become firm-wide Promoted Leads; Enrich runs Apollo + Firecrawl, then add to the funnel + AuditLog" },
+    ],
+  },
+  {
     icon: <Mic size={16} strokeWidth={1.5} />,
     title: "Ingest anything",
     blurb: "One place to log a meeting, email, or document and update the right records.",

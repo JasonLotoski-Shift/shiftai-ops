@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-03",
     tag: "new",
+    title: "Import your contacts, scan them for fit, and push the best into the pipeline",
+    detail:
+      "A new Import Contacts tab lets you upload a contact export (LinkedIn connections, Google Contacts, or any CSV). The tool reads the columns for you, cleans and de-dupes the rows, and shows them in a private list only you can see. Hit \"Scan contacts\" and the agent rates every one 1–10 against your target segments — flagging each person as a decision-maker you could sell to, or a senior connector who could introduce you to one. Name-only rows are set aside as \"needs identification\" so you don't spend anything chasing them. Tick the ones worth pursuing and \"Add to Pipeline Leads\": they show up in a new Promoted Leads tab on the Pipeline (next to AI Found Leads), where an Enrich button runs the Apollo + Firecrawl search to pull company details and reveal a work email — then you add them to the funnel like any other lead.",
+  },
+  {
+    date: "2026-06-03",
+    tag: "new",
     title: "Run a lead search — the agent finds and rates companies for you",
     detail:
       "Each targeting segment now has a working \"Run search\" button. Click it and the agent goes out, finds companies that match your segment, rates each one for fit, pulls in contacts, and drops them into AI Found Leads. The run takes a couple of minutes — the card shows \"Searching…\" while it works, then \"Found N → View\". On any found lead you can now reveal a specific contact's email on demand, and a new \"Apollo credits\" meter at the top of Targeting shows how many emails you've revealed this month. Each segment also lets you choose whether to reveal just the best-fit contact's email per company or every contact's (uses more credits).",
