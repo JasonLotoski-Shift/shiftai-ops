@@ -27,6 +27,27 @@ import { prerank } from "@/lib/lead-prerank";
 import { assemblePool } from "@/lib/lead-pool";
 import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
 
+// ── Bounded-concurrency helper ────────────────────────────────────────────────
+
+// Run async tasks with a concurrency cap; preserves input order in the result.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) break;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 // ── Mapping tables (the lead-discovery-apollo skill, encoded) ─────────────────
 
 const SENIORITY_TO_APOLLO: Record<string, string> = {
@@ -99,12 +120,25 @@ type Rating = { score: number; rationale: string; disqualified: boolean };
 
 export type DiscoverySummary = {
   runId: string;
+  /** Stage-1 pool counts: fresh inserts ranked, re-admitted leads ranked. */
+  poolFresh: number;
+  poolReadmit: number;
+  /** Finalists actually taken for stage-2 enrichment (capped). */
+  finalists: number;
   evaluated: number;
+  /** Fresh inserts that passed (score >= 6, status pending). */
   found: number;
+  /** Re-admitted leads that passed on this look ("rescued from filtered"). */
+  rescued: number;
+  /** Fresh inserts that did not pass (status ghost). */
   ghost: number;
+  /** Re-admitted leads that still did not pass (re-judged ghost). */
+  rejudged: number;
   /** Per-company write failures that were NOT duplicates (FIX #1) — surfaced so a
    *  swallowed P2020/other error is never indistinguishable from a success. */
   errors: number;
+  /** Companies in the ranked pool beyond the finalist cap, left to explore. */
+  remaining: number;
   sampleLeads: { companyName: string; domain: string; score: number; status: string }[];
 };
 
@@ -213,6 +247,47 @@ function choosePrimary(people: ApolloPerson[], titleSeeds: string[]): ApolloPers
   return best ?? people[0];
 }
 
+// Build the lead-rating context string. Extracted so the insert (fresh) and
+// update (re-admit) finalist paths construct it identically.
+function buildRatingCtx(
+  segment: {
+    industries: string[];
+    revenueMin: number | null;
+    revenueMax: number | null;
+    employeeMin: number | null;
+    employeeMax: number | null;
+    geographies: string[];
+    priorityLocation: string | null;
+    buyingSignals: string[];
+    disqualifiers: string[];
+  },
+  enrich: { name?: string | null; employeeEstimate?: number | null; revenueEstimate?: number | null; headquarters?: string | null } | null,
+  domain: string,
+  fallbackName: string,
+  industryTags: string[],
+  signals: string,
+): string {
+  return [
+    "## Segment",
+    `Industries: ${segment.industries.join(", ")}`,
+    `Revenue band (CAD): ${segment.revenueMin ?? "?"} – ${segment.revenueMax ?? "?"}`,
+    `Employee band: ${segment.employeeMin ?? "?"} – ${segment.employeeMax ?? "?"}`,
+    `Geographies: ${segment.geographies.join(", ")}`,
+    `Priority location: ${segment.priorityLocation ?? "—"}`,
+    `Buying signals: ${segment.buyingSignals.join(", ") || "—"}`,
+    `Disqualifiers: ${segment.disqualifiers.join(", ") || "—"}`,
+    "",
+    "## Candidate",
+    `Company: ${enrich?.name ?? fallbackName}`,
+    `Domain: ${domain}`,
+    `Industry / tags: ${industryTags.join(", ") || "unknown"}`,
+    `Employee estimate: ${enrich?.employeeEstimate ?? "unknown"}`,
+    `Revenue estimate: ${enrich?.revenueEstimate ?? "unknown"}`,
+    `Headquarters: ${enrich?.headquarters ?? "unknown"}`,
+    `Site signals snippet: ${signals.slice(0, 1200) || "none"}`,
+  ].join("\n");
+}
+
 function buildEmployeeRanges(min: number | null, max: number | null): string[] | undefined {
   if (min !== null && max !== null) return [`${min},${max}`];
   if (min !== null) return [`${min},100000`];
@@ -267,9 +342,14 @@ export async function runDiscovery(opts: {
 
   let evaluated = 0;
   let found = 0;
+  let rescued = 0;
   let ghost = 0;
+  let rejudged = 0;
   let errors = 0;
   const writtenSamples: DiscoverySummary["sampleLeads"] = [];
+  // Stage-1 pool counts, captured at function scope so the return (outside the
+  // try) can report them even if stage 2 partially runs.
+  const summaryPool = { fresh: 0, readmit: 0, finalists: 0, remaining: 0 };
 
   // PART B: per-segment reveal policy. "all" reveals every found person's email
   // (1 credit each); "primary" (default/null) keeps the single-primary 1-credit
@@ -361,33 +441,45 @@ export async function runDiscovery(opts: {
       0,
       rankedFresh.length + rankedReadmit.length - FINALISTS,
     );
+    summaryPool.fresh = rankedFresh.length;
+    summaryPool.readmit = rankedReadmit.length;
+    summaryPool.finalists = finalists.length;
+    summaryPool.remaining = remainingEstimate;
 
     // Precompute people-search filters from personas.
     const titleSeeds = personasToTitles(personas);
     const seniorities = personasToSeniorities(personas);
 
-    // (5) Per-fresh-candidate loop, capped by companyCap + wall-clock budget.
-    for (const cand of fresh) {
-      if (evaluated >= companyCap) break;
-      if (budgetLeft() < 15_000) break;
+    const CONCURRENCY = opts.concurrency ?? 6;
+
+    // Re-admits carry domain only and load their firmographics lazily via enrich.
+
+    // (5) STAGE 2 (I/O, bounded-parallel): per finalist, enrich + scrape + people +
+    //     re-rank, reveal the primary email ONLY on a pass (score >= 6), then write
+    //     (insert fresh / update re-admit). One finalist's failure never aborts the run.
+    await mapWithConcurrency(finalists, CONCURRENCY, async (f) => {
+      // Skip remaining finalists once the wall-clock budget is nearly spent.
+      if (budgetLeft() < 15_000) return;
+      const domain = f.kind === "insert" ? f.company.domain : f.leadDomain;
 
       try {
         // a) Enrich firmographics.
         let enrich = null;
         try {
-          enrich = await apolloEnrichOrg(cand.domain);
+          enrich = await apolloEnrichOrg(domain);
         } catch (err) {
-          console.error(`[lead-discovery] enrich failed for ${cand.domain}:`, err);
+          console.error(`[lead-discovery] enrich failed for ${domain}:`, err);
         }
 
-        // b) Scrape site for buying signals.
+        // b) Scrape site for buying signals (use the fresh company's website if known).
+        const website = f.kind === "insert" ? f.company.website : undefined;
         let signals = "";
         try {
-          const target = cand.website || `https://${cand.domain}`;
+          const target = website || enrich?.website || `https://${domain}`;
           const { markdown } = await firecrawlScrape(target);
           signals = markdown.slice(0, 2000);
         } catch (err) {
-          console.error(`[lead-discovery] scrape failed for ${cand.domain}:`, err);
+          console.error(`[lead-discovery] scrape failed for ${domain}:`, err);
         }
 
         // c) Find people scoped to the domain + personas.
@@ -397,99 +489,26 @@ export async function runDiscovery(opts: {
             titles: titleSeeds.length ? titleSeeds : undefined,
             seniorities: seniorities.length ? seniorities : undefined,
             organizationLocations: segment.geographies.length ? segment.geographies : undefined,
-            domains: [cand.domain],
+            domains: [domain],
             perPage: 10,
           });
         } catch (err) {
-          console.error(`[lead-discovery] people search failed for ${cand.domain}:`, err);
+          console.error(`[lead-discovery] people search failed for ${domain}:`, err);
         }
-
-        // d) Reveal emails per the segment's reveal policy (FIX #3 + PART B).
-        //    "primary": reveal ONLY the chosen primary (1 credit/company).
-        //    "all": reveal every found person (1 credit each). Each successful
-        //    reveal writes a "reveal.apollo.email" AuditLog row for credit counting.
         const primary = choosePrimary(people, titleSeeds);
 
-        // Reveal one person's work email; returns the resolved person row. On a
-        // non-null email, records the reveal audit (a spent credit). Surfaces the
-        // APOLLO_CREDITS-prefixed error so the caller can stop the per-person loop.
-        const revealPerson = async (p: ApolloPerson): Promise<PersonJson> => {
-          let matchedEmail: string | null = null;
-          let matchedName: string | null = p.name ?? null;
-          let matchedTitle: string | null = p.title ?? null;
-          const matched = await apolloMatchPerson(
-            p.apolloPersonId ? { id: p.apolloPersonId } : { domain: cand.domain },
-          );
-          matchedEmail = matched.email ?? null;
-          matchedName = matched.name ?? matchedName;
-          matchedTitle = matched.title ?? matchedTitle;
-          if (matchedEmail) await recordReveal(cand.domain, matchedName, matchedTitle);
-          return {
-            name: matchedName,
-            title: matchedTitle,
-            email: matchedEmail,
-            source: "apollo",
-            apolloPersonId: p.apolloPersonId,
-            emailRevealed: !!matchedEmail,
-          };
-        };
-
-        const peopleJson: PersonJson[] = [];
-        // Order people so the primary is first (revealed first in either policy).
-        const ordered = primary
-          ? [primary, ...people.filter((p) => p !== primary)]
-          : [...people];
-        let creditsExhausted = false;
-        for (const p of ordered) {
-          const isPrimary = p === primary;
-          const shouldReveal = !creditsExhausted && (revealAll || isPrimary);
-          if (shouldReveal) {
-            try {
-              peopleJson.push(await revealPerson(p));
-              continue;
-            } catch (err) {
-              console.error(`[lead-discovery] match (reveal) failed for ${cand.domain}:`, err);
-              // Out of Apollo credits → stop revealing for the rest of the run; keep
-              // the remaining people stored without email rather than dropping them.
-              if (err instanceof Error && err.message.startsWith("APOLLO_CREDITS")) {
-                creditsExhausted = true;
-              }
-            }
-          }
-          // Stored without email (reveal-on-demand later, or credits exhausted).
-          peopleJson.push({
-            name: p.name ?? null,
-            title: p.title ?? null,
-            email: null,
-            source: "apollo",
-            apolloPersonId: p.apolloPersonId,
-            emailRevealed: false,
-          });
-        }
-
-        // e) Rate fit.
+        // d) Rate fit (signal-aware), using the shared rating-context builder.
         const industryTags = enrich?.industryTags?.length
           ? enrich.industryTags
           : [enrich?.industry].filter((x): x is string => !!x);
-        const ratingCtx = [
-          "## Segment",
-          `Industries: ${segment.industries.join(", ")}`,
-          `Revenue band (CAD): ${segment.revenueMin ?? "?"} – ${segment.revenueMax ?? "?"}`,
-          `Employee band: ${segment.employeeMin ?? "?"} – ${segment.employeeMax ?? "?"}`,
-          `Geographies: ${segment.geographies.join(", ")}`,
-          `Priority location: ${segment.priorityLocation ?? "—"}`,
-          `Buying signals: ${segment.buyingSignals.join(", ") || "—"}`,
-          `Disqualifiers: ${segment.disqualifiers.join(", ") || "—"}`,
-          "",
-          "## Candidate",
-          `Company: ${enrich?.name ?? cand.companyName}`,
-          `Domain: ${cand.domain}`,
-          `Industry / tags: ${industryTags.join(", ") || "unknown"}`,
-          `Employee estimate: ${enrich?.employeeEstimate ?? "unknown"}`,
-          `Revenue estimate: ${enrich?.revenueEstimate ?? "unknown"}`,
-          `Headquarters: ${enrich?.headquarters ?? "unknown"}`,
-          `Site signals snippet: ${signals.slice(0, 1200) || "none"}`,
-        ].join("\n");
+        const ratingCtx = buildRatingCtx(
+          segment,
+          enrich,
+          domain,
+          f.kind === "insert" ? f.company.name : domain,
+          industryTags,
+          signals,
+        );
 
         let rating: Rating = { score: 1, rationale: "Not rated.", disqualified: false };
         try {
@@ -501,17 +520,69 @@ export async function runDiscovery(opts: {
           });
           rating = parseRating(raw);
         } catch (err) {
-          console.error(`[lead-discovery] rating failed for ${cand.domain}:`, err);
+          console.error(`[lead-discovery] rating failed for ${domain}:`, err);
+        }
+
+        const passes = rating.score >= 6 && !rating.disqualified;
+
+        // e) Reveal emails ONLY when the lead passes. Policy: reveal the primary
+        //    (1 credit/company); "all" reveals every found person (1 credit each).
+        //    Each successful reveal writes a "reveal.apollo.email" AuditLog row.
+        const revealPerson = async (p: ApolloPerson): Promise<PersonJson> => {
+          const matched = await apolloMatchPerson(
+            p.apolloPersonId ? { id: p.apolloPersonId } : { domain },
+          );
+          const matchedEmail = matched.email ?? null;
+          const matchedName = matched.name ?? p.name ?? null;
+          const matchedTitle = matched.title ?? p.title ?? null;
+          if (matchedEmail) await recordReveal(domain, matchedName, matchedTitle);
+          return {
+            name: matchedName,
+            title: matchedTitle,
+            email: matchedEmail,
+            source: "apollo",
+            apolloPersonId: p.apolloPersonId,
+            emailRevealed: !!matchedEmail,
+          };
+        };
+
+        const peopleJson: PersonJson[] = [];
+        const ordered = primary
+          ? [primary, ...people.filter((p) => p !== primary)]
+          : [...people];
+        let creditsExhausted = false;
+        for (const p of ordered) {
+          const isPrimary = p === primary;
+          // Gate the reveal on a passing score (the redesign reveal-on-pass rule).
+          const shouldReveal = passes && !creditsExhausted && (revealAll || isPrimary);
+          if (shouldReveal) {
+            try {
+              peopleJson.push(await revealPerson(p));
+              continue;
+            } catch (err) {
+              console.error(`[lead-discovery] match (reveal) failed for ${domain}:`, err);
+              if (err instanceof Error && err.message.startsWith("APOLLO_CREDITS")) {
+                creditsExhausted = true;
+              }
+            }
+          }
+          peopleJson.push({
+            name: p.name ?? null,
+            title: p.title ?? null,
+            email: null,
+            source: "apollo",
+            apolloPersonId: p.apolloPersonId,
+            emailRevealed: false,
+          });
         }
 
         evaluated++;
 
-        // (6) Write the ProspectLead (P2002-safe; NOT in the finalize transaction).
-        const status: "pending" | "ghost" = rating.score >= 6 ? "pending" : "ghost";
+        // (6) Persist. Insert fresh discovery leads; update re-admitted ones.
+        const status: "pending" | "ghost" = passes ? "pending" : "ghost";
         const data = {
-          companyName: enrich?.name ?? cand.companyName,
-          domain: cand.domain,
-          website: cand.website ?? enrich?.website ?? null,
+          companyName: enrich?.name ?? (f.kind === "insert" ? f.company.name : domain),
+          website: (f.kind === "insert" ? f.company.website : undefined) ?? enrich?.website ?? null,
           industryTags,
           // Clamp to the Int range; absurd values → null (FIX #1, prevents P2020).
           revenueEstimate: toSafeInt(enrich?.revenueEstimate),
@@ -523,55 +594,68 @@ export async function runDiscovery(opts: {
           disqualified: rating.disqualified,
           status,
           people: peopleJson as unknown as object,
-          foundBy: [...cand.foundBy],
           sources: {
             apollo: enrich?.raw ?? null,
-            firecrawl: { query, signalsSnippet: signals.slice(0, 500) },
+            firecrawl: { signalsSnippet: signals.slice(0, 500) },
           } as unknown as object,
-          createdBy: "AGENT · CLAUDE",
-          generatedFromSkill: "lead-discovery",
         };
 
         try {
-          await prisma.prospectLead.create({ data });
-          if (status === "pending") found++;
-          else ghost++;
-          if (writtenSamples.length < 5) {
+          if (f.kind === "insert") {
+            await prisma.prospectLead.create({
+              data: {
+                ...data,
+                domain,
+                foundBy: ["apollo"],
+                origin: "discovery",
+                createdBy: "AGENT · CLAUDE",
+                generatedFromSkill: "lead-discovery",
+              },
+            });
+            if (passes) found++;
+            else ghost++;
+          } else {
+            // Re-admit update: bumps updatedAt (the "one look per optimization"
+            // guard). NEVER touch origin / reviewedBy / createdAt.
+            await prisma.prospectLead.update({ where: { domain }, data });
+            if (passes) rescued++;
+            else rejudged++;
+          }
+          if (passes && writtenSamples.length < 5) {
             writtenSamples.push({
               companyName: data.companyName,
-              domain: data.domain,
-              score: data.score,
+              domain,
+              score: rating.score,
               status,
             });
           }
         } catch (err) {
           // FIX #1: distinguish a genuine duplicate (P2002 — domain race, skip
-          // quietly) from ANY other write failure (P2020 overflow, etc.). A real
-          // write failure is logged AND counted as an error — never silently
-          // treated as a success, so the run counts stay honest.
+          // quietly) from ANY other write failure (P2020 overflow, etc.).
           const code = (err as { code?: string })?.code;
-          if (code === "P2002") {
-            // Duplicate domain — already have this lead. Skip, no count change.
-          } else {
+          if (code !== "P2002") {
             errors++;
-            console.error(`[lead-discovery] ProspectLead write failed for ${cand.domain}:`, err);
+            console.error(`[lead-discovery] ProspectLead write failed for ${domain}:`, err);
           }
         }
       } catch (err) {
-        // Whole-company failure → skip this candidate, continue the run.
-        console.error(`[lead-discovery] candidate ${cand.domain} failed, skipping:`, err);
-        continue;
+        // Whole-finalist failure → skip it, continue the run.
+        console.error(`[lead-discovery] finalist ${domain} failed, skipping:`, err);
       }
-    }
+    });
 
-    // (7) Finalize — LeadRun + audit + activity in one transaction.
+    // (7) Finalize — LeadRun + audit + activity in one transaction. The legacy
+    //     LeadRun columns keep aggregate counts (found includes rescued; ghost
+    //     includes rejudged); the richer stage-aware breakdown lives in the audit.
+    const totalFound = found + rescued;
+    const totalGhost = ghost + rejudged;
     await prisma.$transaction(async (tx) => {
       await tx.leadRun.update({
         where: { id: runId },
         data: {
           evaluatedCount: evaluated,
-          foundCount: found,
-          ghostCount: ghost,
+          foundCount: totalFound,
+          ghostCount: totalGhost,
           status: "done",
           finishedAt: new Date(),
         },
@@ -581,14 +665,30 @@ export async function runDiscovery(opts: {
         action: "run.leadDiscovery",
         targetType: "LeadRun",
         targetId: runId,
-        changes: { segmentId: segment.id, evaluated, found, ghost, errors, companyCap, timeBudgetMs },
+        changes: {
+          segmentId: segment.id,
+          poolFresh: rankedFresh.length,
+          poolReadmit: rankedReadmit.length,
+          finalists: finalists.length,
+          evaluated,
+          found,
+          rescued,
+          ghost,
+          rejudged,
+          errors,
+          remaining: remainingEstimate,
+          companyCap,
+          timeBudgetMs,
+        },
       });
       await writeActivity(tx, {
         actor: agentActor("lead-discovery"),
         type: "ai",
         target: segment.name,
         detail:
-          `Discovery run — ${found} leads, ${ghost} ghosts from ${evaluated} evaluated` +
+          `Discovery run — ${found} new` +
+          (rescued ? ` + ${rescued} rescued` : "") +
+          `, ${totalGhost} filtered from ${evaluated} evaluated` +
           (errors ? ` (${errors} write error${errors === 1 ? "" : "s"})` : ""),
         link: "/targeting",
       });
@@ -602,5 +702,18 @@ export async function runDiscovery(opts: {
     throw err;
   }
 
-  return { runId, evaluated, found, ghost, errors, sampleLeads: writtenSamples };
+  return {
+    runId,
+    poolFresh: summaryPool.fresh,
+    poolReadmit: summaryPool.readmit,
+    finalists: summaryPool.finalists,
+    evaluated,
+    found,
+    rescued,
+    ghost,
+    rejudged,
+    errors,
+    remaining: summaryPool.remaining,
+    sampleLeads: writtenSamples,
+  };
 }
