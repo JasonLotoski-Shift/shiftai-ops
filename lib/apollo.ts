@@ -108,8 +108,27 @@ export type ApolloCompany = {
   employeeEstimate?: number;
   industry?: string;
   headquarters?: string;
+  revenue?: number; // organization_revenue (USD; treated loosely)
+  headcountGrowth12mo?: number; // organization_headcount_twelve_month_growth
   raw: unknown;
 };
+
+// Pure org -> ApolloCompany mapping (extracted so it is unit-testable).
+export function mapSearchOrg(o: unknown): ApolloCompany {
+  const r = (o ?? {}) as Record<string, unknown>;
+  const num = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  return {
+    name: typeof r.name === "string" ? r.name : "",
+    domain: normalizeDomain((r.primary_domain as string) || (r.website_url as string)),
+    website: typeof r.website_url === "string" ? r.website_url : undefined,
+    employeeEstimate: num(r.estimated_num_employees),
+    industry: typeof r.industry === "string" ? r.industry : undefined,
+    revenue: num(r.organization_revenue),
+    headcountGrowth12mo: num(r.organization_headcount_twelve_month_growth),
+    raw: o,
+  };
+}
 
 /** POST /mixed_companies/search — credit-free firmographic search. */
 export async function apolloSearchCompanies(filters: {
@@ -128,28 +147,37 @@ export async function apolloSearchCompanies(filters: {
   });
   const json = await apolloPost("/mixed_companies/search", body);
   const orgs = Array.isArray(json.organizations) ? json.organizations : [];
-  const companies = orgs
-    .map((o): ApolloCompany => {
-      const r = (o ?? {}) as Record<string, unknown>;
-      return {
-        name: typeof r.name === "string" ? r.name : "",
-        domain: normalizeDomain(
-          (r.primary_domain as string) || (r.website_url as string),
-        ),
-        website: typeof r.website_url === "string" ? r.website_url : undefined,
-        employeeEstimate:
-          typeof r.estimated_num_employees === "number"
-            ? r.estimated_num_employees
-            : undefined,
-        industry: typeof r.industry === "string" ? r.industry : undefined,
-        raw: o,
-      };
-    })
-    .filter((c) => c.domain);
+  const companies = orgs.map(mapSearchOrg).filter((c) => c.domain);
   const pagination = (json.pagination ?? {}) as Record<string, unknown>;
   const total =
     typeof pagination.total_entries === "number" ? pagination.total_entries : 0;
   return { companies, total };
+}
+
+/** Fetch up to `limit` companies across pages (per_page caps at 100). */
+export async function apolloSearchCompaniesWide(filters: {
+  locations?: string[];
+  employeeRanges?: string[];
+  keywordTags?: string[];
+  limit?: number;
+}): Promise<{ companies: ApolloCompany[]; total: number }> {
+  const limit = Math.min(filters.limit ?? 150, 500);
+  const out: ApolloCompany[] = [];
+  let total = 0;
+  for (let page = 1; out.length < limit && page <= 5; page++) {
+    const { companies, total: t } = await apolloSearchCompanies({
+      locations: filters.locations,
+      employeeRanges: filters.employeeRanges,
+      keywordTags: filters.keywordTags,
+      page,
+      perPage: 100,
+    });
+    total = t;
+    if (companies.length === 0) break;
+    out.push(...companies);
+    if (out.length >= total) break;
+  }
+  return { companies: out.slice(0, limit), total };
 }
 
 // ── People (net-new search — credit-free; name often locked/null) ─────────────
