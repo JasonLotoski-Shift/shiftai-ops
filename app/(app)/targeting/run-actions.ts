@@ -43,7 +43,9 @@ export async function runSegmentSearch(segmentId: string): Promise<{ runId: stri
     try {
       await runDiscovery({
         segmentId,
-        companyCap: 10,
+        wideLimit: 150, // stage-1 Apollo pool (free)
+        companyCap: 40, // finalists enriched per run
+        concurrency: 6, // stage-2 bounded parallelism
         timeBudgetMs: 220_000, // ~3.7 min hard wall-clock budget
         runId: run.id,
       });
