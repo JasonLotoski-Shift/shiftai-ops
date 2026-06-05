@@ -28,7 +28,7 @@ import { ManualDeliverableForm } from "@/components/manual-deliverable-form";
 import { DeliverableTasks } from "@/components/deliverable-tasks";
 import { SendInvoiceModal } from "@/components/send-invoice-modal";
 import { ProjectDropPanel } from "@/components/project-drop-panel";
-import { ArrowLeft, Bot, Check, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink, FileInput } from "lucide-react";
+import { ArrowLeft, Bot, Check, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink } from "lucide-react";
 
 export default async function ProjectDetailPage({
   params,
@@ -250,13 +250,6 @@ export default async function ProjectDetailPage({
               <Terminal size={13} strokeWidth={1.5} />
               Workspace
             </Button>
-            <Link
-              href={`/ingest?focus=project:${project.id}`}
-              className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
-            >
-              <FileInput size={13} strokeWidth={1.5} />
-              Ingest
-            </Link>
           </>
         }
       />

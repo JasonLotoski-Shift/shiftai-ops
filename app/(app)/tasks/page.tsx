@@ -8,13 +8,20 @@ export default async function TasksPage() {
   const session = await auth();
   const currentPartnerId = session?.user?.partnerId ?? "";
 
+  // Archived milestones auto-hide from the board after 7 days (kept in the DB).
+  const archiveCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
   // The firm-wide board. Milestones are the universal parent (epics with
   // sub-tasks); orphan tasks (no milestone) ride alongside them. Filtering
   // happens client-side in TasksBoard.
   const [milestones, orphanTasks, partners, projects, clients, deals] = await Promise.all([
     // Every milestone with its owner, sub-tasks (+ each task's owner), and the
-    // record it's tied to. The board groups by boardStatus, not status.
+    // record it's tied to. The board groups by boardStatus, not status. Skip
+    // milestones archived more than 7 days ago (the Archive column auto-hide).
     prisma.milestone.findMany({
+      where: {
+        OR: [{ archivedAt: null }, { archivedAt: { gte: archiveCutoff } }],
+      },
       include: {
         owner: { select: { id: true, name: true, initials: true } },
         tasks: {
@@ -66,6 +73,7 @@ export default async function TasksPage() {
     category: m.category ?? "other",
     categoryLabel: m.categoryLabel,
     dueDate: m.dueDate ? m.dueDate.toISOString() : null,
+    archivedAt: m.archivedAt ? m.archivedAt.toISOString() : null,
     projectId: m.projectId,
     clientId: m.clientId,
     dealId: m.dealId,
@@ -106,10 +114,11 @@ export default async function TasksPage() {
   const boardClients = clients.map((c) => ({ id: c.id, company: c.company ?? "Untitled client" }));
   const boardDeals = deals.map((d) => ({ id: d.id, company: d.company ?? "Untitled deal" }));
 
-  // Stats over orphan tasks + every milestone sub-task.
+  // Stats over orphan tasks + every active milestone's sub-tasks (archived
+  // milestones drop out of the open/high/mine counts).
   const allTasks = [
     ...boardOrphans,
-    ...boardMilestones.flatMap((m) => m.tasks),
+    ...boardMilestones.filter((m) => !m.archivedAt).flatMap((m) => m.tasks),
   ];
   const openTasks = allTasks.filter((t) => !t.done);
   const highPriority = openTasks.filter((t) => t.priority === "high").length;

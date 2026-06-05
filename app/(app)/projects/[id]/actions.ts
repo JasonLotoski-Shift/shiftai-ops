@@ -458,7 +458,7 @@ export async function updateMilestoneBoardStatus(milestoneId: string, boardStatu
 
   const before = await prisma.milestone.findUnique({
     where: { id: milestoneId },
-    select: { id: true, projectId: true, boardStatus: true },
+    select: { id: true, projectId: true, boardStatus: true, archivedAt: true },
   });
   if (!before) throw new Error("Milestone not found");
 
@@ -468,6 +468,8 @@ export async function updateMilestoneBoardStatus(milestoneId: string, boardStatu
       data: {
         boardStatus: boardStatus as TaskStatus,
         status: BOARD_TO_MILESTONE_STATUS[boardStatus as TaskStatus],
+        // Moving a milestone into a real column un-archives it.
+        archivedAt: null,
       },
     });
     await writeAudit(tx, {
@@ -475,7 +477,53 @@ export async function updateMilestoneBoardStatus(milestoneId: string, boardStatu
       action: "update.milestone.boardStatus",
       targetType: "Milestone",
       targetId: milestoneId,
-      changes: { boardStatus: { before: before.boardStatus, after: boardStatus } },
+      changes: {
+        boardStatus: { before: before.boardStatus, after: boardStatus },
+        ...(before.archivedAt ? { unarchived: true } : {}),
+      },
+    });
+  });
+
+  revalidatePath("/tasks");
+  if (before.projectId) revalidatePath(`/projects/${before.projectId}`);
+  return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// setMilestoneArchived — move a milestone into (or out of) the board's
+// Archive column. archivedAt is the timestamp the 7-day auto-hide reads:
+// the Task Board omits milestones archived more than 7 days ago. Archiving
+// leaves the milestone's health `status` untouched (it's off the funnel).
+// ──────────────────────────────────────────────────────────────────────
+
+export async function setMilestoneArchived(milestoneId: string, archived: boolean) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const before = await prisma.milestone.findUnique({
+    where: { id: milestoneId },
+    select: { id: true, projectId: true, archivedAt: true },
+  });
+  if (!before) throw new Error("Milestone not found");
+
+  // No-op if already in the requested state (keeps the original archive time).
+  if (archived === Boolean(before.archivedAt)) return { ok: true as const };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.milestone.update({
+      where: { id: milestoneId },
+      data: { archivedAt: archived ? new Date() : null },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: archived ? "archive.milestone" : "unarchive.milestone",
+      targetType: "Milestone",
+      targetId: milestoneId,
+      changes: { archived },
     });
   });
 

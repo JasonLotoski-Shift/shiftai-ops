@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Mail, FileText, Pencil, ClipboardList, ListChecks, CalendarPlus, FlaskConical, Presentation, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui";
+import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
 import { DraftProposalModal } from "@/components/draft-proposal-modal";
 import { DealEditModal } from "@/components/deal-edit-modal";
@@ -45,35 +46,25 @@ const DOC_META: Record<DealDocSkill, { title: string; icon: LucideIcon; focusLab
   },
 };
 
+/* ──────────────────────────────────────────────────────────────────────
+   Header buttons — the deal's primary CTAs (Edit + Convert → Client). The
+   AI/doc actions live in DealActionsPanel (under the title). Kept here so the
+   header keeps its main workflow buttons.
+   ────────────────────────────────────────────────────────────────────── */
+
 export function DealActions({
   deal,
   partner,
   contact,
-  hasPrototype = false,
 }: {
   deal: Deal;
   partner: Partner | null;
   contact: Contact | null;
-  /** Whether a prototype Artifact already exists — gates the deck action. */
-  hasPrototype?: boolean;
 }) {
   const [convertOpen, setConvertOpen] = useState(false);
-  const [proposalOpen, setProposalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [docSkill, setDocSkill] = useState<DealDocSkill | null>(null);
-  const [emailOpen, setEmailOpen] = useState(false);
-  const [engineMode, setEngineMode] = useState<"prototype" | "deck" | null>(null);
 
   const signed = deal.stage === "signed";
-
-  // Emphasize an action on the stage(s) it belongs to; available (ghost) elsewhere.
-  const v = (stages: Deal["stage"][]) => (stages.includes(deal.stage) ? "secondary" : "ghost");
-
-  // Auto-open from the dashboard Quick Action (routes here with ?qa=proposal).
-  const searchParams = useSearchParams();
-  useEffect(() => {
-    if (searchParams.get("qa") === "proposal") setProposalOpen(true);
-  }, [searchParams]);
 
   return (
     <>
@@ -82,47 +73,6 @@ export function DealActions({
           <Pencil size={13} strokeWidth={1.5} />
           Edit
         </Button>
-      )}
-
-      {!signed && (
-        <>
-          <Button variant={v(["discovery"])} size="sm" onClick={() => setDocSkill("discovery-prep")}>
-            <ClipboardList size={13} strokeWidth={1.5} />
-            Discovery prep
-          </Button>
-          {contact && (
-            <Button variant={v(["discovery", "discussion"])} size="sm" onClick={() => setEmailOpen(true)}>
-              <Mail size={13} strokeWidth={1.5} />
-              Follow-up email
-            </Button>
-          )}
-          <Button variant={v(["discovery", "discussion"])} size="sm" onClick={() => setDocSkill("client-survey")}>
-            <ListChecks size={13} strokeWidth={1.5} />
-            Survey
-          </Button>
-          <Button variant={v(["qualified", "discovery"])} size="sm" onClick={() => setDocSkill("book-meeting")}>
-            <CalendarPlus size={13} strokeWidth={1.5} />
-            Book meeting
-          </Button>
-          <Button variant={v(["proposal", "negotiation"])} size="sm" onClick={() => setProposalOpen(true)}>
-            <FileText size={13} strokeWidth={1.5} />
-            Draft proposal
-          </Button>
-          <Button variant={v(["proposal"])} size="sm" onClick={() => setEngineMode("prototype")}>
-            <FlaskConical size={13} strokeWidth={1.5} />
-            Build prototype
-          </Button>
-          <Button
-            variant={v(["proposal"])}
-            size="sm"
-            onClick={() => setEngineMode("deck")}
-            disabled={!hasPrototype}
-            title={hasPrototype ? undefined : "Build a prototype first — the deck links to it"}
-          >
-            <Presentation size={13} strokeWidth={1.5} />
-            Build deck
-          </Button>
-        </>
       )}
 
       <Button variant="primary" size="sm" onClick={() => setConvertOpen(true)}>
@@ -136,6 +86,106 @@ export function DealActions({
         partner={partner}
         contact={contact}
       />
+
+      {editOpen && <DealEditModal deal={deal} onClose={() => setEditOpen(false)} />}
+    </>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Actions panel — the AI/doc generators, as explainer boxes under the title.
+   Hidden once the deal is signed (those actions belong to the open pipeline).
+   ────────────────────────────────────────────────────────────────────── */
+
+export function DealActionsPanel({
+  deal,
+  partner,
+  contact,
+  hasPrototype = false,
+}: {
+  deal: Deal;
+  partner: Partner | null;
+  contact: Contact | null;
+  /** Whether a prototype Artifact already exists — gates the deck action. */
+  hasPrototype?: boolean;
+}) {
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [docSkill, setDocSkill] = useState<DealDocSkill | null>(null);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [engineMode, setEngineMode] = useState<"prototype" | "deck" | null>(null);
+
+  const signed = deal.stage === "signed";
+
+  // Auto-open from the dashboard Quick Action (routes here with ?qa=proposal).
+  const searchParams = useSearchParams();
+  const qaProposal = searchParams.get("qa") === "proposal";
+  useEffect(() => {
+    if (qaProposal) setProposalOpen(true);
+  }, [qaProposal]);
+
+  if (signed) return null;
+
+  const actions: ActionBox[] = [
+    {
+      key: "discovery-prep",
+      icon: ClipboardList,
+      title: "Discovery prep",
+      description: "Brief for the discovery call — goals and questions to ask.",
+      onClick: () => setDocSkill("discovery-prep"),
+    },
+    ...(contact
+      ? [
+          {
+            key: "followup",
+            icon: Mail,
+            title: "Follow-up email",
+            description: "Recap the call and propose the next step.",
+            onClick: () => setEmailOpen(true),
+          } as ActionBox,
+        ]
+      : []),
+    {
+      key: "survey",
+      icon: ListChecks,
+      title: "Survey",
+      description: "Post-call survey to confirm fit and priorities.",
+      onClick: () => setDocSkill("client-survey"),
+    },
+    {
+      key: "book-meeting",
+      icon: CalendarPlus,
+      title: "Book meeting",
+      description: "Draft a short message to book the next call.",
+      onClick: () => setDocSkill("book-meeting"),
+    },
+    {
+      key: "draft-proposal",
+      icon: FileText,
+      title: "Draft proposal",
+      description: "Draft a tailored SOW from the IP library.",
+      onClick: () => setProposalOpen(true),
+    },
+    {
+      key: "build-prototype",
+      icon: FlaskConical,
+      title: "Build prototype",
+      description: "Build an HTML prototype of what we'd ship.",
+      onClick: () => setEngineMode("prototype"),
+    },
+    {
+      key: "build-deck",
+      icon: Presentation,
+      title: "Build deck",
+      description: "Turn the prototype into a pitch deck.",
+      onClick: () => setEngineMode("deck"),
+      disabled: !hasPrototype,
+      disabledReason: "Build a prototype first — the deck links to it",
+    },
+  ];
+
+  return (
+    <>
+      <ActionsPanel actions={actions} forceOpen={qaProposal} />
 
       {proposalOpen && (
         <DraftProposalModal
@@ -176,8 +226,6 @@ export function DealActions({
           onClose={() => setEngineMode(null)}
         />
       )}
-
-      {editOpen && <DealEditModal deal={deal} onClose={() => setEditOpen(false)} />}
     </>
   );
 }

@@ -19,6 +19,7 @@ import {
   createMilestoneTask,
   updateMilestone,
 } from "@/app/(app)/projects/[id]/actions";
+import { SubtaskDeleteControl } from "@/components/subtask-delete";
 import { cn } from "@/lib/cn";
 import {
   Check,
@@ -474,7 +475,7 @@ export function MilestoneEpic({
               {milestone.tasks.map((t) => (
                 <div
                   key={t.id}
-                  className="grid grid-cols-[20px_1fr_90px_110px] gap-3 items-start py-2"
+                  className="group grid grid-cols-[20px_1fr_90px_110px_28px] gap-3 items-start py-2"
                 >
                   <button
                     onClick={() => toggleTask(t.id)}
@@ -507,6 +508,9 @@ export function MilestoneEpic({
                     ) : (
                       <span className="w-5 h-5 rounded-full border border-dashed border-bone-mute/50 inline-flex items-center justify-center text-[9px] text-bone-mute shrink-0" title="Unassigned">—</span>
                     )}
+                  </div>
+                  <div className="flex items-center justify-end pt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <SubtaskDeleteControl taskId={t.id} />
                   </div>
                 </div>
               ))}

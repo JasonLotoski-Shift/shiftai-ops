@@ -721,6 +721,11 @@ model Milestone {
   // moves through the funnel on the Task Board; `status` above stays for the
   // timeline and is synced from this on the board.
   boardStatus TaskStatus      @default(todo)
+  // When set, the milestone has been moved to the board's Archive column. The
+  // timestamp drives the 7-day auto-hide: the Task Board query omits milestones
+  // archived more than 7 days ago (they stay in the DB, just off the board).
+  // Moving an archived milestone back into a real column clears this.
+  archivedAt  DateTime?
 
   // Universal parent: a milestone may be tied to a project, a deal/client, or
   // nothing (firm-level BD/Admin). All scope FKs are nullable.

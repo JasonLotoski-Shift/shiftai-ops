@@ -10,8 +10,10 @@ import {
   Sparkles,
   ShieldAlert,
   Check,
+  FileInput,
 } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
+import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { cn } from "@/lib/cn";
 import type { ContactModel as Contact } from "@/lib/generated/prisma/models";
 import { interactionLabels } from "@/lib/data/seed";
@@ -41,30 +43,54 @@ export function ContactActions({
   // Auto-open the matching modal when launched from a dashboard Quick Action
   // (which routes here with ?qa=email / ?qa=enrich after the contact is picked).
   const searchParams = useSearchParams();
+  const qa = searchParams.get("qa");
   useEffect(() => {
-    const qa = searchParams.get("qa");
     if (qa === "email") setOpen("email");
     else if (qa === "enrich") setOpen("enrich");
-  }, [searchParams]);
+  }, [qa]);
+
+  const actions: ActionBox[] = [
+    {
+      key: "email",
+      icon: Mail,
+      title: "Draft email",
+      description: "Draft an email to this contact.",
+      onClick: () => setOpen("email"),
+      gold: true,
+    },
+    {
+      key: "log",
+      icon: CalendarPlus,
+      title: "Log interaction",
+      description: "Record a call, meeting, or email.",
+      onClick: () => setOpen("log"),
+    },
+    {
+      key: "search",
+      icon: Globe,
+      title: "Enrich from web",
+      description: "Find public facts and add them to the record.",
+      onClick: () => setOpen("search"),
+    },
+    {
+      key: "enrich",
+      icon: Sparkles,
+      title: "AI enrich",
+      description: "Build the record from the logged interactions.",
+      onClick: () => setOpen("enrich"),
+    },
+    {
+      key: "ingest",
+      icon: FileInput,
+      title: "Ingest",
+      description: "Drop in notes or a transcript to file against this contact.",
+      href: `/ingest?focus=contact:${contact.id}`,
+    },
+  ];
 
   return (
     <>
-      <Button variant="primary" size="sm" onClick={() => setOpen("email")}>
-        <Mail size={13} strokeWidth={1.5} />
-        Draft email
-      </Button>
-      <Button variant="secondary" size="sm" onClick={() => setOpen("log")}>
-        <CalendarPlus size={13} strokeWidth={1.5} />
-        Log interaction
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => setOpen("search")}>
-        <Globe size={13} strokeWidth={1.5} />
-        Enrich from web
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => setOpen("enrich")}>
-        <Sparkles size={13} strokeWidth={1.5} />
-        AI enrich
-      </Button>
+      <ActionsPanel actions={actions} forceOpen={qa === "email" || qa === "enrich"} />
 
       {open === "email" && <DraftEmailModal contactId={contact.id} contactName={contact.name} partnerName={partnerName} onClose={() => setOpen(null)} />}
       {open === "log" && <LogInteractionModal contact={contact} onClose={() => setOpen(null)} />}

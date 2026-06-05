@@ -46,6 +46,27 @@ export const updates: Update[] = [
   {
     date: "2026-06-04",
     tag: "improved",
+    title: "Page actions are tucked into one tidy “Actions” menu",
+    detail:
+      "On a pipeline company, a contact, or a client, the row of buttons up top is now a single Actions menu just under the title. Open it and each action shows in a box that says what it does — Discovery prep, Follow-up email, Draft email, Enrich, Build prototype, Ingest, and the rest. The main buttons stay where they were (Convert → Client on a deal, + New project on a client, Edit). The project page's Ingest button was retired in the same tidy-up.",
+  },
+  {
+    date: "2026-06-04",
+    tag: "new",
+    title: "Task Board: archive milestones, and delete a sub-task",
+    detail:
+      "Milestones now have an Archive column on the Task Board. Drag a milestone there (or hit Archive in its detail) to get it off your active columns — archived milestones drop off the board on their own after 7 days, but stay in the system. You can also delete a sub-task off a milestone now, either on the project page or in the board's milestone detail.",
+  },
+  {
+    date: "2026-06-04",
+    tag: "fixed",
+    title: "A stuck “Scan running” banner can now be cleared",
+    detail:
+      "If a contact scan stalls partway, the Import banner no longer spins forever. It flags the scan as stalled and gives you a Dismiss button so you can clear it and run a fresh one.",
+  },
+  {
+    date: "2026-06-04",
+    tag: "improved",
     title: "The sidebar is reorganised — four clear groups",
     detail:
       "The left menu is grouped by what you're doing. Up top: Dashboard, Pipeline, Projects, Task Board — the day-to-day. A new collapsible Import group holds the three ways leads come in — Contacts (your uploads), AI Targeting (the lead hunt), and Ingest. Firm gathers Financials, your Contacts and Clients lists, Messages, and Library. Other holds What's new, How it works, Agents & MCPs, and Settings. A few names changed to say what they are: \"Import Contacts\" is now just Contacts, \"Targeting\" is AI Targeting, and the two list pages read \"Contacts List\" and \"Clients List\".",

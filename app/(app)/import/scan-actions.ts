@@ -24,7 +24,13 @@ import {
 } from "@/lib/contact-scan";
 import type { ScanCriteria } from "@/lib/types";
 
-type ScanStatus = { id: string; status: string; total: number; done: number };
+type ScanStatus = { id: string; status: string; total: number; done: number; stale: boolean };
+
+// A non-terminal run older than this with no end is treated as stalled (e.g. the
+// background submit didn't survive, or a batch was never ingested). The banner
+// then offers a Dismiss instead of spinning forever. Inline scans finish in
+// seconds; batch scans almost always finish well inside an hour.
+const SCAN_STALE_MS = 60 * 60 * 1000;
 
 // Normalize/clamp partner-supplied criteria before it's stored + sent to the model.
 function cleanCriteria(input: Partial<ScanCriteria> | undefined): ScanCriteria {
@@ -108,14 +114,16 @@ export async function getScanRunStatus(scanRunId: string): Promise<ScanStatus | 
     where: { id: scanRunId, partnerLeadId: partnerId },
     select: {
       id: true, status: true, batchApiId: true, totalCount: true,
-      scoredCount: true, errorCount: true, contactIds: true,
+      scoredCount: true, errorCount: true, contactIds: true, startedAt: true,
     },
   });
   if (!run) return null;
 
-  const payload = (status: string, done: number): ScanStatus => ({
-    id: run.id, status, total: run.totalCount, done: Math.min(run.totalCount, done),
-  });
+  const payload = (status: string, done: number): ScanStatus => {
+    const terminal = status === "done" || status === "error";
+    const stale = !terminal && Date.now() - run.startedAt.getTime() > SCAN_STALE_MS;
+    return { id: run.id, status, total: run.totalCount, done: Math.min(run.totalCount, done), stale };
+  };
 
   if (run.status !== "submitted" || !run.batchApiId) {
     return payload(run.status, run.scoredCount + run.errorCount);

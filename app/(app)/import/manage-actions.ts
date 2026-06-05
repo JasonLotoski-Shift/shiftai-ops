@@ -80,6 +80,35 @@ export async function deleteImportedContacts(ids: string[]): Promise<{ deleted: 
   return { deleted: res.count };
 }
 
+/** Dismiss a stuck/unwanted in-flight scan so its "Scan running…" banner clears.
+ *  Only a non-terminal run (pending/submitted/scoring) is touched — a done/error
+ *  run is left as-is. Any partial results already written stay in the report. */
+export async function cancelScanRun(scanRunId: string): Promise<{ ok: true }> {
+  const { partnerId, label } = await requirePartner();
+  const run = await prisma.scanRun.findFirst({
+    where: { id: scanRunId, partnerLeadId: partnerId },
+    select: { id: true, status: true, title: true },
+  });
+  if (!run) throw new Error("Scan not found");
+
+  if (run.status !== "done" && run.status !== "error") {
+    await prisma.scanRun.update({
+      where: { id: run.id },
+      data: { status: "error", finishedAt: new Date() },
+    });
+    await writeAudit(prisma, {
+      actor: partnerActor(partnerId, label),
+      action: "cancel.scanRun",
+      targetType: "ScanRun",
+      targetId: run.id,
+      changes: { title: run.title, from: run.status },
+    }).catch(() => {});
+  }
+
+  revalidatePath("/import");
+  return { ok: true };
+}
+
 /** Delete a scan report (the run + its result rows; the master contacts stay). */
 export async function deleteScanReport(scanRunId: string): Promise<{ ok: true }> {
   const { partnerId, label } = await requirePartner();

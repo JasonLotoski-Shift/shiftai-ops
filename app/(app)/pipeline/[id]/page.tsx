@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Hairline, Avatar, EmptyState } from "@/components/ui";
-import { DealActions } from "@/components/deal-actions";
+import { DealActions, DealActionsPanel } from "@/components/deal-actions";
 import { MarkRepliedButton } from "@/components/mark-replied-button";
 import { EstimateEditor } from "@/components/billing/estimate-editor";
 import { prisma } from "@/lib/prisma";
@@ -70,10 +70,12 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       <Header
         eyebrow={`Pipeline · ${stageLabels[deal.stage]}`}
         title={deal.company}
-        actions={<DealActions deal={deal} partner={partner} contact={contact} hasPrototype={hasPrototype} />}
+        actions={<DealActions deal={deal} partner={partner} contact={contact} />}
       />
 
       <div className="px-8 py-8 flex flex-col gap-8">
+        <DealActionsPanel deal={deal} partner={partner} contact={contact} hasPrototype={hasPrototype} />
+
         <Link href="/pipeline" className="label hover:text-bone flex items-center gap-2">
           <ArrowLeft size={12} strokeWidth={1.5} />
           Back to board

@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 import { Tabs } from "@/components/ui";
 import { ImportUpload } from "@/components/import-upload";
 import { ImportMasterTable, type MasterRow } from "@/components/import-master-table";
 import { ScanReportView } from "@/components/scan-report-view";
 import { NewScanModal, type SegmentSeed } from "@/components/new-scan-modal";
 import { getScanRunStatus } from "@/app/(app)/import/scan-actions";
+import { cancelScanRun } from "@/app/(app)/import/manage-actions";
+import { cn } from "@/lib/cn";
 import type { ScanCriteria } from "@/lib/types";
 
 export type ReportMeta = {
@@ -41,7 +43,8 @@ export function ImportView({
   const [tab, setTab] = useState<string>("master");
   const [modalOpen, setModalOpen] = useState(false);
   const [runningScanId, setRunningScanId] = useState<string | null>(activeScanRunId);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; stale: boolean } | null>(null);
+  const [dismissing, setDismissing] = useState(false);
 
   // Poll a running scan; refresh + reveal its report when it finishes.
   const refreshRef = useRef(router.refresh);
@@ -59,13 +62,16 @@ export function ImportView({
           setProgress(null);
           return;
         }
-        setProgress({ done: s.done, total: s.total });
+        setProgress({ done: s.done, total: s.total, stale: s.stale });
         if (s.status === "done" || s.status === "error") {
           setRunningScanId(null);
           setProgress(null);
           refreshRef.current();
           return;
         }
+        // A stalled run won't self-resolve — stop polling and let the user
+        // dismiss it (the banner switches to the stalled state).
+        if (s.stale) return;
         timer = setTimeout(poll, 8000);
       } catch {
         if (!cancelled) timer = setTimeout(poll, 8000);
@@ -78,6 +84,23 @@ export function ImportView({
     };
   }, [runningScanId]);
 
+  // Dismiss a stuck/unwanted scan: mark it ended server-side, clear the banner.
+  async function dismissScan() {
+    const id = runningScanId;
+    if (!id) return;
+    setDismissing(true);
+    try {
+      await cancelScanRun(id);
+    } catch (err) {
+      console.error("cancelScanRun failed:", err);
+    } finally {
+      setRunningScanId(null);
+      setProgress(null);
+      setDismissing(false);
+      refreshRef.current();
+    }
+  }
+
   // If the active tab points at a report that no longer exists, fall back.
   useEffect(() => {
     if (tab !== "master" && !reports.some((r) => r.id === tab)) setTab("master");
@@ -86,7 +109,7 @@ export function ImportView({
   function onScanStarted(scanRunId: string) {
     setModalOpen(false);
     setRunningScanId(scanRunId);
-    setProgress({ done: 0, total: 0 });
+    setProgress({ done: 0, total: 0, stale: false });
     setTab(scanRunId);
     router.refresh(); // surface the new (pending) report tab immediately
   }
@@ -103,11 +126,36 @@ export function ImportView({
       <ImportUpload />
 
       {runningScanId && (
-        <div className="flex items-center gap-2 px-3 py-2 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
-          <Loader2 size={13} strokeWidth={1.5} className="text-track-gold animate-spin" />
-          <span className="text-[12px] text-bone-dim">
-            Scan running{progress && progress.total > 0 ? ` — ${progress.done}/${progress.total}` : "…"}. You can keep working; the report fills in here.
+        <div
+          className={cn(
+            "flex items-center gap-2 px-3 py-2 border rounded-[var(--radius)]",
+            progress?.stale
+              ? "border-flag-red/40 bg-flag-red/5"
+              : "border-track-gold/40 bg-track-gold-dim/10",
+          )}
+        >
+          {progress?.stale ? (
+            <AlertTriangle size={13} strokeWidth={1.5} className="text-flag-red shrink-0" />
+          ) : (
+            <Loader2 size={13} strokeWidth={1.5} className="text-track-gold animate-spin shrink-0" />
+          )}
+          <span className="text-[12px] text-bone-dim flex-1">
+            {progress?.stale ? (
+              "This scan looks stalled — it started a while ago and hasn't finished. Dismiss it, then run a new scan if you still need one."
+            ) : (
+              <>
+                Scan running{progress && progress.total > 0 ? ` — ${progress.done}/${progress.total}` : "…"}. You can keep
+                working; the report fills in here.
+              </>
+            )}
           </span>
+          <button
+            onClick={dismissScan}
+            disabled={dismissing}
+            className="shrink-0 text-[11px] text-bone-mute hover:text-bone underline disabled:opacity-50"
+          >
+            {dismissing ? "Dismissing…" : "Dismiss"}
+          </button>
         </div>
       )}
 

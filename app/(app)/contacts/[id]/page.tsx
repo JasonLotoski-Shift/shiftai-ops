@@ -17,7 +17,6 @@ import {
   Calendar,
   Send,
   Inbox,
-  FileInput,
 } from "lucide-react";
 
 // Keys use Prisma enum identifiers (underscored), matching @map'd DB values.
@@ -50,24 +49,11 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
 
   return (
     <>
-      <Header
-        eyebrow={contact.title}
-        title={contact.name}
-        actions={
-          <>
-            <ContactActions contact={contact} partnerName={partner?.name} />
-            <Link
-              href={`/ingest?focus=contact:${contact.id}`}
-              className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
-            >
-              <FileInput size={13} strokeWidth={1.5} />
-              Ingest
-            </Link>
-          </>
-        }
-      />
+      <Header eyebrow={contact.title} title={contact.name} />
 
       <div className="px-8 py-8 flex flex-col gap-8">
+        <ContactActions contact={contact} partnerName={partner?.name} />
+
         <div className="flex items-center justify-between">
           <Link href="/contacts" className="label hover:text-bone flex items-center gap-2">
             <ArrowLeft size={12} strokeWidth={1.5} />
@@ -112,9 +98,9 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                 <div className="flex flex-col gap-1">
                   <Label gold>Thin record</Label>
                   <p className="text-[13px] text-bone leading-relaxed">
-                    No persona or key facts yet. Use <span className="text-track-gold">Web search</span> or{" "}
-                    <span className="text-track-gold">AI enrich</span> (top right) to build this record from public
-                    sources and the communications log. Additions merge — nothing here gets overwritten.
+                    No persona or key facts yet. Use <span className="text-track-gold">Enrich from web</span> or{" "}
+                    <span className="text-track-gold">AI enrich</span> (in Actions, under the title) to build this record
+                    from public sources and the communications log. Additions merge — nothing here gets overwritten.
                   </p>
                 </div>
               </CardBody>

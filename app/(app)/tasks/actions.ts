@@ -318,3 +318,40 @@ export async function updateTask(
   if (before.projectId) revalidatePath(`/projects/${before.projectId}`);
   return { ok: true as const, title };
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// deleteTask — remove a task (used for milestone sub-tasks on the project
+// epic + the board detail modal, and orphan tasks). A system message that
+// linked to it (taskId) loses the link (FK is SET NULL) — no card to delete.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function deleteTask(taskId: string) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const before = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, title: true, projectId: true, milestoneId: true },
+  });
+  if (!before) throw new Error("Task not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.task.delete({ where: { id: taskId } });
+    await writeAudit(tx, {
+      actor,
+      action: "delete.task",
+      targetType: "Task",
+      targetId: taskId,
+      changes: { title: before.title, milestoneId: before.milestoneId, projectId: before.projectId },
+    });
+  });
+
+  revalidatePath("/tasks");
+  revalidatePath("/dashboard");
+  if (before.projectId) revalidatePath(`/projects/${before.projectId}`);
+  return { ok: true as const };
+}

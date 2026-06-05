@@ -18,9 +18,11 @@ import {
   createMilestoneTask,
   updateMilestone,
   updateMilestoneBoardStatus,
+  setMilestoneArchived,
 } from "@/app/(app)/projects/[id]/actions";
 import { cn } from "@/lib/cn";
-import { Plus, X, Pencil, Check, Link2, Flag } from "lucide-react";
+import { Plus, X, Pencil, Check, Link2, Flag, Archive } from "lucide-react";
+import { SubtaskDeleteControl } from "@/components/subtask-delete";
 import type {
   BoardMilestone,
   PartnerOption,
@@ -82,6 +84,7 @@ export function MilestoneDetailModal({
     null | "title" | "owner" | "category" | "stage" | "date"
   >(null);
   const [busy, setBusy] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Field draft state.
@@ -143,6 +146,19 @@ export function MilestoneDetailModal({
   }
   function saveDate() {
     run(() => updateMilestone(milestone.id, { dueDate: date || null }));
+  }
+
+  async function toggleArchive() {
+    setArchiving(true);
+    setError(null);
+    try {
+      await setMilestoneArchived(milestone.id, !milestone.archivedAt);
+      onClose(); // parent refreshes the board
+    } catch (err) {
+      console.error("setMilestoneArchived failed:", err);
+      setError(err instanceof Error ? err.message : "Failed to update archive");
+      setArchiving(false);
+    }
   }
 
   async function addSubtask() {
@@ -241,9 +257,20 @@ export function MilestoneDetailModal({
               </Link>
             )}
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-bone-mute hover:text-bone shrink-0">
-            <X size={18} strokeWidth={1.5} />
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={toggleArchive}
+              disabled={archiving}
+              title={milestone.archivedAt ? "Restore from archive" : "Move to Archive"}
+              className="inline-flex items-center gap-1 text-[11px] text-bone-mute hover:text-bone disabled:opacity-50"
+            >
+              <Archive size={12} strokeWidth={1.5} />
+              {archiving ? "…" : milestone.archivedAt ? "Restore" : "Archive"}
+            </button>
+            <button onClick={onClose} aria-label="Close" className="text-bone-mute hover:text-bone">
+              <X size={18} strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
 
         {/* Fields grid */}
@@ -393,7 +420,7 @@ export function MilestoneDetailModal({
           {tasks.map((t) => (
             <div
               key={t.id}
-              className="grid grid-cols-[16px_1fr_150px_140px] gap-3 items-center py-1.5 border-b border-graphite last:border-b-0"
+              className="group grid grid-cols-[16px_1fr_150px_140px_24px] gap-3 items-center py-1.5 border-b border-graphite last:border-b-0"
             >
               <span
                 className={cn(
@@ -432,6 +459,9 @@ export function MilestoneDetailModal({
                   </option>
                 ))}
               </Select>
+              <div className="flex justify-end opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                <SubtaskDeleteControl taskId={t.id} />
+              </div>
             </div>
           ))}
 

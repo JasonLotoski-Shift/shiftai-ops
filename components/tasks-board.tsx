@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Card, Label, Badge, Button, Input, Textarea, Select, Avatar } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { createTask, updateTask, updateTaskStatus } from "@/app/(app)/tasks/actions";
-import { createMilestone, updateMilestoneBoardStatus } from "@/app/(app)/projects/[id]/actions";
+import { createMilestone, updateMilestoneBoardStatus, setMilestoneArchived } from "@/app/(app)/projects/[id]/actions";
 import { MilestoneDetailModal } from "@/components/milestone-detail-modal";
 import { cn } from "@/lib/cn";
-import { Plus, X, Flag, Link2, AlertTriangle } from "lucide-react";
+import { Plus, X, Flag, Link2, AlertTriangle, Archive } from "lucide-react";
 import type { PartnerModel as Partner } from "@/lib/generated/prisma/models";
 import type { TaskStatus, WorkCategory } from "@/lib/generated/prisma/enums";
 
@@ -47,6 +47,8 @@ export type BoardMilestone = {
   category: WorkCategory;
   categoryLabel: string | null;
   dueDate: string | null;
+  /** ISO timestamp when archived (in the Archive column), else null. */
+  archivedAt: string | null;
   projectId: string | null;
   clientId: string | null;
   dealId: string | null;
@@ -89,6 +91,17 @@ export const COLUMNS: { key: StatusKey; label: string }[] = [
   { key: "in_progress", label: "In Progress" },
   { key: "in_review", label: "In Review" },
   { key: "done", label: "Done" },
+];
+
+// The board renders the 4 status columns plus a terminal Archive column.
+// Archive isn't a TaskStatus — a milestone is "in Archive" iff archivedAt is set
+// (drag it there); the server hides anything archived more than 7 days ago. Only
+// milestones archive; orphan tasks can't be dropped into Archive.
+export type BoardColumnKey = StatusKey | "archive";
+export const ARCHIVE_HIDE_DAYS = 7;
+export const BOARD_COLUMNS: { key: BoardColumnKey; label: string }[] = [
+  ...COLUMNS,
+  { key: "archive", label: "Archive" },
 ];
 
 export const STATUS_LABEL: Record<StatusKey, string> = {
@@ -175,7 +188,7 @@ export function TasksBoard({
   const [milestones, setMilestones] = useState(initialMilestones);
   const [orphans, setOrphans] = useState(initialOrphans);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverCol, setDragOverCol] = useState<StatusKey | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<BoardColumnKey | null>(null);
 
   // Filters.
   const [filterOwner, setFilterOwner] = useState(""); // "" all · "__unassigned__" · partnerId
@@ -256,7 +269,7 @@ export function TasksBoard({
     setDragOverCol(null);
   }
 
-  async function onDrop(e: DragEvent, status: StatusKey) {
+  async function onDrop(e: DragEvent, status: BoardColumnKey) {
     e.preventDefault();
     setDragOverCol(null);
     const payload = e.dataTransfer.getData("text/plain");
@@ -267,9 +280,30 @@ export function TasksBoard({
 
     if (kind === "m") {
       const m = milestones.find((x) => x.id === id);
-      if (!m || m.boardStatus === status) return;
+      if (!m) return;
+
+      if (status === "archive") {
+        if (m.archivedAt) return; // already archived
+        const prev = milestones;
+        const nowIso = new Date().toISOString();
+        setMilestones((cur) => cur.map((x) => (x.id === id ? { ...x, archivedAt: nowIso } : x)));
+        try {
+          await setMilestoneArchived(id, true);
+          router.refresh();
+        } catch (err) {
+          console.error("setMilestoneArchived failed:", err);
+          setMilestones(prev);
+        }
+        return;
+      }
+
+      // Real column: no-op only if already there AND not archived (a drag out of
+      // Archive into its current column still needs to un-archive).
+      if (m.boardStatus === status && !m.archivedAt) return;
       const prev = milestones;
-      setMilestones((cur) => cur.map((x) => (x.id === id ? { ...x, boardStatus: status } : x)));
+      setMilestones((cur) =>
+        cur.map((x) => (x.id === id ? { ...x, boardStatus: status, archivedAt: null } : x)),
+      );
       try {
         await updateMilestoneBoardStatus(id, status);
         router.refresh();
@@ -278,6 +312,8 @@ export function TasksBoard({
         setMilestones(prev);
       }
     } else {
+      // Orphan tasks don't archive — ignore a drop on the Archive column.
+      if (status === "archive") return;
       const t = orphans.find((x) => x.id === id);
       if (!t || t.status === status) return;
       const prev = orphans;
@@ -361,9 +397,12 @@ export function TasksBoard({
       {/* Board */}
       <div className="flex-1 overflow-x-auto px-8 py-6">
         <div className="flex gap-5 items-start">
-          {COLUMNS.map((col) => {
-            const colMilestones = filteredMilestones.filter((m) => m.boardStatus === col.key);
-            const colTasks = filteredOrphans.filter((t) => t.status === col.key);
+          {BOARD_COLUMNS.map((col) => {
+            const isArchive = col.key === "archive";
+            const colMilestones = isArchive
+              ? filteredMilestones.filter((m) => m.archivedAt)
+              : filteredMilestones.filter((m) => !m.archivedAt && m.boardStatus === col.key);
+            const colTasks = isArchive ? [] : filteredOrphans.filter((t) => t.status === col.key);
             const count = colMilestones.length + colTasks.length;
             const isOver = dragOverCol === col.key;
             return (
@@ -380,10 +419,10 @@ export function TasksBoard({
                   }
                 }}
                 onDrop={(e) => onDrop(e, col.key)}
-                className="w-[300px] shrink-0 flex flex-col"
+                className={cn("w-[300px] shrink-0 flex flex-col", isArchive && "opacity-90")}
               >
                 <div className="sticky top-0 z-10 bg-bitumen/85 backdrop-blur px-1 pb-3 flex items-center gap-2">
-                  <span className="text-[13px] text-bone">{col.label}</span>
+                  <span className={cn("text-[13px]", isArchive ? "text-bone-mute" : "text-bone")}>{col.label}</span>
                   <span className="text-[12px] text-bone-mute tabular-nums">{count}</span>
                 </div>
 
@@ -412,19 +451,34 @@ export function TasksBoard({
                     />
                   ))}
 
-                  {/* Persistent bottom add — also the drop target affordance. */}
-                  <button
-                    onClick={() => setCreating({ task: col.key })}
-                    className={cn(
-                      "border border-dashed rounded-[var(--radius)] py-2.5 text-center text-[12px] transition-colors flex items-center justify-center gap-1.5",
-                      isOver
-                        ? "border-track-gold/60 text-bone-dim"
-                        : "border-graphite text-bone-mute hover:border-bone-mute hover:text-bone-dim",
-                    )}
-                  >
-                    <Plus size={12} strokeWidth={1.5} />
-                    {isOver ? "Drop here" : "Add task"}
-                  </button>
+                  {isArchive ? (
+                    /* Archive is a drop target only — no add-task. The note doubles
+                       as the drop affordance and explains the 7-day auto-hide. */
+                    <div
+                      className={cn(
+                        "border border-dashed rounded-[var(--radius)] py-2.5 px-2 text-center text-[11px] leading-snug transition-colors",
+                        isOver
+                          ? "border-track-gold/60 text-bone-dim"
+                          : "border-graphite text-bone-mute",
+                      )}
+                    >
+                      {isOver ? "Drop to archive" : `Drag milestones here · hidden after ${ARCHIVE_HIDE_DAYS} days`}
+                    </div>
+                  ) : (
+                    /* Persistent bottom add — also the drop target affordance. */
+                    <button
+                      onClick={() => setCreating({ task: col.key as StatusKey })}
+                      className={cn(
+                        "border border-dashed rounded-[var(--radius)] py-2.5 text-center text-[12px] transition-colors flex items-center justify-center gap-1.5",
+                        isOver
+                          ? "border-track-gold/60 text-bone-dim"
+                          : "border-graphite text-bone-mute hover:border-bone-mute hover:text-bone-dim",
+                      )}
+                    >
+                      <Plus size={12} strokeWidth={1.5} />
+                      {isOver ? "Drop here" : "Add task"}
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -533,6 +587,7 @@ function MilestoneCard({
       className={cn(
         "block bg-asphalt rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-all cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow)] hover:-translate-y-px",
         shellClass,
+        m.archivedAt && "opacity-75",
         dragging && "opacity-40",
       )}
     >
@@ -601,6 +656,20 @@ function MilestoneCard({
           {done}/{total}
         </span>
       </div>
+
+      {/* Archived footer — when + how long until the 7-day auto-hide. */}
+      {m.archivedAt && (
+        <div className="mt-2 pt-2 border-t border-graphite/60 flex items-center gap-1.5 text-[10px] text-bone-mute">
+          <Archive size={10} strokeWidth={1.5} />
+          <span>Archived {formatDate(m.archivedAt)}</span>
+          <span className="ml-auto tabular-nums">
+            {(() => {
+              const left = ARCHIVE_HIDE_DAYS - Math.floor((Date.now() - new Date(m.archivedAt).getTime()) / 86_400_000);
+              return left <= 0 ? "hides today" : `${left}d left`;
+            })()}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

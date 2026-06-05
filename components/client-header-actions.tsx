@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FolderOpen, Terminal, Check, ClipboardList, NotebookPen, Upload } from "lucide-react";
-import { Button } from "@/components/ui";
+import { FolderOpen, Terminal, Check, ClipboardList, NotebookPen, Upload, FileInput } from "lucide-react";
+import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ClientDocModal } from "@/components/client-doc-modal";
 import { UploadFileModal } from "@/components/upload-file-modal";
 
-export function ClientHeaderActions({
+// The client's Actions panel (under the title). The header keeps the page's
+// primary CTA (+ New project); everything else — Drive, workspace path, the doc
+// generators, Upload, and Ingest — lives here as explainer boxes.
+export function ClientActionsPanel({
   clientId,
   company,
   driveFolderUrl,
@@ -23,10 +26,10 @@ export function ClientHeaderActions({
 
   // Auto-open from the dashboard Quick Action (routes here with ?qa=survey|discussion|upload).
   const searchParams = useSearchParams();
+  const qa = searchParams.get("qa");
   useEffect(() => {
-    const qa = searchParams.get("qa");
     if (qa === "survey" || qa === "discussion" || qa === "upload") setOpen(qa);
-  }, [searchParams]);
+  }, [qa]);
 
   async function copyWorkspacePath() {
     try {
@@ -34,34 +37,63 @@ export function ClientHeaderActions({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Clipboard permission denied (rare on HTTPS) — fall back to alert
+      // Clipboard permission denied (rare on HTTPS) — fall back to a prompt
       // so the user can still grab the path manually.
       window.prompt("Workspace path (copy):", workspacePath);
     }
   }
 
+  const actions: ActionBox[] = [
+    {
+      key: "drive",
+      icon: FolderOpen,
+      title: "Open Drive folder",
+      description: "Open this client's Drive folder in a new tab.",
+      onClick: () => window.open(driveFolderUrl, "_blank", "noopener"),
+    },
+    {
+      key: "workspace",
+      icon: copied ? Check : Terminal,
+      title: copied ? "Copied!" : "Copy workspace path",
+      description: copied ? "Path copied to your clipboard." : "Copy the local workspace path for Claude Code.",
+      onClick: copyWorkspacePath,
+    },
+    {
+      key: "survey",
+      icon: ClipboardList,
+      title: "Survey",
+      description: "Draft a client survey for a pilot or check-in.",
+      onClick: () => setOpen("survey"),
+    },
+    {
+      key: "discussion",
+      icon: NotebookPen,
+      title: "Discussion doc",
+      description: "Draft a discussion doc for the next conversation.",
+      onClick: () => setOpen("discussion"),
+    },
+    {
+      key: "upload",
+      icon: Upload,
+      title: "Upload files",
+      description: "Add a file to this client's deliverables.",
+      onClick: () => setOpen("upload"),
+    },
+    {
+      key: "ingest",
+      icon: FileInput,
+      title: "Ingest",
+      description: "Drop in notes or a transcript to file against this client.",
+      href: `/ingest?focus=client:${clientId}`,
+    },
+  ];
+
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => window.open(driveFolderUrl, "_blank", "noopener")}>
-        <FolderOpen size={13} strokeWidth={1.5} />
-        Open Drive folder
-      </Button>
-      <Button variant="secondary" size="sm" onClick={copyWorkspacePath}>
-        {copied ? <Check size={13} strokeWidth={1.5} /> : <Terminal size={13} strokeWidth={1.5} />}
-        {copied ? "Copied!" : "Copy workspace path"}
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => setOpen("survey")}>
-        <ClipboardList size={13} strokeWidth={1.5} />
-        Survey
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => setOpen("discussion")}>
-        <NotebookPen size={13} strokeWidth={1.5} />
-        Discussion doc
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => setOpen("upload")}>
-        <Upload size={13} strokeWidth={1.5} />
-        Upload files
-      </Button>
+      <ActionsPanel
+        actions={actions}
+        forceOpen={qa === "survey" || qa === "discussion" || qa === "upload"}
+      />
 
       {open === "survey" && (
         <ClientDocModal
