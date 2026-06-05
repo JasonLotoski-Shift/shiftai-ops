@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-05",
+    tag: "improved",
+    title: "Shift icon in the browser tab",
+    detail:
+      "The tool now shows the SA! mark on a white circle as its browser-tab and bookmark icon, so it's easy to spot among your open tabs.",
+  },
+  {
     date: "2026-06-04",
     tag: "improved",
     title: "Targeting polish",
