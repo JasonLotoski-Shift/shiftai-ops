@@ -208,6 +208,7 @@ export async function approveProposal(
   input: {
     contactId?: string | null; // attach/override the contact for the Interaction
     clientId?: string | null;
+    dealId?: string | null; // link a pipeline deal — logs the summary on its primary contact
     summary: string;
     actionItems: { title: string; ownerId: string; context: string; due: string }[];
     contactEnrich: ExtractedEnrich[];
@@ -225,6 +226,7 @@ export async function approveProposal(
 
   const contactId = input.contactId ?? proposal.matchedContactId;
   const clientId = input.clientId ?? proposal.matchedClientId;
+  const dealId = input.dealId ?? proposal.matchedDealId;
   const summary = input.summary.trim() || (proposal.proposal as ExtractedProposal).summary || proposal.title;
 
   // Email proposals (Gmail) log as an email interaction and skip the Drive
@@ -286,28 +288,37 @@ export async function approveProposal(
           generatedFromSkill: "ingest-meeting",
           reviewStatus: "approved",
           clientId: clientId ?? null,
-          dealId: clientId ? null : proposal.matchedDealId ?? null,
+          dealId: clientId ? null : dealId ?? null,
         },
       });
     }
 
-    // 2. Interaction on the contact (advances lastTouchAt). Needs a contact.
-    if (contactId) {
-      const contact = await tx.contact.findUnique({ where: { id: contactId }, select: { lastTouchAt: true } });
-      if (contact) {
-        await tx.interaction.create({
-          data: {
-            contactId,
-            type: interactionType,
-            date: proposal.meetingDate,
-            summary,
-            loggedBy: "AGENT · CLAUDE",
-            channel: isEmail ? "gmail" : null,
-          },
-        });
-        if (proposal.meetingDate > contact.lastTouchAt) {
-          await tx.contact.update({ where: { id: contactId }, data: { lastTouchAt: proposal.meetingDate } });
-        }
+    // 2. Interaction(s) on the relevant contact(s), advancing lastTouchAt. The
+    //    attached contact and — when a deal is linked — the deal's primary
+    //    contact. Interactions are contact-scoped, so logging "against the
+    //    deal" means logging on its primary contact. De-duped so a single
+    //    contact is never logged twice.
+    const interactionContactIds = new Set<string>();
+    if (contactId) interactionContactIds.add(contactId);
+    if (dealId) {
+      const deal = await tx.deal.findUnique({ where: { id: dealId }, select: { contactId: true } });
+      if (deal?.contactId) interactionContactIds.add(deal.contactId);
+    }
+    for (const cid of interactionContactIds) {
+      const contact = await tx.contact.findUnique({ where: { id: cid }, select: { lastTouchAt: true } });
+      if (!contact) continue;
+      await tx.interaction.create({
+        data: {
+          contactId: cid,
+          type: interactionType,
+          date: proposal.meetingDate,
+          summary,
+          loggedBy: "AGENT · CLAUDE",
+          channel: isEmail ? "gmail" : null,
+        },
+      });
+      if (proposal.meetingDate > contact.lastTouchAt) {
+        await tx.contact.update({ where: { id: cid }, data: { lastTouchAt: proposal.meetingDate } });
       }
     }
 
@@ -359,6 +370,7 @@ export async function approveProposal(
         approvedBy: partnerLabel,
         contactId,
         clientId,
+        dealId,
         tasks: tasksCreated,
         tasksSkippedAsDuplicate: tasksSkipped.length,
         tasksSkipped,
@@ -374,13 +386,14 @@ export async function approveProposal(
       type: "ai",
       target: proposal.title,
       detail: `${isEmail ? "Email" : "Meeting"} ingested — ${tasksCreated} task(s)${tasksSkipped.length ? `, ${tasksSkipped.length} skipped as already-open duplicate(s)` : ""}, ${summary.length > 80 ? summary.slice(0, 77) + "…" : summary}`,
-      link: contactId ? `/contacts/${contactId}` : clientId ? `/clients/${clientId}` : "/ingest",
+      link: contactId ? `/contacts/${contactId}` : clientId ? `/clients/${clientId}` : dealId ? `/pipeline/${dealId}` : "/ingest",
     });
   });
 
   revalidatePath("/ingest");
   if (contactId) revalidatePath(`/contacts/${contactId}`);
   if (clientId) revalidatePath(`/clients/${clientId}`);
+  if (dealId) revalidatePath(`/pipeline/${dealId}`);
   return { ok: true };
 }
 

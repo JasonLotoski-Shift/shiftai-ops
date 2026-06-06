@@ -139,12 +139,14 @@ export type UnifiedProposalCardProps = {
   contacts: { id: string; name: string; company: string }[];
   clients: { id: string; company: string }[];
   projects: { id: string; name: string }[];
+  deals: { id: string; name: string }[];
   currentPartnerId: string;
 };
 
 export default function UnifiedProposalCard({
   proposal,
   partners,
+  deals,
   currentPartnerId,
 }: UnifiedProposalCardProps) {
   const router = useRouter();
@@ -152,6 +154,7 @@ export default function UnifiedProposalCard({
 
   const [open, setOpen] = useState(true);
   const [summary, setSummary] = useState(proposal.summary || data.summary || "");
+  const [dealId, setDealId] = useState(proposal.matchedDealId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -259,7 +262,7 @@ export default function UnifiedProposalCard({
         reassignTaskId: t.reassignTaskId,
       }));
 
-    return { records: approvedRecords, tasks: approvedTasks };
+    return { records: approvedRecords, tasks: approvedTasks, dealId: dealId || null };
   }
 
   function approve() {
@@ -326,6 +329,19 @@ export default function UnifiedProposalCard({
               onChange={(e) => setSummary(e.target.value)}
               disabled={isPending}
             />
+          </div>
+
+          {/* Link a pipeline deal — logs the summary on the deal's primary contact */}
+          <div className="flex flex-col gap-2">
+            <Label>Pipeline deal (logs on its primary contact)</Label>
+            <Select value={dealId} onChange={(e) => setDealId(e.target.value)} disabled={isPending}>
+              <option value="">none</option>
+              {deals.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
           </div>
 
           {/* Key points (read-only) */}

@@ -117,6 +117,7 @@ export function IngestView({
                 contacts={contacts}
                 clients={clients}
                 projects={projects}
+                deals={deals}
                 currentPartnerId={currentPartnerId ?? ""}
               />
             ) : p.source === "drop" && p.matchedProjectId ? (
@@ -135,6 +136,7 @@ export function IngestView({
                 partners={partners}
                 contacts={contacts}
                 clients={clients}
+                deals={deals}
                 currentPartnerId={currentPartnerId}
               />
             ),
@@ -326,6 +328,7 @@ function ProposalCard({
   partners,
   contacts,
   clients,
+  deals,
   currentPartnerId,
 }: {
   p: ProposalProp;
@@ -334,6 +337,7 @@ function ProposalCard({
   partners: { id: string; name: string }[];
   contacts: { id: string; name: string; company: string }[];
   clients: { id: string; company: string }[];
+  deals: { id: string; name: string }[];
   currentPartnerId?: string;
 }) {
   const router = useRouter();
@@ -342,6 +346,7 @@ function ProposalCard({
   const [summary, setSummary] = useState(prop.summary);
   const [contactId, setContactId] = useState(p.matchedContactId ?? "");
   const [clientId, setClientId] = useState(p.matchedClientId ?? "");
+  const [dealId, setDealId] = useState(p.matchedDealId ?? "");
 
   // Action items — keep flag + owner + editable fields.
   const [items, setItems] = useState(
@@ -373,6 +378,7 @@ function ProposalCard({
         await approveProposal(p.id, {
           contactId: contactId || null,
           clientId: clientId || null,
+          dealId: dealId || null,
           summary,
           actionItems,
           contactEnrich,
@@ -397,7 +403,7 @@ function ProposalCard({
     });
   }
 
-  const unassigned = !contactId && !clientId;
+  const unassigned = !contactId && !clientId && !dealId;
 
   return (
     <Card className={cn(isPending && "opacity-60")}>
@@ -429,6 +435,13 @@ function ProposalCard({
               <Select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={isPending}>
                 <option value="">none</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Pipeline deal (logs on its primary contact)</Label>
+              <Select value={dealId} onChange={(e) => setDealId(e.target.value)} disabled={isPending}>
+                <option value="">none</option>
+                {deals.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </Select>
             </div>
           </div>

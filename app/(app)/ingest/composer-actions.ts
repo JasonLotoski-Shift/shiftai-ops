@@ -479,6 +479,9 @@ export async function approveUnified(
   const milestonesSkipped: { title: string; existingId: string }[] = [];
   const replaceDetail: { field: string; before: string; after: string }[] = [];
   const affected = { contacts: new Set<string>(), clients: new Set<string>(), projects: new Set<string>(), deals: new Set<string>() };
+  // Contacts that already received an interaction this run — so the deal-link
+  // step below never double-logs the same contact.
+  const interactedContacts = new Set<string>();
 
   await prisma.$transaction(async (tx) => {
     // ── Records ──
@@ -516,6 +519,7 @@ export async function approveUnified(
               interactionsCreated++;
               if (when > maxDate) maxDate = when;
             }
+            interactedContacts.add(r.recordId);
             if (maxDate > contact.lastTouchAt) {
               await tx.contact.update({ where: { id: r.recordId }, data: { lastTouchAt: maxDate } });
             }
@@ -597,6 +601,44 @@ export async function approveUnified(
       }
     }
 
+    // ── Link a partner-selected pipeline deal ──
+    // Log the summary as an interaction on the deal's PRIMARY contact
+    // (interactions are contact-scoped, so "against the deal" = on its contact).
+    // Skipped if that contact already got an interaction above (no double-log).
+    const dealLinkId = selections.dealId ?? proposal.matchedDealId ?? null;
+    if (dealLinkId) {
+      const deal = await tx.deal.findUnique({ where: { id: dealLinkId }, select: { contactId: true } });
+      if (deal?.contactId && !interactedContacts.has(deal.contactId)) {
+        const contact = await tx.contact.findUnique({ where: { id: deal.contactId }, select: { lastTouchAt: true } });
+        if (contact) {
+          const dealInteractionType: InteractionType =
+            proposal.ingestType === "email"
+              ? "email_received"
+              : proposal.ingestType === "meeting"
+                ? "meeting"
+                : proposal.ingestType === "interaction"
+                  ? "call"
+                  : "other";
+          await tx.interaction.create({
+            data: {
+              contactId: deal.contactId,
+              type: dealInteractionType,
+              date: proposal.meetingDate,
+              summary,
+              loggedBy: "AGENT · CLAUDE",
+            },
+          });
+          interactionsCreated++;
+          interactedContacts.add(deal.contactId);
+          affected.contacts.add(deal.contactId);
+          if (proposal.meetingDate > contact.lastTouchAt) {
+            await tx.contact.update({ where: { id: deal.contactId }, data: { lastTouchAt: proposal.meetingDate } });
+          }
+        }
+      }
+      affected.deals.add(dealLinkId);
+    }
+
     // ── Tasks ──
     for (const t of selections.tasks) {
       if (!t.title?.trim() || !t.ownerId) continue;
@@ -655,7 +697,7 @@ export async function approveUnified(
           generatedFromSkill: "ingest",
           reviewStatus: "approved",
           clientId: focusClientId ?? null,
-          dealId: focusClientId ? null : proposal.matchedDealId ?? null,
+          dealId: focusClientId ? null : dealLinkId ?? null,
         },
       });
     }
@@ -674,6 +716,7 @@ export async function approveUnified(
       changes: {
         approvedBy: partnerLabel,
         ingestType: proposal.ingestType,
+        dealLinked: selections.dealId ?? proposal.matchedDealId ?? null,
         adds: totalAdds,
         replaces: totalReplaces,
         listAdds: totalListAdds,

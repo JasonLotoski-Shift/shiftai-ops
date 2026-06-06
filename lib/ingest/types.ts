@@ -114,4 +114,8 @@ export type ApprovedTask = {
 export type ApproveUnifiedSelections = {
   records: ApprovedRecord[];
   tasks: ApprovedTask[];
+  // Partner-selected pipeline deal to log the summary against (its primary
+  // contact). Optional — null/absent means no deal link. Interactions are
+  // contact-scoped, so the deal's primary contact carries the logged summary.
+  dealId?: string | null;
 };
