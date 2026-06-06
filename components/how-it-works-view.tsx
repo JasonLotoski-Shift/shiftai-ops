@@ -16,6 +16,7 @@ import {
   FileUp,
   GitBranch,
   UserPlus,
+  FolderPlus,
   Mail,
   Search,
   Receipt,
@@ -534,6 +535,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <FolderPlus size={16} strokeWidth={1.5} />,
+    title: "Open a follow-on engagement",
+    blurb: "Each engagement is its own project — a subscription, a buy-out, or another build on a client you already have.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Client → + New project · pick the type (Subscription, Buy-out, Discovery, Pilot, Full Build), name it, set the value" },
+      { tone: "claude", kind: "System", label: "Opens with the right billing: subscription → month 1; buy-out → one lump sum; build → 50/25/25" },
+      { tone: "review", kind: "You review", label: "Subscription: Add next month when you bill it · Buy-out is exempt from the 10/15/75 split (all firm capture)" },
+      { tone: "write", kind: "Saved", label: "Project + billing schedule + AuditLog" },
+    ],
+  },
+  {
     icon: <Mail size={16} strokeWidth={1.5} />,
     title: "Draft an email or proposal",
     blurb: "A Quick Action writes the draft and files it the moment you accept.",
@@ -573,8 +585,8 @@ const flows: Flow[] = [
     steps: [
       { tone: "trigger", kind: "You do", label: "Project → Raise invoice · pick a stage or amount + due date" },
       { tone: "claude", kind: "Claude", label: "Generates the invoice doc — or tick \"sent manually\" to just log it" },
-      { tone: "review", kind: "You review", label: "Edit a draft's amount/due, mark Sent when it goes out" },
-      { tone: "write", kind: "Saved", label: "Invoice (draft→sent→paid) + Artifact + change log + AuditLog" },
+      { tone: "review", kind: "You review", label: "Edit a draft's amount/due, mark Sent (pick the real send date) or Paid (the date it cleared) — back-date either" },
+      { tone: "write", kind: "Saved", label: "Invoice (draft→sent→paid, with the sent date) + Artifact + change log + AuditLog" },
     ],
   },
   {

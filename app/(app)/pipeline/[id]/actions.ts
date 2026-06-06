@@ -37,7 +37,7 @@ import type { DealStage, Industry, ArtifactType } from "@/lib/generated/prisma/e
  * — workspace + engagement charter + per-client CLAUDE.md). For Phase 3
  * this is the minimum that flips the deal and creates the records.
  */
-const VALID_PROJECT_TYPES_CONVERT = ["discovery_report", "pilot_project", "monthly_project", "full_build"];
+const VALID_PROJECT_TYPES_CONVERT = ["discovery_report", "pilot_project", "subscription", "full_build", "buyout"];
 
 export async function convertDeal(
   dealId: string,
@@ -171,8 +171,10 @@ export async function convertDeal(
       data: { stage: "signed", lastTouchAt: new Date(), stageEnteredAt: new Date() },
     });
 
-    // Auto-generate the firm's standard 50/25/25 client schedule from the
-    // seeded project value, so the new project opens with a billing plan.
+    // Auto-generate the standard client schedule from the seeded value, so the
+    // new project opens with a billing plan. The shape follows the project type:
+    // buy-out → one lump-sum installment; subscription → the first month
+    // (month-by-month from there); everything else → 50/25/25.
     let scheduleCreated = 0;
     if (project.budgetFee > 0) {
       const sched = await applyStandardScheduleTx(tx, {
@@ -180,6 +182,7 @@ export async function convertDeal(
         value: project.budgetFee,
         startDate,
         targetEndDate,
+        projectType,
       });
       scheduleCreated = sched.created;
     }

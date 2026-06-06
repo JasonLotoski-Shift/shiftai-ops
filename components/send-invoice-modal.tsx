@@ -23,6 +23,12 @@ export type InvoiceableInstallment = {
   status: "planned" | "invoiced" | "paid";
 };
 
+// Local YYYY-MM-DD (avoids the UTC shift toISOString would introduce).
+function todayLocal() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
 export function SendInvoiceModal({
   projectId,
   installments,
@@ -45,6 +51,9 @@ export function SendInvoiceModal({
   // false = raise a draft through the tool; true = log an invoice already sent
   // manually (Shane Nolan case) — creates a SENT invoice, no generated doc.
   const [manual, setManual] = useState(false);
+  // Sent date for the manual path — back-datable (an invoice sent last week,
+  // logged today). Defaults to today. Ignored on the draft path.
+  const [sentDate, setSentDate] = useState<string>(todayLocal);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -53,6 +62,7 @@ export function SendInvoiceModal({
     setAmount("");
     setDueInDays("30");
     setManual(false);
+    setSentDate(todayLocal());
     setError(null);
   }
 
@@ -75,6 +85,7 @@ export function SendInvoiceModal({
           ? await markInvoiceManual(projectId, {
               installmentId: presetId || undefined,
               amount: Number(amount),
+              issuedAt: sentDate || undefined,
               dueInDays: Number(dueInDays),
             })
           : await createInvoiceFromProject(projectId, {
@@ -129,6 +140,21 @@ export function SendInvoiceModal({
                 <input type="checkbox" checked={manual} onChange={(e) => setManual(e.target.checked)} className="accent-track-gold" />
                 I already sent this invoice manually (just log it)
               </label>
+
+              {manual && (
+                <div className="flex flex-col gap-2">
+                  <Label>Sent date</Label>
+                  <Input
+                    type="date"
+                    className="tabular-nums"
+                    value={sentDate}
+                    onChange={(e) => setSentDate(e.target.value)}
+                  />
+                  <span className="text-[11px] text-bone-mute">
+                    When it actually went out — back-date it if you&apos;re logging it after the fact.
+                  </span>
+                </div>
+              )}
 
               {presets.length > 0 && (
                 <div className="flex flex-col gap-2">

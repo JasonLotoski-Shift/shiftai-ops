@@ -74,6 +74,30 @@ export function monthlyDueDate(startDate: Date, index: number): Date {
   return new Date(startDate.getFullYear(), startDate.getMonth() + index, 1);
 }
 
+// A one-time buy-out: a single installment for the full amount, due at signing.
+// Used when Project.projectType === "buyout" — the engagement is the lump sum,
+// not a staged delivery, so there's no 50/25/25 to split.
+export function lumpSumSchedule(value: number): InstallmentDraft[] {
+  return [
+    { label: "Buy-out — full amount", amount: Math.max(0, Math.round(value)), trigger: "on_signing", offsetFromStartDays: 0 },
+  ];
+}
+
+// One subscription month. `monthlyValue` is the recurring monthly price; `index`
+// is the 0-based month from the project start (drives the dueDate = 1st of that
+// month). Subscriptions bill month-by-month and open-ended, so the generator
+// only ever creates ONE of these at a time — the first on project create, each
+// later one via addSubscriptionMonth. (A future scheduled agent can append them
+// automatically; until then a partner adds the next month when they bill it.)
+export function subscriptionMonthDraft(monthlyValue: number, index: number): InstallmentDraft {
+  return {
+    label: `Month ${index + 1}`,
+    amount: Math.max(0, Math.round(monthlyValue)),
+    trigger: "date",
+    offsetFromStartDays: null,
+  };
+}
+
 // Resolve a draft's dueDate against the project window. on_signing → start;
 // the mid-point → halfway between start and target end; delivery → target end.
 export function draftDueDate(

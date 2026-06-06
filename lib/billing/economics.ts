@@ -139,6 +139,28 @@ export function allocateLaborRevenue(args: {
   };
 }
 
+// A buy-out engagement is pure firm revenue — no labour, no origination, no
+// 10/15/75 split (firm decision: the split is for labour projects only). The
+// whole contract value is firm capture. Returned in LaborAllocation shape so
+// the financials rollup treats every project uniformly; callers select this
+// when Project.projectType === "buyout". Pass the buy-out value (budgetFee).
+export function buyoutAllocation(value: number): LaborAllocation {
+  const v = Math.max(0, Math.round(value));
+  return {
+    laborBillable: v,
+    takeHome: 0,
+    origination: 0,
+    firmPool: v,
+    laborBudget: 0,
+    laborSurplus: 0,
+    firmReserve: v, // 100% firm capture
+    directCosts: 0,
+    clientPrice: v,
+    isFirstContract: false,
+    originationPct: 0,
+  };
+}
+
 // Per-consultant total cost (non-extra), for splitting payouts across stages.
 export function costByConsultant(
   lines: { consultantId: string | null; hours: number; payRateCents: number; isExtra: boolean }[],

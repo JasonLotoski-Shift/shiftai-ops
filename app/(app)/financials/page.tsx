@@ -4,7 +4,7 @@ import { Header } from "@/components/header";
 import { Card, Stat } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
-import { economicsTotals, allocateLaborRevenue } from "@/lib/billing/economics";
+import { economicsTotals, allocateLaborRevenue, buyoutAllocation } from "@/lib/billing/economics";
 
 // Firm Financials — the firm-wide revenue rollup (Phase 3). Aggregates every
 // project's economics into contracted / invoiced / received / AR plus the
@@ -21,6 +21,7 @@ export default async function FinancialsPage() {
       name: true,
       budgetFee: true,
       status: true,
+      projectType: true,
       originationPct: true,
       isFirstContract: true,
       client: { select: { company: true } },
@@ -40,13 +41,18 @@ export default async function FinancialsPage() {
       })),
     );
     const directCosts = p.directCosts.reduce((s, c) => s + c.amount, 0);
-    const alloc = allocateLaborRevenue({
-      laborBillable: totals.billableTotal,
-      takeHome: totals.costTotal,
-      directCosts,
-      originationPct: Number(p.originationPct) / 100,
-      isFirstContract: p.isFirstContract,
-    });
+    // Buy-outs are exempt from the 10/15/75 labour split — the whole value is
+    // firm capture (no labour, no origination). Everything else splits normally.
+    const isBuyout = p.projectType === "buyout";
+    const alloc = isBuyout
+      ? buyoutAllocation(p.budgetFee)
+      : allocateLaborRevenue({
+          laborBillable: totals.billableTotal,
+          takeHome: totals.costTotal,
+          directCosts,
+          originationPct: Number(p.originationPct) / 100,
+          isFirstContract: p.isFirstContract,
+        });
     const invoiced = p.invoices.filter((i) => i.status !== "draft").reduce((s, i) => s + i.amount, 0);
     const received = p.invoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amount, 0);
     return {
@@ -60,7 +66,8 @@ export default async function FinancialsPage() {
       takeHome: alloc.takeHome,
       firmReserve: alloc.firmReserve,
       origination: alloc.origination,
-      marginPct: totals.marginPct,
+      // Buy-out is 100% margin (no labour cost) — but a $0 buy-out is 0%, not 100%.
+      marginPct: isBuyout ? (p.budgetFee > 0 ? 1 : 0) : totals.marginPct,
     };
   });
 

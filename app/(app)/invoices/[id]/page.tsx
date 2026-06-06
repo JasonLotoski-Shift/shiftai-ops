@@ -87,6 +87,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <span className="mono text-[14px] text-bone tabular-nums">
                   {formatDate(invoice.issuedAt)}
                 </span>
+                {invoice.sentAt && (
+                  <span className="label text-[10px] text-bone-mute">
+                    Sent {formatDate(invoice.sentAt)}
+                  </span>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label>{invoice.status === "paid" ? "Paid" : "Due"}</Label>

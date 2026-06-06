@@ -22,7 +22,10 @@ async function getActor() {
   };
 }
 
-export async function markInvoiceSent(invoiceId: string) {
+// Mark a draft sent. `sentDate` (YYYY-MM-DD) is optional — pass it to back-date
+// the send (an invoice emailed last week, logged today); omit for "now". The
+// date is stored on Invoice.sentAt so the ledger reflects the real send date.
+export async function markInvoiceSent(invoiceId: string, sentDate?: string | null) {
   const { actor } = await getActor();
 
   const before = await prisma.invoice.findUnique({
@@ -34,17 +37,20 @@ export async function markInvoiceSent(invoiceId: string) {
     throw new Error(`Can't send invoice from status "${before.status}" (must be draft)`);
   }
 
+  const sentAt = sentDate ? new Date(sentDate) : new Date();
+  if (Number.isNaN(sentAt.getTime())) throw new Error("Enter a valid sent date");
+
   await prisma.$transaction(async (tx) => {
     await tx.invoice.update({
       where: { id: invoiceId },
-      data: { status: "sent" },
+      data: { status: "sent", sentAt },
     });
     await writeAudit(tx, {
       actor,
       action: "update.invoice.sent",
       targetType: "Invoice",
       targetId: invoiceId,
-      changes: { status: { before: "draft", after: "sent" } },
+      changes: { status: { before: "draft", after: "sent" }, sentAt: sentAt.toISOString() },
     });
     await writeActivity(tx, {
       actor,
@@ -61,7 +67,10 @@ export async function markInvoiceSent(invoiceId: string) {
   return { status: "sent" as const };
 }
 
-export async function markInvoicePaid(invoiceId: string) {
+// Mark a sent/overdue invoice paid. `paidDate` (YYYY-MM-DD) is optional —
+// pass it to record the real payment date (a cheque that cleared Tuesday,
+// logged Friday); omit for "now".
+export async function markInvoicePaid(invoiceId: string, paidDate?: string | null) {
   const { actor } = await getActor();
 
   const before = await prisma.invoice.findUnique({
@@ -73,7 +82,8 @@ export async function markInvoicePaid(invoiceId: string) {
     throw new Error(`Can't mark paid from status "${before.status}" (must be sent or overdue)`);
   }
 
-  const paidAt = new Date();
+  const paidAt = paidDate ? new Date(paidDate) : new Date();
+  if (Number.isNaN(paidAt.getTime())) throw new Error("Enter a valid paid date");
 
   await prisma.$transaction(async (tx) => {
     await tx.invoice.update({

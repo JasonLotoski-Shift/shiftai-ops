@@ -1,6 +1,7 @@
 "use client";
 
-// Inline editor for the project's type (discovery / pilot / monthly / full build).
+// Inline editor for the project's type (discovery / pilot / subscription /
+// full build / buy-out).
 // Mirrors project-fee-edit: human label + pencil-on-hover → Select + check/cancel,
 // calls setProjectType then refreshes. Sits under the page title like a subtitle.
 
@@ -14,11 +15,12 @@ import { setProjectType } from "@/app/(app)/projects/[id]/actions";
 export const TYPE_LABELS: Record<string, string> = {
   discovery_report: "Discovery Report",
   pilot_project: "Pilot Project",
-  monthly_project: "Monthly Project",
+  subscription: "Subscription",
   full_build: "Full Build",
+  buyout: "Buy-out",
 };
 
-const TYPE_ORDER = ["discovery_report", "pilot_project", "monthly_project", "full_build"] as const;
+const TYPE_ORDER = ["discovery_report", "pilot_project", "subscription", "full_build", "buyout"] as const;
 
 export function ProjectTypeEdit({
   projectId,

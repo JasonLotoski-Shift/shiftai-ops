@@ -130,7 +130,7 @@ export type Project = {
   isFirstContract?: boolean;
 };
 
-export type ProjectType = "discovery-report" | "pilot-project" | "monthly-project" | "full-build";
+export type ProjectType = "discovery-report" | "pilot-project" | "subscription" | "full-build" | "buyout";
 export type ScheduleType = "fifty-twenty-five" | "monthly-even" | "custom";
 export type EstimateStatus = "draft" | "sent" | "accepted" | "superseded";
 
@@ -215,6 +215,7 @@ export type Invoice = {
   issuedAt: string;
   dueAt: string;
   paidAt?: string;
+  sentAt?: string; // when it was marked sent (back-datable); null while draft
   status: "draft" | "sent" | "paid" | "overdue";
 };
 

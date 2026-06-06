@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
-import { Button } from "@/components/ui";
 import { ClientDetailTabs } from "@/components/client-detail-tabs";
 import { ClientActionsPanel } from "@/components/client-header-actions";
+import { NewProjectButton } from "@/components/new-project-modal";
 import { prisma } from "@/lib/prisma";
 import { industryLabels } from "@/lib/data/seed";
 import { ArrowLeft } from "lucide-react";
@@ -29,7 +29,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       <Header
         eyebrow={`${industryLabels[client.industry]} · ${client.revenue}`}
         title={client.company}
-        actions={<Button variant="primary" size="sm">+ New project</Button>}
+        actions={<NewProjectButton clientId={client.id} />}
       />
 
       <div className="px-8 py-8 flex flex-col gap-8">

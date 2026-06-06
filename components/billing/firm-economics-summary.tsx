@@ -10,8 +10,27 @@ import type { LaborAllocation } from "@/lib/billing/economics";
 
 const money = (n: number) => formatCAD(n).replace("CA$", "$");
 
-export function FirmEconomicsSummary({ alloc }: { alloc: LaborAllocation }) {
+export function FirmEconomicsSummary({ alloc, isBuyout = false }: { alloc: LaborAllocation; isBuyout?: boolean }) {
   if (alloc.laborBillable === 0 && alloc.directCosts === 0) return null;
+
+  // A buy-out has no labour split — the labour-oriented rows (75% budget, take-home,
+  // surplus) would all read $0 and mislead. Show the one fact that matters instead.
+  if (isBuyout) {
+    return (
+      <div className="rounded-[var(--radius)] border border-graphite bg-asphalt/40 flex flex-col">
+        <div className="px-5 pt-4 pb-2 flex flex-col gap-0.5">
+          <h3 className="title-md">Firm economics</h3>
+          <span className="text-[11px] text-bone-mute">
+            Buy-out — exempt from the 10/15/75 split; the whole amount is firm capture
+          </span>
+        </div>
+        <div className="px-5 pb-4 grid grid-cols-2 gap-x-8 gap-y-2.5">
+          <Row label="Client price" value={money(alloc.clientPrice)} tone="gold" big />
+          <Row label="Firm capture · 100%" hint="no labour cost" value={money(alloc.firmReserve)} tone="reserve" />
+        </div>
+      </div>
+    );
+  }
 
   const pct = (n: number) => (alloc.laborBillable > 0 ? Math.round((n / alloc.laborBillable) * 100) : 0);
   const balanced =

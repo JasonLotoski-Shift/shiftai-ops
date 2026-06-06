@@ -117,7 +117,7 @@ export function ConvertDealModal({
                   value={projectType}
                   onChange={(e) => setProjectType(e.target.value)}
                 >
-                  {(["discovery_report", "pilot_project", "monthly_project", "full_build"] as const).map((t) => (
+                  {(["discovery_report", "pilot_project", "subscription", "full_build", "buyout"] as const).map((t) => (
                     <option key={t} value={t}>
                       {TYPE_LABELS[t]}
                     </option>

@@ -24,6 +24,34 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-05",
+    tag: "new",
+    title: "Subscription and buy-out engagements",
+    detail:
+      "Projects now include two new types: Subscription and Buy-out. A subscription bills month-by-month — the project opens with month 1, and you add the next month when you bill it (no fixed end date). A buy-out is a single lump sum (e.g. 24× the monthly price, or a set fee) and is exempt from the internal 10/15/75 split — the whole amount counts as firm capture. Each new engagement is its own project on the client.",
+  },
+  {
+    date: "2026-06-05",
+    tag: "new",
+    title: "Open a new project on a client",
+    detail:
+      "The “+ New project” button on a client now works. Pick the type, name it, set the value (a monthly price for a subscription, the lump sum for a buy-out, or the fee for a build), and it opens with the right billing schedule already in place.",
+  },
+  {
+    date: "2026-06-05",
+    tag: "improved",
+    title: "Back-date when an invoice was sent or paid",
+    detail:
+      "Marking an invoice Sent or Paid now lets you pick the real date — so an invoice you emailed last week, or a cheque that cleared on Tuesday, records on the day it actually happened, not the day you logged it. The sent date shows on the invoice.",
+  },
+  {
+    date: "2026-06-05",
+    tag: "new",
+    title: "Settings — the firm rate card",
+    detail:
+      "The Settings page is live. It holds the firm rate card — the four standard tiers and their bill/pay rates that seed every estimate and project — editable in one place, plus a read-only summary of the 10/15/75 split and how each engagement type bills.",
+  },
+  {
+    date: "2026-06-05",
     tag: "improved",
     title: "Shift icon in the browser tab",
     detail:

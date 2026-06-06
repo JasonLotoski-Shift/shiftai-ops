@@ -10,6 +10,8 @@ import type { PrismaClient } from "@/lib/generated/prisma/client";
 import {
   fiftyTwentyFiveSchedule,
   monthlyEvenSchedule,
+  lumpSumSchedule,
+  subscriptionMonthDraft,
   monthlyDueDate,
   draftDueDate,
   reconcileSchedule,
@@ -44,6 +46,10 @@ export async function applyStandardScheduleTx(
     startDate: Date;
     targetEndDate: Date;
     scheduleType?: ScheduleType;
+    // Engagement type — steers the schedule SHAPE (buy-out → one lump sum;
+    // subscription → the first month, billed month-by-month from there).
+    // Plain string (the underscored ProjectType id); absent → fixed-fee path.
+    projectType?: string;
     force?: boolean;
   },
 ): Promise<ApplyScheduleResult> {
@@ -66,22 +72,36 @@ export async function applyStandardScheduleTx(
     await tx.billingInstallment.deleteMany({ where: { id: { in: rec.deletableIds } } });
   }
 
-  // Schedule shape depends on the project's scheduleType. 'custom' falls through
-  // to 50/25/25 here (a deliberate generate is still an explicit 50/25/25 ask).
-  const monthly = args.scheduleType === "monthly_even";
-  const drafts = monthly
-    ? monthlyEvenSchedule(args.value, args.startDate, args.targetEndDate)
-    : fiftyTwentyFiveSchedule(args.value);
+  // Schedule shape: buy-out → one lump sum; subscription → the first month;
+  // monthly_even → evenly across the contract window; else 50/25/25. ('custom'
+  // falls through to 50/25/25 — a deliberate generate is an explicit ask.)
+  const buyout = args.projectType === "buyout";
+  const subscription = args.projectType === "subscription";
+  const monthly = !buyout && !subscription && args.scheduleType === "monthly_even";
+
+  const drafts = buyout
+    ? lumpSumSchedule(args.value)
+    : subscription
+      ? [subscriptionMonthDraft(args.value, 0)]
+      : monthly
+        ? monthlyEvenSchedule(args.value, args.startDate, args.targetEndDate)
+        : fiftyTwentyFiveSchedule(args.value);
 
   for (let i = 0; i < drafts.length; i++) {
     const d = drafts[i];
+    const dueDate =
+      buyout
+        ? args.startDate
+        : subscription || monthly
+          ? monthlyDueDate(args.startDate, i)
+          : draftDueDate(d, args.startDate, args.targetEndDate);
     await tx.billingInstallment.create({
       data: {
         projectId: args.projectId,
         label: d.label,
         amount: d.amount,
         trigger: d.trigger,
-        dueDate: monthly ? monthlyDueDate(args.startDate, i) : draftDueDate(d, args.startDate, args.targetEndDate),
+        dueDate,
         sortOrder: i,
         status: "planned",
         isExtra: false,

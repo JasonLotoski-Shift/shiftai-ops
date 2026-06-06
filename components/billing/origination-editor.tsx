@@ -23,7 +23,7 @@ export type OriginationPartner = { id: string; name: string };
 
 const SCHEDULE_LABELS: Record<string, string> = {
   fifty_twenty_five: "50 / 25 / 25 (pilots & projects)",
-  monthly_even: "Monthly even (retainers)",
+  monthly_even: "Monthly even (fixed-term recurring)",
   custom: "Custom (leave my schedule alone)",
 };
 

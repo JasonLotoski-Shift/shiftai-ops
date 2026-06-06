@@ -20,6 +20,7 @@ import type {
   ArtifactType,
   TaskPriority,
   ProjectType,
+  ProjectPhase,
   WorkCategory,
   TaskStatus,
 } from "@/lib/generated/prisma/enums";
@@ -57,9 +58,21 @@ const VALID_PRIORITIES: TaskPriority[] = ["high", "medium", "low"];
 const VALID_PROJECT_TYPES: ProjectType[] = [
   "discovery_report",
   "pilot_project",
-  "monthly_project",
+  "subscription",
   "full_build",
+  "buyout",
 ];
+
+// Keep the back-compat `phase` aligned with the engagement type when the type
+// is explicitly set (the UI shows projectType; phase still drives the invoice
+// badge + some lists). Subscription / buy-out are operating engagements.
+const PHASE_BY_TYPE: Record<string, ProjectPhase> = {
+  discovery_report: "discovery",
+  pilot_project: "build",
+  full_build: "build",
+  subscription: "run",
+  buyout: "run",
+};
 
 const VALID_CATEGORIES: WorkCategory[] = ["firm", "project", "pipeline", "other"];
 
@@ -142,18 +155,26 @@ export async function setProjectType(projectId: string, projectType: string) {
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true, projectType: true },
+    select: { id: true, projectType: true, phase: true },
   });
   if (!project) throw new Error("Project not found");
 
+  const phase = PHASE_BY_TYPE[projectType] ?? project.phase;
+
   await prisma.$transaction(async (tx) => {
-    await tx.project.update({ where: { id: projectId }, data: { projectType: projectType as ProjectType } });
+    await tx.project.update({
+      where: { id: projectId },
+      data: { projectType: projectType as ProjectType, phase },
+    });
     await writeAudit(tx, {
       actor,
       action: "update.project.type",
       targetType: "Project",
       targetId: projectId,
-      changes: { type: { before: project.projectType, after: projectType } },
+      changes: {
+        type: { before: project.projectType, after: projectType },
+        ...(phase !== project.phase ? { phase: { before: project.phase, after: phase } } : {}),
+      },
     });
   });
 

@@ -19,6 +19,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { applyStandardScheduleTx } from "@/lib/billing/apply";
+import { monthlyDueDate } from "@/lib/billing/schedule";
 import { recomputePayoutsTx } from "@/lib/billing/payouts";
 import { FALLBACK_BILL_RATE_CENTS } from "@/lib/billing/rate-card";
 import type { InstallmentTrigger } from "@/lib/generated/prisma/enums";
@@ -220,7 +221,7 @@ export async function generateStandardSchedule(projectId: string, opts?: { force
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true, budgetFee: true, startDate: true, targetEndDate: true, scheduleType: true },
+    select: { id: true, budgetFee: true, startDate: true, targetEndDate: true, scheduleType: true, projectType: true },
   });
   if (!project) throw new Error("Project not found");
   if (project.budgetFee <= 0) throw new Error("Set a project value before generating a schedule");
@@ -232,6 +233,7 @@ export async function generateStandardSchedule(projectId: string, opts?: { force
       startDate: project.startDate,
       targetEndDate: project.targetEndDate,
       scheduleType: project.scheduleType,
+      projectType: project.projectType ?? undefined,
       force: opts?.force,
     });
     if (!r.skipped) {
@@ -249,6 +251,73 @@ export async function generateStandardSchedule(projectId: string, opts?: { force
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/invoices");
   return result;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FEATURE 4c — Add the next subscription month (Business model v2)
+//
+// Subscriptions bill MONTH-BY-MONTH and open-ended, so we never pre-generate a
+// bounded schedule. The project opens with month 1; this appends the next month
+// (amount = the monthly price held in budgetFee, due the 1st of that month).
+// A partner adds the next month when they bill it. (A future scheduled agent
+// can call this automatically — until then it's a one-click manual step.)
+// ──────────────────────────────────────────────────────────────────────
+
+export async function addSubscriptionMonth(projectId: string) {
+  const { actor } = await getActor();
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, budgetFee: true, startDate: true, projectType: true },
+  });
+  if (!project) throw new Error("Project not found");
+  if (project.projectType !== "subscription") {
+    throw new Error("Add-month is only for subscription engagements");
+  }
+  if (project.budgetFee <= 0) throw new Error("Set the monthly price (project value) before adding a month");
+
+  // Derive the next month from the highest "Month N" already scheduled — robust
+  // to a deleted month (no duplicate label / due-date collision) and to a project
+  // that also carries non-month installments (those are ignored). Month K lives
+  // at month-index K-1 (month 1 = index 0 = the 1st of the start month).
+  const existing = await prisma.billingInstallment.findMany({
+    where: { projectId, isExtra: false },
+    select: { label: true, sortOrder: true },
+  });
+  const monthNums = existing
+    .map((i) => /^Month (\d+)$/.exec(i.label)?.[1])
+    .filter((n): n is string => Boolean(n))
+    .map((n) => parseInt(n, 10));
+  const index = (monthNums.length ? Math.max(...monthNums) : 0); // next month-index
+  const dueDate = monthlyDueDate(project.startDate, index);
+  const sortOrder = existing.reduce((m, i) => Math.max(m, i.sortOrder), -1) + 1;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.billingInstallment.create({
+      data: {
+        projectId,
+        label: `Month ${index + 1}`,
+        amount: project.budgetFee,
+        trigger: "date",
+        dueDate,
+        sortOrder,
+        status: "planned",
+        isExtra: false,
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.installment.subscriptionMonth",
+      targetType: "BillingInstallment",
+      targetId: row.id,
+      changes: { projectId, label: `Month ${index + 1}`, amount: project.budgetFee, monthIndex: index },
+    });
+    return row;
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/invoices");
+  return { id: created.id, month: index + 1 };
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -620,7 +689,7 @@ export async function generateInvoice(invoiceId: string) {
 
     await tx.invoice.update({
       where: { id: invoiceId },
-      data: { status: "sent" },
+      data: { status: "sent", sentAt: new Date() },
     });
 
     await writeAudit(tx, {
@@ -983,6 +1052,9 @@ export async function markInvoiceManual(
         total,
         isManual: true,
         issuedAt,
+        // A manually-logged invoice was sent outside the tool on its issued
+        // date — record that as the sent date too.
+        sentAt: issuedAt,
         dueAt,
         status: "sent",
         clientId: project.clientId,

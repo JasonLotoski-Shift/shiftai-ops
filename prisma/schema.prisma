@@ -229,12 +229,16 @@ enum IngestStatus {
 }
 
 // Project type — the kind of engagement (replaces the discovery/build/run
-// `phase` in the UI; phase column is retained for back-compat).
+// `phase` in the UI; phase column is retained for back-compat). Business
+// model v2: `monthly_project` was renamed in place to `subscription` (the core
+// recurring engagement) and `buyout` was added (the premium buy-out). One
+// engagement = one project: a later subscription or buy-out is a NEW project.
 enum ProjectType {
   discovery_report @map("discovery-report")
   pilot_project    @map("pilot-project")
-  monthly_project  @map("monthly-project")
+  subscription
   full_build       @map("full-build")
+  buyout
 }
 
 // Work category — colours/tags a milestone or task on the board. Defaults from
@@ -773,6 +777,11 @@ model Invoice {
   issuedAt DateTime
   dueAt    DateTime
   paidAt   DateTime?
+  // When the invoice was marked sent. Back-datable: a partner can record the
+  // real send date (e.g. an invoice emailed last Tuesday, logged today). Null
+  // while a draft; set on the draft→sent transition. Distinct from issuedAt
+  // (the row's creation date) — the two usually match but need not.
+  sentAt   DateTime?
   status   InvoiceStatus
 
   client   Client @relation(fields: [clientId], references: [id])

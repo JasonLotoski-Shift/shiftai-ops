@@ -16,8 +16,9 @@ import { FirmEconomicsSummary } from "@/components/billing/firm-economics-summar
 import { BillingSummaryCard } from "@/components/billing/billing-summary-card";
 import { ScopePricingPanel } from "@/components/billing/scope-pricing-panel";
 import { TeamLedger } from "@/components/billing/team-ledger";
+import { SubscriptionMonthButton } from "@/components/billing/subscription-month-button";
 import { ChangeThread } from "@/components/billing/change-thread";
-import { economicsTotals, allocateLaborRevenue } from "@/lib/billing/economics";
+import { economicsTotals, allocateLaborRevenue, buyoutAllocation } from "@/lib/billing/economics";
 import { isScopePricingProposal } from "@/lib/ingest/scope-pricing-types";
 import { getProjectBillingThread } from "@/lib/audit-read";
 import { ProjectFeeEdit } from "@/components/project-fee-edit";
@@ -198,14 +199,17 @@ export default async function ProjectDetailPage({
   }));
 
   // The 10/15/75 internal allocation of labour revenue (server-side compute).
+  // A buy-out is exempt — its full value is firm capture, no labour split.
   const econTotals = economicsTotals(economicsRows);
-  const allocation = allocateLaborRevenue({
-    laborBillable: econTotals.billableTotal,
-    takeHome: econTotals.costTotal,
-    directCosts: directCostsTotal,
-    originationPct: Number(project.originationPct) / 100,
-    isFirstContract: project.isFirstContract,
-  });
+  const allocation = project.projectType === "buyout"
+    ? buyoutAllocation(project.budgetFee)
+    : allocateLaborRevenue({
+        laborBillable: econTotals.billableTotal,
+        takeHome: econTotals.costTotal,
+        directCosts: directCostsTotal,
+        originationPct: Number(project.originationPct) / 100,
+        isFirstContract: project.isFirstContract,
+      });
 
   const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, invoice: FileText, report: FileText, other: FileText } as const;
   const reviewTone = { draft: "neutral", approved: "steel", sent: "gold", archived: "bone" } as const;
@@ -466,6 +470,14 @@ export default async function ProjectDetailPage({
             />
           </Card>
 
+          {project.projectType === "subscription" && (
+            <SubscriptionMonthButton
+              projectId={project.id}
+              monthlyFee={project.budgetFee}
+              monthsScheduled={projectInstallments.filter((i) => !i.isExtra).length}
+            />
+          )}
+
           <OriginationEditor
             projectId={project.id}
             originationPct={Number(project.originationPct)}
@@ -485,7 +497,7 @@ export default async function ProjectDetailPage({
 
           <DirectCostsEditor projectId={project.id} costs={directCostRows} />
 
-          <FirmEconomicsSummary alloc={allocation} />
+          <FirmEconomicsSummary alloc={allocation} isBuyout={project.projectType === "buyout"} />
 
           <ScopePricingPanel
             projectId={project.id}
