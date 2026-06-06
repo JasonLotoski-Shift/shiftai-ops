@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-06",
     tag: "new",
+    title: "Meetings auto-log from Fireflies",
+    detail:
+      "Record a client call in Fireflies and put “Shift” in the meeting title — when the transcript is ready it's matched to the client and queued on Ingest for you to approve (summary, action items, enrichment). Calls with only the team on them, or without “Shift” in the title, are skipped so standups don't clutter the queue.",
+  },
+  {
+    date: "2026-06-06",
+    tag: "new",
     title: "Log client emails by labeling them in Gmail",
     detail:
       "Connect your Gmail in Settings, then label any client thread “ops-log”. Those emails — sent and received — get matched to the client and queued on Ingest for you to approve, the same review step as meetings. It only ever reads threads you label, never your whole inbox, and you can disconnect anytime.",

@@ -503,6 +503,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <Mic size={16} strokeWidth={1.5} />,
+    title: "Log meetings from Fireflies",
+    blurb: "Record a client call in Fireflies; titled ones land on Ingest for review.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Record the call in Fireflies with “Shift” in the meeting title" },
+      { tone: "claude", kind: "Claude", label: "When the transcript is ready: matches the client/contact, drafts a summary + action items" },
+      { tone: "review", kind: "You review", label: "Approve on Ingest like any meeting; internal-only or untitled calls are skipped" },
+      { tone: "write", kind: "Saved", label: "Logs a meeting Interaction + files the transcript to Drive + Tasks/enrichment + AuditLog" },
+    ],
+  },
+  {
     icon: <ListTodo size={16} strokeWidth={1.5} />,
     title: "Work a deal through the stages",
     blurb: "Each stage from Discovery Call to Proposal has a one-click draft, reviewed before it leaves.",
