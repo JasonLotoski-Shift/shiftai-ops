@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
-import { Card, CardBody, Label, Badge, Button, Hairline, Avatar } from "@/components/ui";
+import { Card, CardBody, Label, Badge, Button, Avatar } from "@/components/ui";
 import { InvoiceStatusActions } from "@/components/invoice-status-actions";
 import { InvoiceDraftEdit } from "@/components/billing/invoice-draft-edit";
 import { ChangeThread } from "@/components/billing/change-thread";
@@ -129,23 +129,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             </div>
 
             <div className="px-5 pt-4 pb-5 flex flex-col gap-2 items-end">
-              <div className="grid grid-cols-2 gap-12 text-[13px]">
-                <span className="label">Subtotal</span>
-                <span className="mono tabular-nums text-bone text-right">
-                  {formatCAD(invoice.amount).replace("CA$", "$")}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-12 text-[13px]">
-                <span className="label">HST · 13%</span>
-                <span className="mono tabular-nums text-bone-dim text-right">
-                  {formatCAD(invoice.amount * 0.13).replace("CA$", "$")}
-                </span>
-              </div>
-              <Hairline className="w-[260px]" />
               <div className="grid grid-cols-2 gap-12">
                 <span className="label">Total</span>
                 <span className="mono text-[22px] tabular-nums text-track-gold text-right">
-                  {formatCAD(invoice.amount * 1.13).replace("CA$", "$")}
+                  {formatCAD(invoice.amount).replace("CA$", "$")}
                 </span>
               </div>
             </div>

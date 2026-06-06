@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-06",
+    tag: "fixed",
+    title: "Invoices no longer add HST",
+    detail:
+      "Invoices used to tack on 13% HST and show it as the total. The firm isn't tax-registered, so that line is gone — the invoice total is now just the amount billed.",
+  },
+  {
     date: "2026-06-05",
     tag: "new",
     title: "Discovery report: a client-facing deck in their brand",
