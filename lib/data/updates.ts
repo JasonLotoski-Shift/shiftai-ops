@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-06",
+    tag: "new",
+    title: "Log client emails by labeling them in Gmail",
+    detail:
+      "Connect your Gmail in Settings, then label any client thread “ops-log”. Those emails — sent and received — get matched to the client and queued on Ingest for you to approve, the same review step as meetings. It only ever reads threads you label, never your whole inbox, and you can disconnect anytime.",
+  },
+  {
+    date: "2026-06-06",
     tag: "fixed",
     title: "Invoices no longer add HST",
     detail:

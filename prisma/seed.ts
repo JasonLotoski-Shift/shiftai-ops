@@ -31,7 +31,28 @@ const prisma = new PrismaClient({ adapter });
 // Schema enums use underscored identifiers with @map → Prisma client expects the underscored form.
 const toEnum = (s: string) => s.replace(/-/g, "_");
 
+// Fixture partner ids (p-1…p-4) — the only Partner rows the seed owns. Real
+// partners are auto-provisioned with random cuids on first sign-in; the seed
+// must never delete those (doing so orphaned live JWTs → P2003 on first write).
+const FIXTURE_PARTNER_IDS = new Set(partners.map((p) => p.id));
+
 async function main() {
+  // PROD SAFETY GATE. Local dev and prod share one Supabase (see CLAUDE.md), so
+  // every seed run is a prod operation. If the DB already holds real (non-
+  // fixture) partner rows, it's a populated/prod DB — refuse the destructive
+  // wipe unless explicitly overridden. This stops an accidental `npx tsx
+  // prisma/seed.ts` from nuking the firm's real data and partner accounts.
+  const existingPartners = await prisma.partner.findMany({ select: { id: true, email: true } });
+  const realPartners = existingPartners.filter((p) => !FIXTURE_PARTNER_IDS.has(p.id));
+  if (realPartners.length > 0 && process.env.SEED_ALLOW_DESTRUCTIVE !== "1") {
+    console.error(
+      `Refusing to seed: this DB has ${realPartners.length} real partner row(s) ` +
+        `(${realPartners.map((p) => p.email).join(", ")}) — it looks like prod.\n` +
+        `The seed wipes all CRM data. To run anyway, set SEED_ALLOW_DESTRUCTIVE=1.`,
+    );
+    process.exit(1);
+  }
+
   console.log("Clearing existing data…");
   await prisma.auditLog.deleteMany();
   // Billing/economics children first (FK order) — before invoice/project/deal.
@@ -56,7 +77,8 @@ async function main() {
   await prisma.client.deleteMany();
   await prisma.contact.deleteMany();
   await prisma.consultant.deleteMany();
-  await prisma.partner.deleteMany();
+  // Scoped: only the fixture partners. Never touch real auto-provisioned rows.
+  await prisma.partner.deleteMany({ where: { id: { in: [...FIXTURE_PARTNER_IDS] } } });
 
   console.log(`Inserting ${partners.length} partners…`);
   for (const p of partners) {

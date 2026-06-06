@@ -407,7 +407,7 @@ function ProposalCard({
           <FileText size={14} strokeWidth={1.5} className="text-track-gold shrink-0" />
           <div className="min-w-0">
             <span className="text-[14px] text-bone truncate">{p.title}</span>
-            <p className="text-[11px] text-bone-mute">{new Date(p.meetingDate).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })} · {prop.actionItems.length} task(s) · {prop.enrichment.contact.length + prop.enrichment.client.length} enrichment</p>
+            <p className="text-[11px] text-bone-mute">{(({ paste: "Pasted", fireflies: "Fireflies", drop: "Dropped file", gmail: "Gmail" } as Record<string, string>)[p.source] ?? p.source)} · {new Date(p.meetingDate).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })} · {prop.actionItems.length} task(s) · {prop.enrichment.contact.length + prop.enrichment.client.length} enrichment</p>
           </div>
         </div>
         {unassigned ? <Badge tone="red">unassigned</Badge> : <Badge tone="gold">matched</Badge>}

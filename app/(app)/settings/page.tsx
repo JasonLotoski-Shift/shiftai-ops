@@ -1,18 +1,33 @@
 import { Header } from "@/components/header";
 import { Card, CardHeader, CardBody } from "@/components/ui";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_ORIGINATION_PCT, FIRM_POOL_PCT } from "@/lib/billing/economics";
 import { RateCardEditor } from "@/components/settings/rate-card-editor";
+import { GmailConnect } from "@/components/settings/gmail-connect";
 
-// Firm Settings — firm-wide billing defaults. Today: the rate card (editable)
-// plus a read-only summary of the firm economics split and how each engagement
-// type bills. Per-project overrides still live on each project's Financials tab.
+// Firm Settings — firm-wide billing defaults (rate card + a read-only economics
+// summary) plus per-partner integrations (Gmail email logging). Per-project
+// billing overrides still live on each project's Financials tab.
 
-export default async function SettingsPage() {
-  const tiers = await prisma.rateTier.findMany({
-    orderBy: { sortOrder: "asc" },
-    select: { id: true, key: true, name: true, billRateCents: true, payRateCents: true, active: true },
-  });
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ gmail?: string }>;
+}) {
+  const { gmail: gmailFlag } = await searchParams;
+  const session = await auth();
+  const partnerId = session?.user?.partnerId;
+
+  const [tiers, gmailAuth] = await Promise.all([
+    prisma.rateTier.findMany({
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, key: true, name: true, billRateCents: true, payRateCents: true, active: true },
+    }),
+    partnerId
+      ? prisma.partnerGmailAuth.findUnique({ where: { partnerId }, select: { email: true } })
+      : Promise.resolve(null),
+  ]);
 
   const origPct = Math.round(DEFAULT_ORIGINATION_PCT * 100);
   const poolPct = Math.round(FIRM_POOL_PCT * 100);
@@ -20,10 +35,17 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <Header eyebrow="Firm · billing defaults" title="Settings." />
+      <Header eyebrow="Firm · settings" title="Settings." />
 
       <div className="px-8 py-8 flex flex-col gap-8 max-w-[860px]">
         <RateCardEditor tiers={tiers} />
+
+        <GmailConnect
+          connected={!!gmailAuth}
+          email={gmailAuth?.email ?? null}
+          label={process.env.GMAIL_INGEST_LABEL ?? "ops-log"}
+          statusFlag={gmailFlag ?? null}
+        />
 
         <Card>
           <CardHeader className="flex flex-col gap-0.5">

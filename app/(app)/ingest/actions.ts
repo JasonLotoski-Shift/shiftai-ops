@@ -226,6 +226,16 @@ export async function approveProposal(
   const clientId = input.clientId ?? proposal.matchedClientId;
   const summary = input.summary.trim() || (proposal.proposal as ExtractedProposal).summary || proposal.title;
 
+  // Email proposals (Gmail) log as an email interaction and skip the Drive
+  // upload — the body lives in the proposal/interaction, not a filed doc.
+  const isEmail = proposal.source === "gmail";
+  const direction = (proposal.proposal as { direction?: unknown }).direction;
+  const interactionType: InteractionType = isEmail
+    ? direction === "sent"
+      ? "email_sent"
+      : "email_received"
+    : "meeting";
+
   // Upload the transcript to Drive (client folder if reachable, else root).
   const sharedRoot = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
   let parentFolderId = sharedRoot ?? null;
@@ -243,7 +253,7 @@ export async function approveProposal(
   let driveUrl: string | null = null;
   let driveFileId: string | null = null;
   const fileName = `${proposal.meetingDate.toISOString().slice(0, 10)}-${proposal.title.replace(/\s+/g, "-").slice(0, 60)}-transcript.md`;
-  if (parentFolderId) {
+  if (parentFolderId && !isEmail) {
     try {
       const res = await drive.files.create({
         requestBody: { name: fileName, parents: [parentFolderId], mimeType: "text/markdown" },
@@ -283,10 +293,11 @@ export async function approveProposal(
         await tx.interaction.create({
           data: {
             contactId,
-            type: "meeting" as InteractionType,
+            type: interactionType,
             date: proposal.meetingDate,
             summary,
             loggedBy: "AGENT · CLAUDE",
+            channel: isEmail ? "gmail" : null,
           },
         });
         if (proposal.meetingDate > contact.lastTouchAt) {
@@ -304,7 +315,7 @@ export async function approveProposal(
           title: a.title.trim(),
           priority: "medium",
           due: Number.isNaN(due.getTime()) ? proposal.meetingDate : due,
-          context: a.context?.trim() || `From meeting: ${proposal.title}`,
+          context: a.context?.trim() || `From ${isEmail ? "email" : "meeting"}: ${proposal.title}`,
           ownerId: a.ownerId,
           assignedById: session.user.partnerId,
           clientId: clientId ?? null,
@@ -347,7 +358,7 @@ export async function approveProposal(
       actor,
       type: "ai",
       target: proposal.title,
-      detail: `Meeting ingested — ${input.actionItems.length} task(s), ${summary.length > 80 ? summary.slice(0, 77) + "…" : summary}`,
+      detail: `${isEmail ? "Email" : "Meeting"} ingested — ${input.actionItems.length} task(s), ${summary.length > 80 ? summary.slice(0, 77) + "…" : summary}`,
       link: contactId ? `/contacts/${contactId}` : clientId ? `/clients/${clientId}` : "/ingest",
     });
   });

@@ -492,6 +492,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <Mail size={16} strokeWidth={1.5} />,
+    title: "Log client emails from Gmail",
+    blurb: "Label a client thread in Gmail and it lands on Ingest for review — your inbox stays private.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Settings → Connect Gmail (once), then label any client thread “ops-log”" },
+      { tone: "claude", kind: "Claude", label: "Hourly: reads only labeled threads, matches the client/contact, drafts a summary + action items" },
+      { tone: "review", kind: "You review", label: "Each email waits on Ingest as a pending item — approve like a meeting" },
+      { tone: "write", kind: "Saved", label: "Logs a sent/received email Interaction (+ Tasks/enrichment) + AuditLog; never reads unlabeled mail" },
+    ],
+  },
+  {
     icon: <ListTodo size={16} strokeWidth={1.5} />,
     title: "Work a deal through the stages",
     blurb: "Each stage from Discovery Call to Proposal has a one-click draft, reviewed before it leaves.",

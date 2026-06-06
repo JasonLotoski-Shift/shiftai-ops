@@ -4,6 +4,8 @@
 >
 > **This CLAUDE.md inherits from `Shift/CLAUDE.md`** (firm-wide invariants — read both).
 
+> ⏳ **Business Model v2 pivot in flight (2026-06-04).** The firm moved to a managed-service model (build + monthly **subscription** + **buy-out**; engagement phase **Run → Operate**). Two changes are planned but **not yet applied**: (A) the AI firm-brain + scope-skill copy (`skills/_firm/context.md`, `skills/scope/SKILL.md`) — gated on a 3-of-3 partner vote; (B) the `ProjectType` / `ProjectPhase` enums + terminology — a **live-prod Postgres migration that needs Jason's approval before running**. Both are specced in [docs/business-model-v2-plan.md](docs/business-model-v2-plan.md). Canonical model: `../shiftai-firm/planning/business-model-v2.md`. Until then, the old engagement vocabulary (`monthly_project`, `run`, "systems they own and run") is intentionally still live.
+
 ---
 
 ## Stack at a glance
@@ -156,7 +158,7 @@ Three pathways, ordered by integration depth:
 | Run dev server | `npm run dev` (port 3030) |
 | Type-check | `npx tsc --noEmit` |
 | Run migration locally | `npx prisma migrate dev --name <name>` |
-| Re-seed local DB | `npx tsx prisma/seed.ts` |
+| Re-seed local DB | `npx tsx prisma/seed.ts` — **refuses if the DB has real (non-fixture) partners** (the shared Supabase is also prod). It wipes all CRM data; to override, prefix `SEED_ALLOW_DESTRUCTIVE=1`. Even then it preserves real auto-provisioned partner rows (only the `p-1…p-4` fixtures are reset). |
 | Generate Prisma Client | `npx prisma generate` (runs auto on `npm install` via postinstall) |
 | Deploy | Push to `main` — Vercel auto-builds |
 

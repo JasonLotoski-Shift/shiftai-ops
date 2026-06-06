@@ -173,6 +173,7 @@ enum IngestSource {
   paste
   fireflies
   drop
+  gmail
 }
 
 enum InstallmentTrigger {
@@ -343,6 +344,10 @@ model Partner {
   channelMemberships ChannelMember[]
   messagesAuthored   Message[]
   originations       Origination[]
+
+  // Gmail ingest — per-partner OAuth connection + incremental poll cursors.
+  gmailAuth        PartnerGmailAuth?
+  ingestSyncStates IngestSyncState[]
 
   // Import Contacts — a partner's PRIVATE imported network + scan passes.
   importBatches    ImportBatch[]     @relation("PartnerImportBatch")
@@ -1381,6 +1386,34 @@ model IngestProposal {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+}
+
+// Per-partner Gmail OAuth connection (label-based email ingest). One row per
+// partner who has connected. refreshToken is AES-256-GCM encrypted at rest
+// (lib/crypto.ts) — never stored in the clear. See docs/gmail-integration-plan.md.
+model PartnerGmailAuth {
+  id           String   @id @default(cuid())
+  partnerId    String   @unique
+  email        String // the Google account that granted access
+  refreshToken String // encrypted
+  scope        String
+  connectedAt  DateTime @default(now())
+  lastError    String? // last token-refresh failure → UI prompts a reconnect
+  partner      Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+}
+
+// Incremental ingest cursor — one row per (partner, source). For Gmail the
+// cursor is the mailbox historyId we last processed, so each poll only reads
+// what's new. Unique on (partnerId, source).
+model IngestSyncState {
+  id        String       @id @default(cuid())
+  partnerId String
+  source    IngestSource
+  cursor    String? // Gmail historyId (null until first successful poll)
+  updatedAt DateTime     @updatedAt
+  partner   Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, source])
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -9,9 +9,20 @@
 // [NEEDS CONFIG] before this does anything:
 //   - FIREFLIES_API_KEY        (Fireflies GraphQL bearer token)
 //   - FIREFLIES_WEBHOOK_SECRET (shared secret; sent as ?secret= or x-webhook-secret)
-// Until both are set, the route returns 501. It is guarded so it can ship to
-// prod inert — nothing runs accidentally. Untested end-to-end (no Fireflies
-// account wired yet); validate against a real payload before relying on it.
+// Optional:
+//   - FIREFLIES_TITLE_FILTER   (only ingest meetings whose title contains this
+//                               word, case-insensitive; default "Shift". Set to
+//                               "" to ingest every title.)
+// Until the two required are set, the route returns 501. It is guarded so it can
+// ship to prod inert — nothing runs accidentally. Untested end-to-end (no
+// Fireflies account wired yet); validate against a real payload before relying
+// on it.
+//
+// INGEST GATE — Fireflies fires its webhook for EVERY meeting you own (their
+// webhooks can't be scoped to a channel), so we filter HERE: a meeting is
+// ingested only if (1) its title contains FIREFLIES_TITLE_FILTER AND (2) it has
+// at least one non-firm attendee. A ?force=1 call bypasses the gate (manual
+// "pull this meeting" / re-ingest by id).
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -59,6 +70,18 @@ function flattenTranscript(t: FirefliesTranscript): string {
   return t.summary?.overview ?? "";
 }
 
+// Only ingest meetings whose title contains this word (case-insensitive).
+// Defaults to the firm name; override or disable ("") via FIREFLIES_TITLE_FILTER.
+const TITLE_FILTER = process.env.FIREFLIES_TITLE_FILTER ?? "Shift";
+
+// Firm domains — attendees on these are "us". @shiftcg.ai is the sunsetting
+// alias (still live); keep until it's retired (see CLAUDE.md gotcha #6).
+const FIRM_EMAIL_DOMAINS = ["shiftai.partners", "shiftcg.ai"];
+function isInternalEmail(email: string): boolean {
+  const at = email.lastIndexOf("@");
+  return at !== -1 && FIRM_EMAIL_DOMAINS.includes(email.slice(at + 1));
+}
+
 async function matchContact(emails: string[]) {
   if (!emails.length) return { contactId: null as string | null, clientId: null as string | null, dealId: null as string | null };
   const contacts = await prisma.contact.findMany({
@@ -87,6 +110,10 @@ export async function POST(req: Request) {
 
   // Verify the shared secret (query param or header).
   const url = new URL(req.url);
+  // ?force=1 bypasses the title / internal-only gate — the manual "pull this
+  // meeting" path (re-ingest a specific id even if it wasn't titled for ingest).
+  // Still requires the shared secret below.
+  const force = url.searchParams.get("force") === "1";
   const provided = url.searchParams.get("secret") ?? req.headers.get("x-webhook-secret");
   if (provided !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -114,8 +141,26 @@ export async function POST(req: Request) {
   }
   const title = t.title ?? "Fireflies meeting";
   const meetingDate = t.date ? new Date(t.date) : new Date();
-  const emails = (t.meeting_attendees ?? []).map((a) => a.email).filter((e): e is string => !!e);
-  const match = await matchContact(emails.map((e) => e.toLowerCase()));
+  const emails = (t.meeting_attendees ?? [])
+    .map((a) => a?.email?.trim().toLowerCase())
+    .filter((e): e is string => !!e);
+
+  // ── Ingest gate (skipped when ?force=1) ──
+  // A skip returns 200 so Fireflies marks the webhook delivered (no retries).
+  if (!force) {
+    // 1. Title must contain the firm tag (default "Shift").
+    if (TITLE_FILTER && !title.toLowerCase().includes(TITLE_FILTER.toLowerCase())) {
+      return NextResponse.json({ ok: true, skipped: true, reason: "title-no-match" });
+    }
+    // 2. Internal-only meeting (every known attendee on a firm domain) — a
+    //    partner sync named "Shift …" shouldn't create a proposal. Only skip
+    //    when we actually have attendee emails to judge by.
+    if (emails.length > 0 && emails.every(isInternalEmail)) {
+      return NextResponse.json({ ok: true, skipped: true, reason: "internal-only" });
+    }
+  }
+
+  const match = await matchContact(emails);
 
   // Extract via the same skill the manual paste path uses.
   const raw = await generate({
