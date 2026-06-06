@@ -26,6 +26,10 @@ Read the page for firmographic confirmation and any buying signals that match th
 
 Report only signals the page actually states. If the page is thin or shows nothing relevant, say so rather than inferring.
 
+## What to return
+
+Return only the signal snippet, 2-4 sentences, no preamble: firmographic confirmation first (what they do, rough size, HQ, vertical), then any buying signal the page actually states. If the page is thin, return exactly `no relevant signal on page`.
+
 ## Hard rules
 
 - Scrape is scoped to the single finalist's own domain — never widen the net.

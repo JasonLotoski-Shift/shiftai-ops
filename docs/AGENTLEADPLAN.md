@@ -1,6 +1,6 @@
 # Lead Generation Agent — Build Plan (`AGENTLEADPLAN.md`)
 
-> **Status:** Design / brainstorming — locked decisions below, open questions at the end.
+> **Status:** Design / brainstorming — set decisions below, open questions at the end.
 > **What this is:** the detailed build-out of **Lead Scout** (Agent #2 in [agent-flow-design.md](agent-flow-design.md)), expanded with an ICP foundation (Targeting) and a review surface (AI Found Leads).
 > **Persistence rule:** [../CLAUDE.md](../CLAUDE.md) "Wire a Quick Action end-to-end" — every write round-trips into the DB (Artifact + optional Interaction + AuditLog), propose-never-auto-write.
 > **Owner cadence:** Jason wants to be hands-on. This doc is the walk-through — **open questions are numbered at the bottom; we resolve them one at a time before building each phase.**
@@ -29,7 +29,7 @@ The original sketch was "3 agents that search and cross-reference each other." W
 
 ---
 
-## 3. Locked decisions
+## 3. Set decisions
 
 | # | Decision | Choice |
 |---|---|---|
@@ -175,7 +175,7 @@ Two skill files define *how a segment becomes a query*:
 - ~~**Q6.** People depth~~ → **RESOLVED (D20):** 3–5 people/company, filtered by `buyerPersonas`.
 - ~~**Q9.** Guideline style~~ → **RESOLVED (D22):** principles + parameterized templates in each source `SKILL.md`.
 
-> **Phase C is now fully designed.** The only outstanding item is **Q5 (Apollo tier — informational)** and the two API keys. Everything else is locked and ready to build once keys land.
+> **Phase C is now fully designed.** The only outstanding item is **Q5 (Apollo tier — informational)** and the two API keys. Everything else is set and ready to build once keys land.
 - ~~**Q7.** Nested people storage~~ → **RESOLVED (D14):** `Json` array on `ProspectLead`.
 - ~~**Q8.** "Already in pipeline" dedup~~ → **RESOLVED (D15):** add a normalized `domain` field to `Contact`.
 - **Q9.** Search-guideline detail: how prescriptive should the Firecrawl/Apollo `SKILL.md`s be (exact query templates vs. principles the model adapts)?

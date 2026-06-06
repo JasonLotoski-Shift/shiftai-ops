@@ -18,7 +18,7 @@ Requirements:
 - **One file, self-contained.** Inline `<style>` and a single inline `<script>` of vanilla JS. The ONLY external dependency allowed is Google Fonts via a `<link>`. No frameworks, no CDNs, no external images (use CSS/SVG/data-URI only).
 - **Genuinely interactive** — implement the one or two interactions from the spec so they actually work (click/toggle/filter with real DOM updates). Everything else can be static. No dead buttons.
 - **Plausible sample data** baked in, matching the spec. Clearly illustrative, never real client data.
-- **On-brand and precise** — dark, engineered, confident; the palette/type from the spec. Responsive enough to look right on a laptop. No animation gimmicks beyond subtle transitions.
+- **On-brand and precise** — dark, engineered, confident; take the palette/type from the spec. If the spec is silent on brand, fall back to the firm Edition-06 floor: soft ~10px radius, pill chips, a subtle shadow (never a glow), no gradients, Track Gold as the single accent moment. Responsive enough to look right on a laptop. No animation gimmicks beyond subtle transitions.
 - **Header** names the client and reads, plainly, that this is an illustrative prototype built by Shift.
 - **Self-QA before returning:** every interaction works, nothing is lorem/placeholder, no `TODO`, the file renders standalone with no network beyond fonts, and no banned words appear.
 

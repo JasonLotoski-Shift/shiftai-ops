@@ -52,7 +52,7 @@ Each segment persona is `{ department, seniority }` from the firm's controlled v
 - **geography** scopes the people search too: pass `geographies` as `organization_locations` (org-scoped) so people belong to companies in the segment's regions.
 - Always scope by the candidate company: `q_organization_domains_list: [domain]`.
 
-`name` on `api_search` results is frequently locked/null — that is expected and free. Store name+title+`apolloPersonId` and reveal the email later.
+`name` on `api_search` results is frequently withheld/null — that is expected and free. Store name+title+`apolloPersonId` and reveal the email later.
 
 ## 3. Primary-person selection
 

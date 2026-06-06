@@ -34,12 +34,13 @@ Professional services and enterprise firms, typically **$25M–$200M+ revenue**.
 
 ## The people (the roster)
 
-Three founding partners, equal (33.3% each):
-- **Jason Lotoski** — partner. Building products with AI; product-and-operations operator.
-- **Jay Giraud** — partner. Tech founder, fundraising/pitch strategist (~$200M raised, 5 startups incl. Damon Motorcycles + Mojio). Founder credibility, capital network, F500 partnerships.
-- **Steve Devries** — partner. Vertical-SaaS operator, 17+ yrs in dealership marketing/inventory platforms. Mid-market private-company GTM.
+Three founding partners, equal (33.3% each). All are **doers**, not brand-name advisors who delegate. The house style (below) is the floor for all three; the *writes* tell is a thin per-author overlay — use it only to route a partner-signed piece, never as a replacement for the voice rules.
 
-All three are **doers**, not brand-name advisors who delegate. *(Eric Paradis — motorsport/OEM executive — is on hold, not a founding partner. Don't list him as a partner.)*
+- **Jason Lotoski** — partner. Civil engineer; founder/operator (TONIT, ~285K users). Lane: firm thesis, system architecture, E&C credibility, AI-as-applied-strategy. *Writes:* builder over guru, structured and numbered, "we learned the hard way," anti-vanity-metrics.
+- **Jay Giraud** — partner. Tech founder, ~$200M raised, 5 startups (Damon Motorcycles + Mojio). Lane: capital network, narrative/pitch craft, F500 partnerships, founder trust. *Writes:* clarity-as-product, "walked through fire," anti-hustle, narrative-heavy.
+- **Steve Devries** — partner. Vertical-SaaS operator, 17+ yrs in dealership marketing/inventory platforms. Lane: vertical GTM, sales motion, mid-market private-company go-to-market. *Writes:* practical and pragmatic, "marketing is not an expense," direct-response, decides on the numbers.
+
+Default partner is **Jason** unless the context names another. **Signing authority is not yet set** — never assume who can sign a contract, approve a scope, or commit a price alone; mark `[NEEDS INPUT]`. Full role + voice profiles: `../../../shiftai-firm/partners/personas.md`. *(Eric Paradis — motorsport/OEM executive — is on hold, not a founding partner. Don't list him as a partner.)*
 
 ## Engagement vocabulary (use these exact words)
 

@@ -18,7 +18,7 @@ A Client's status just moved to `closed`. The engagement produced deliverables, 
 2. **Inventory the deliverables.** `list_artifacts({ clientId })` + a pass over the local workspace (`04-Deliverables`, `02-Proposals-SOW`, build notes). Identify the patterns that recur or that worked: a proposal structure, a discovery question set, a build checklist, a status-report format.
 3. **Extract the reusable shape.** For each candidate, write a **sanitized template**: keep the structure, the prompts, the sequence; remove the client name, people, numbers, and any confidential specifics. Replace specifics with placeholders (`[CLIENT]`, `[METRIC]`, `[DATE]`).
 4. **Propose into the library.** Write each sanitized template into `00-Firm/_Templates/` **as a proposal for review** — a draft file plus a one-line rationale ("why this is worth keeping"). Register each as an `Artifact` via `create_artifact` (`generatedFromSkill: "harvest-engagement"`, `reviewStatus: "draft"`).
-5. **Summarize for the partner.** A short list: what you found, what you sanitized, what you propose adding to the library, and what you deliberately left out (too client-specific to generalize).
+5. **Summarize for the partner.** Return only this summary as your final message, a short bulleted list under four headings: what you found, what you sanitized, what you propose adding to the library, and what you deliberately left out (too client-specific to generalize). Nothing else.
 
 ## Hard rules
 

@@ -27,7 +27,7 @@ Structure (full-viewport sections, scroll/keyboard navigable):
 Requirements:
 
 - **One file, self-contained.** Inline `<style>`, Google Fonts via `<link>` only, no JS required beyond optional smooth-scroll. No external images (CSS/SVG/data-URI only).
-- **On-brand** — dark, precise, editorial; a serif display + clean sans body; generous spacing.
+- **On-brand (Edition 06)** — dark, precise, editorial. Fonts: Big Shoulders Display 900 (display only), Inter 400/500 (body), JetBrains Mono 500 (eyebrows, labels, data). Palette: Bitumen `#0A0A0B` page, Asphalt `#141416` cards, Track Gold `#C9A961` as the one accent moment per surface, Bone `#F2EEE6` type. Soft 10px radius on cards and controls, pill chips, a subtle shadow (never a glow); no gradients, no glassmorphism. Generous spacing.
 - The Demo-prototype button must use the real `PROTOTYPE_URL`. If that value is a `[NEEDS INPUT]` marker, render the marker as **visible on-page text** where the button would go.
 
 ## When input is missing — never invent
