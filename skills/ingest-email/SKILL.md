@@ -18,7 +18,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
   "summary": "1–3 sentence neutral summary of what the email says / asks.",
   "keyPoints": ["Concrete point stated", "Another"],
   "actionItems": [
-    { "title": "Short imperative task", "owner": "Name if a specific person owns it, else null", "context": "1–2 sentences of why / what's needed", "due": "YYYY-MM-DD or null" }
+    { "title": "Short noun phrase — the thing, no verb/date", "owner": "Name if a specific person owns it, else null", "context": "1–2 sentences of why / what's needed", "due": "YYYY-MM-DD or null" }
   ],
   "enrichment": {
     "contact": [ { "field": "keyFacts", "value": "Defensible fact about the person" } ],
@@ -37,7 +37,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 
 - **Extract, don't invent.** Every item must trace to something actually written in the email. No fabricated numbers, dates, names, or commitments. A floated figure goes in `keyPoints` as a soft claim ("Mentioned a ~$X budget — unconfirmed"), never as a committed fact or a `due` date.
 - **Quote-light, signature-blind.** Ignore quoted prior messages, email signatures, disclaimers, and unsubscribe footers — extract from the new content of *this* message only.
-- **Action items are imperative and assignable.** "Send the revised SOW to Heather by Fri" — not "follow up."
+- **Title action items as a short noun phrase — the thing, not a sentence.** Name what it is so it's scannable in a list. NO leading verb, NO due date in the title (the date has its own field), NO parentheticals, NO dashes/em-dashes as separators. The who / why / by-when go in `context`. Good: `Revised SOW`, `Integration access`. Bad: `Send the revised SOW to Heather by Fri`. If it isn't tied to a client/project, keep the entity in the phrase so it stands alone: `Granite Bay re-engagement`.
 - **Dates only if stated.** Use a `due` date only when the email names one. Otherwise `null`.
 - **Don't guess direction or identity.** The system tells you who sent it and who it matched. Don't infer a different sender or invent a contact.
 - If the email is too thin to extract anything (a one-liner, a scheduling ping), return the object with empty arrays and a one-line `summary`.

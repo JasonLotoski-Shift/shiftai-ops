@@ -20,6 +20,7 @@ import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
 import { notifyPartner } from "@/lib/messaging";
 import { generate } from "@/lib/ai";
 import { formatDate } from "@/lib/format";
+import { findDuplicateOpenTask } from "@/lib/ingest/dedup";
 import type { InteractionType } from "@/lib/generated/prisma/enums";
 
 // ── Extracted-proposal shape (mirrors the ingest-meeting skill output) ──
@@ -268,6 +269,10 @@ export async function approveProposal(
     }
   }
 
+  // Tallies surfaced in the audit + activity so a skip is never silent.
+  let tasksCreated = 0;
+  const tasksSkipped: { title: string; existingId: string }[] = [];
+
   await prisma.$transaction(async (tx) => {
     // 1. Artifact (the filed transcript), tagged AGENT · CLAUDE.
     if (driveUrl) {
@@ -306,9 +311,16 @@ export async function approveProposal(
       }
     }
 
-    // 3. Tasks from approved action items.
+    // 3. Tasks from approved action items. Skip any that duplicate an open task
+    //    already on the same client (a meeting + a follow-up email can propose
+    //    the same one) — reported in the audit/activity, never silently dropped.
     for (const a of input.actionItems) {
       if (!a.title.trim() || !a.ownerId) continue;
+      const dup = await findDuplicateOpenTask(tx, { title: a.title, clientId });
+      if (dup) {
+        tasksSkipped.push({ title: a.title.trim(), existingId: dup.id });
+        continue;
+      }
       const due = new Date(a.due);
       await tx.task.create({
         data: {
@@ -321,6 +333,7 @@ export async function approveProposal(
           clientId: clientId ?? null,
         },
       });
+      tasksCreated++;
     }
 
     // 4. Append-only enrichment.
@@ -346,7 +359,9 @@ export async function approveProposal(
         approvedBy: partnerLabel,
         contactId,
         clientId,
-        tasks: input.actionItems.length,
+        tasks: tasksCreated,
+        tasksSkippedAsDuplicate: tasksSkipped.length,
+        tasksSkipped,
         contactEnrich: input.contactEnrich.length,
         clientEnrich: input.clientEnrich.length,
         artifact: !!driveUrl,
@@ -358,7 +373,7 @@ export async function approveProposal(
       actor,
       type: "ai",
       target: proposal.title,
-      detail: `${isEmail ? "Email" : "Meeting"} ingested — ${input.actionItems.length} task(s), ${summary.length > 80 ? summary.slice(0, 77) + "…" : summary}`,
+      detail: `${isEmail ? "Email" : "Meeting"} ingested — ${tasksCreated} task(s)${tasksSkipped.length ? `, ${tasksSkipped.length} skipped as already-open duplicate(s)` : ""}, ${summary.length > 80 ? summary.slice(0, 77) + "…" : summary}`,
       link: contactId ? `/contacts/${contactId}` : clientId ? `/clients/${clientId}` : "/ingest",
     });
   });

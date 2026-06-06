@@ -18,8 +18,8 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
   "summary": "2–4 sentence neutral summary of what this document/thread covers, scoped to the project.",
   "projectNotes": "Optional — durable notes to append to the project record. Omit or null if nothing durable.",
   "contactKeyFacts": ["Defensible fact about the primary contact surfaced here"],
-  "milestones": [ { "title": "Short milestone name", "dueDate": "YYYY-MM-DD or null", "status": "pending | in-progress | complete | at-risk" } ],
-  "tasks": [ { "title": "Short imperative task", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "context": "1–2 sentences of why / what's needed" } ],
+  "milestones": [ { "title": "Short noun phrase — the thing, no verb/date", "dueDate": "YYYY-MM-DD or null", "status": "pending | in-progress | complete | at-risk" } ],
+  "tasks": [ { "title": "Short noun phrase — the thing, no verb/date", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "context": "1–2 sentences of why / what's needed" } ],
   "interactions": [ { "summary": "What was said/decided, logged against the contact", "type": "meeting | call | email-received | email-sent | other" } ]
 }
 ```
@@ -31,6 +31,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 ## Hard rules for this task
 
 - **Extract, don't invent.** Every item must trace to something actually in the dropped content. No fabricated numbers, dates, names, or commitments. If a date or milestone was *floated* (not agreed), say so in the `summary` or `projectNotes` — never as a committed `dueDate` or `due`.
+- **Title milestones and tasks as a short noun phrase — the thing, not a sentence.** Name what it is so it's scannable in a list. NO leading verb, NO due date in the title (the date has its own field), NO parentheticals, NO dashes/em-dashes as separators. The who / why / by-when go in `context` (tasks) or the `summary` (milestones). Good milestone: `Prototype V2`, `Dispatcher dashboard alpha`. Bad: `Prototype V2 delivered by the 23rd`. Good task: `Build plan approval`, `DMS integration access`.
 - **Dates only if stated.** Use a `dueDate` / `due` only when the content names one. Otherwise `null`.
 - **Scope to the project.** This content is about the project in the context block — don't propose records for other clients or projects.
 - **Mark gaps, never guess.** Where a needed detail is genuinely unknown, write `[NEEDS INPUT]` inline in that field rather than inventing a value.

@@ -27,12 +27,12 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
       "listAdditions": [ { "field": "keyFacts", "value": "Defensible fact" } ],
       "interactions": [ { "type": "meeting | call | email-received | email-sent | other", "summary": "What was said/decided", "date": "YYYY-MM-DD or null" } ],
       "projectNotes": "Durable notes to append to the project — omit/null if nothing durable.",
-      "milestones": [ { "title": "Short name", "dueDate": "YYYY-MM-DD or null", "status": "pending | in-progress | complete | at-risk" } ],
-      "deliverables": [ { "type": "proposal | deck | email | sow | invoice | report | other", "title": "Short title" } ],
+      "milestones": [ { "title": "Short noun phrase — the thing, no verb/date", "dueDate": "YYYY-MM-DD or null", "status": "pending | in-progress | complete | at-risk" } ],
+      "deliverables": [ { "type": "proposal | deck | email | sow | invoice | report | other", "title": "Short noun phrase" } ],
       "stageSignal": { "suggestion": "e.g. proposal", "rationale": "Why the content implies it" }
     }
   ],
-  "tasks": [ { "title": "Short imperative task", "context": "1–2 sentences", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "ownerHint": "a roster name or null", "clientId": "id or null", "projectId": "id or null", "milestoneId": "a listed milestone id or null", "reassignTaskId": "an OPEN-TASK id or null" } ]
+  "tasks": [ { "title": "Short noun phrase — the thing, no verb/date", "context": "1–2 sentences", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "ownerHint": "a roster name or null", "clientId": "id or null", "projectId": "id or null", "milestoneId": "a listed milestone id or null", "reassignTaskId": "an OPEN-TASK id or null" } ]
 }
 ```
 
@@ -47,6 +47,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 - **Dates only if stated.** Use a date only when the content names one. Otherwise `null`.
 - **Scope to the named targets.** Only propose changes for the records supplied in the context block. Don't invent records for other clients/projects.
 - **Never assert a stage moved.** `stageSignal` is a suggestion the partner acts on, nothing more.
-- **Tasks:** imperative and assignable ("Send the pilot scope to Heather by Fri"). Set `ownerHint` only to a roster name that's actually named in the content. Set `milestoneId` ONLY to a milestone id listed under the project's Current milestones, and ONLY when the content ties the task to that milestone — otherwise `null`. Set `reassignTaskId` ONLY to a supplied open-task id, and ONLY when the content explicitly hands that exact task to a different named owner — otherwise `null` (it's a new task).
+- **Title tasks and milestones as a short noun phrase — the thing, not a sentence.** Name what it is so it's instantly scannable in a list. NO leading verb ("Send", "Chase", "Review"), NO due date in the title (the date has its own field), NO parentheticals, and NO dashes or em-dashes as separators. The who / why / by-when go in `context`, never the title. Good: `Pilot SOW`, `Prototype V2 sign-off`, `DMS integration access`. Bad: `Send the pilot scope to Heather by Fri`, `Approve build plan (due 23rd)`. When a task isn't tied to a client or project (firm-level), put the entity name in the phrase so it's still recognizable on its own: `Granite Bay re-engagement`.
+- **Tasks — grounding:** set `ownerHint` only to a roster name that's actually named in the content. Set `milestoneId` ONLY to a milestone id listed under the project's Current milestones, and ONLY when the content ties the task to that milestone — otherwise `null`. Set `reassignTaskId` ONLY to a supplied open-task id, and ONLY when the content explicitly hands that exact task to a different named owner — otherwise `null` (it's a new task).
 - **Mark gaps, never guess.** Where a needed detail is genuinely unknown, write `[NEEDS INPUT]` inline rather than inventing a value.
 - If the content is too thin to extract anything, return the object with empty arrays and a one-line `summary`.

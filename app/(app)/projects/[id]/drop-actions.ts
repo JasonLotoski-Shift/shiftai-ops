@@ -21,6 +21,7 @@ import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
 import { notifyPartner } from "@/lib/messaging";
 import { generate } from "@/lib/ai";
 import { formatDate } from "@/lib/format";
+import { findDuplicateOpenTask, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
 import type { InteractionType, MilestoneStatus, TaskPriority } from "@/lib/generated/prisma/enums";
 
 const SKILL = "ingest-project";
@@ -264,16 +265,34 @@ export async function approveProjectProposal(proposalId: string, selections: App
   const keyFacts = selections.contactKeyFacts.map((f) => f.trim()).filter(Boolean);
   const projectNotes = selections.projectNotes?.trim() || null;
 
+  // Skips surfaced in audit + activity so a dedup drop is never silent.
+  const tasksSkipped: { title: string; existingId: string }[] = [];
+  const milestonesSkipped: { title: string; existingId: string }[] = [];
+  let milestonesCreated = 0;
+  let tasksCreated = 0;
+
   await prisma.$transaction(async (tx) => {
-    // 1. Milestones scoped to the project.
+    // 1. Milestones scoped to the project. Skip duplicates of a live milestone.
     for (const m of milestones) {
+      const dupM = await findDuplicateOpenMilestone(tx, { title: m.title, projectId });
+      if (dupM) {
+        milestonesSkipped.push({ title: m.title, existingId: dupM.id });
+        continue;
+      }
       await tx.milestone.create({
         data: { title: m.title, dueDate: m.dueDate, status: m.status, projectId },
       });
+      milestonesCreated++;
     }
 
     // 2. Tasks scoped to the project + client; owned by the approving partner.
+    //    Skip any that duplicate an open task already on this project.
     for (const t of tasks) {
+      const dupT = await findDuplicateOpenTask(tx, { title: t.title, clientId, projectId });
+      if (dupT) {
+        tasksSkipped.push({ title: t.title, existingId: dupT.id });
+        continue;
+      }
       await tx.task.create({
         data: {
           title: t.title,
@@ -286,6 +305,7 @@ export async function approveProjectProposal(proposalId: string, selections: App
           projectId,
         },
       });
+      tasksCreated++;
     }
 
     // 3. Append projectNotes to the project description (append-only).
@@ -342,8 +362,12 @@ export async function approveProjectProposal(proposalId: string, selections: App
         projectId,
         clientId,
         contactId,
-        milestones: milestones.length,
-        tasks: tasks.length,
+        milestones: milestonesCreated,
+        milestonesSkippedAsDuplicate: milestonesSkipped.length,
+        milestonesSkipped,
+        tasks: tasksCreated,
+        tasksSkippedAsDuplicate: tasksSkipped.length,
+        tasksSkipped,
         interactions: interactions.length,
         contactKeyFacts: keyFacts.length,
         projectNotesAppended: !!projectNotes,
@@ -354,7 +378,7 @@ export async function approveProjectProposal(proposalId: string, selections: App
       actor,
       type: "ai",
       target: proposal.title,
-      detail: `Project drop ingested — ${milestones.length} milestone(s), ${tasks.length} task(s), ${interactions.length} interaction(s)`,
+      detail: `Project drop ingested — ${milestonesCreated} milestone(s), ${tasksCreated} task(s), ${interactions.length} interaction(s)${tasksSkipped.length || milestonesSkipped.length ? ` · ${tasksSkipped.length + milestonesSkipped.length} skipped as already-open duplicate(s)` : ""}`,
       link: `/projects/${projectId}`,
     });
   });

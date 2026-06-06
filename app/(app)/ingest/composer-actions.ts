@@ -28,6 +28,7 @@ import { generate } from "@/lib/ai";
 import { applyContactChanges, applyClientChanges, applyProjectChanges, applyDealStage } from "@/lib/ingest/apply";
 import { fetchTargetData, buildIngestContext, formatPartnerRoster, type TargetRef } from "@/lib/ingest/context";
 import { parseUnified } from "@/lib/ingest/parse";
+import { findDuplicateOpenTask, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
 import { createContact } from "@/app/(app)/contacts/actions";
 import type {
   IngestType,
@@ -473,6 +474,9 @@ export async function approveUnified(
   let tasksCreated = 0;
   let tasksReassigned = 0;
   let stageMoves = 0;
+  // Skips surfaced in audit + activity so a dedup drop is never silent.
+  const tasksSkipped: { title: string; existingId: string }[] = [];
+  const milestonesSkipped: { title: string; existingId: string }[] = [];
   const replaceDetail: { field: string; before: string; after: string }[] = [];
   const affected = { contacts: new Set<string>(), clients: new Set<string>(), projects: new Set<string>(), deals: new Set<string>() };
 
@@ -539,9 +543,15 @@ export async function approveUnified(
         totalReplaces += res.replaces.length;
         replaceDetail.push(...res.replaces);
 
-        // Approved milestones. Undated stays null (off the timeline).
+        // Approved milestones. Undated stays null (off the timeline). Skip any
+        // that duplicate a live milestone already on this project.
         for (const m of r.milestones ?? []) {
           if (!m.title?.trim()) continue;
+          const dupM = await findDuplicateOpenMilestone(tx, { title: m.title, projectId: r.recordId });
+          if (dupM) {
+            milestonesSkipped.push({ title: m.title.trim(), existingId: dupM.id });
+            continue;
+          }
           const d = m.dueDate ? new Date(m.dueDate) : null;
           await tx.milestone.create({
             data: {
@@ -607,6 +617,14 @@ export async function approveUnified(
         // The task vanished since extract — fall through and create a new one.
       }
 
+      // Skip a brand-new task that duplicates an open task already on this
+      // project/client (reassigns above are exempt — they re-own, not create).
+      const dupT = await findDuplicateOpenTask(tx, { title: t.title, clientId: t.clientId, projectId: t.projectId });
+      if (dupT) {
+        tasksSkipped.push({ title: t.title.trim(), existingId: dupT.id });
+        continue;
+      }
+
       await tx.task.create({
         data: {
           title: t.title.trim(),
@@ -662,9 +680,13 @@ export async function approveUnified(
         replaceDetail,
         interactions: interactionsCreated,
         milestones: milestonesCreated,
+        milestonesSkippedAsDuplicate: milestonesSkipped.length,
+        milestonesSkipped,
         deliverables: deliverablesCreated,
         tasksCreated,
         tasksReassigned,
+        tasksSkippedAsDuplicate: tasksSkipped.length,
+        tasksSkipped,
         stageMoves,
         artifact: !!driveUrl,
         driveFileId,
@@ -675,7 +697,7 @@ export async function approveUnified(
       actor,
       type: "ai",
       target: proposal.title,
-      detail: `Ingest approved — ${totalAdds} add(s), ${totalReplaces} overwrite(s), ${tasksCreated + tasksReassigned} task(s)${summary.length > 60 ? "" : ` · ${summary}`}`,
+      detail: `Ingest approved — ${totalAdds} add(s), ${totalReplaces} overwrite(s), ${tasksCreated + tasksReassigned} task(s)${tasksSkipped.length || milestonesSkipped.length ? `, ${tasksSkipped.length + milestonesSkipped.length} skipped as already-open duplicate(s)` : ""}${summary.length > 60 ? "" : ` · ${summary}`}`,
       link: "/ingest",
     });
   });

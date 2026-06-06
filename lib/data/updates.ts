@@ -24,6 +24,20 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-06",
+    tag: "improved",
+    title: "Ingest won't create duplicate tasks, and names them simpler",
+    detail:
+      "When you approve a meeting, email, or dropped file on Ingest, any task or milestone that's already open on the same client or project is skipped instead of added again — so two sources mentioning the same thing don't double it up (you'll see how many were skipped in the activity feed). Task and milestone names are also shorter now: just the thing (“Pilot SOW”, “Prototype V2”) instead of a sentence with a verb and a date.",
+  },
+  {
+    date: "2026-06-06",
+    tag: "improved",
+    title: "Firm economics are managing-partner only",
+    detail:
+      "The rate card and firm economics in Settings — bill/pay rates, margins, and the revenue splits — now show only to managing partners. Everyone still has their own Settings (like connecting Gmail); the firm-money parts are just hidden for non-managing partners.",
+  },
+  {
+    date: "2026-06-06",
     tag: "new",
     title: "Meetings auto-log from Fireflies",
     detail:

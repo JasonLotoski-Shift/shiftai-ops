@@ -18,7 +18,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
   "summary": "2–4 sentence neutral summary of what the meeting covered and decided.",
   "keyPoints": ["Concrete point discussed", "Another"],
   "actionItems": [
-    { "title": "Short imperative task", "owner": "Name if a specific person owns it, else null", "context": "1–2 sentences of why / what's needed", "due": "YYYY-MM-DD or null" }
+    { "title": "Short noun phrase — the thing, no verb/date", "owner": "Name if a specific person owns it, else null", "context": "1–2 sentences of why / what's needed", "due": "YYYY-MM-DD or null" }
   ],
   "enrichment": {
     "contact": [ { "field": "keyFacts", "value": "Defensible fact about the person" } ],
@@ -37,6 +37,6 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 
 - **Extract, don't invent.** Every item must trace to something actually said in the transcript. No fabricated numbers, dates, names, or commitments. If a budget or date was *floated* (not agreed), put it in `keyPoints` as a soft claim ("Floated a ~$X budget — unconfirmed"), never as a committed fact or a due date.
 - **Soft claims stay soft.** Discovery calls imply more than they commit. When in doubt, downgrade to a key point rather than an action item or an enrichment fact.
-- **Action items are imperative and assignable.** "Send the pilot scope to Heather by Fri" — not "discuss pilot."
+- **Title action items as a short noun phrase — the thing, not a sentence.** Name what it is so it's scannable in a list. NO leading verb, NO due date in the title (the date has its own field), NO parentheticals, NO dashes/em-dashes as separators. The who / why / by-when go in `context`. Good: `Pilot SOW`, `Operator interviews`. Bad: `Send the pilot scope to Heather by Fri`. If it isn't tied to a client/project, keep the entity in the phrase so it stands alone: `Granite Bay re-engagement`.
 - **Dates only if stated.** Use a `due` date only when the transcript names one. Otherwise `null`.
 - If the transcript is too thin to extract anything, return the object with empty arrays and a one-line `summary`.
