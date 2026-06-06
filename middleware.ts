@@ -14,6 +14,11 @@ export default middleware((req) => {
 });
 
 export const config = {
-  // Skip Next internals + static files + auth API routes
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],
+  // Skip Next internals + static files + auth API routes. ALSO skip machine-to-
+  // machine routes that authenticate with a shared secret, not a session cookie:
+  // /api/ingest/* (Fireflies webhook → FIREFLIES_WEBHOOK_SECRET) and /api/cron/*
+  // (Vercel cron → CRON_SECRET). External callers have no session, so gating them
+  // here would redirect them to /login and they'd never run. A NEW webhook/cron
+  // route under these prefixes is covered; one elsewhere must be added here.
+  matcher: ["/((?!api/auth|api/ingest|api/cron|_next/static|_next/image|favicon.ico).*)"],
 };
