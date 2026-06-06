@@ -29,7 +29,13 @@ export default async function IngestPage({
   const [pending, partners, contacts, clients, projects, deals] = await Promise.all([
     prisma.ingestProposal.findMany({
       // Scope-pricing proposals are reviewed on their project page, not here.
-      where: { status: "pending", NOT: { ingestType: "scope-pricing" } },
+      // NOTE: a `NOT`/`not` filter on a NULLABLE field excludes NULL rows in
+      // Prisma — so null-ingestType proposals (Fireflies + pasted meetings)
+      // must be OR'd in explicitly, or they silently never show on Ingest.
+      where: {
+        status: "pending",
+        OR: [{ ingestType: null }, { ingestType: { not: "scope-pricing" } }],
+      },
       orderBy: { createdAt: "desc" },
     }),
     prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
