@@ -25,6 +25,20 @@ export const updates: Update[] = [
   {
     date: "2026-06-05",
     tag: "new",
+    title: "Discovery report: a client-facing deck in their brand",
+    detail:
+      "After discovery, a one-click Discovery report on a client builds a browser-ready deck: it plays back what they told us, lays out the build as an idea to react to, shows the time saved, and ends by confirming they see the value. It renders in the client's own brand colors (in Shift's type and layout) when we have them, and carries no pricing; that stays in the proposal. Edit it, then it files to Drive.",
+  },
+  {
+    date: "2026-06-05",
+    tag: "improved",
+    title: "Enrich now grabs a company's brand colors",
+    detail:
+      "Enrich-from-web also reads a company's brand colors off their site and saves them on the record, so client-facing decks can be tailored to their brand. Like every enriched fact, you approve it and it never overwrites what's already there.",
+  },
+  {
+    date: "2026-06-05",
+    tag: "new",
     title: "Subscription and buy-out engagements",
     detail:
       "Projects now include two new types: Subscription and Buy-out. A subscription bills month-by-month — the project opens with month 1, and you add the next month when you bill it (no fixed end date). A buy-out is a single lump sum (e.g. 24× the monthly price, or a set fee) and is exempt from the internal 10/15/75 split — the whole amount counts as firm capture. Each new engagement is its own project on the client.",

@@ -49,6 +49,10 @@ function uploadMarkdown(body: string, fileName: string, parentFolderId: string) 
   return uploadFile(body, fileName, parentFolderId, "text/markdown");
 }
 
+function uploadHtml(body: string, fileName: string, parentFolderId: string) {
+  return uploadFile(body, fileName, parentFolderId, "text/html");
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Generative client docs — survey + discussion doc
 // ──────────────────────────────────────────────────────────────────────
@@ -194,6 +198,148 @@ export async function saveClientDoc(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Discovery report — a client-facing HTML build-plan deck (light mode +
+// client brand). Same generate/save split, but the output is HTML. Reads the
+// client's saved brandColors (captured by enrich-company-web) so the deck
+// renders in the client's accent on the Shift light canvas; no pricing.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function generateDiscoveryReport(
+  clientId: string,
+  input: { findings: string; timeBack?: string; outcomes?: string },
+): Promise<{ body: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+
+  const findings = input.findings.trim();
+  if (!findings) throw new Error("Discovery findings are required");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      company: true,
+      industry: true,
+      description: true,
+      companyKeyFacts: true,
+      brandColors: true,
+      primaryContact: {
+        select: {
+          name: true,
+          title: true,
+          interactions: {
+            orderBy: { date: "desc" },
+            take: 10,
+            select: { type: true, date: true, summary: true },
+          },
+        },
+      },
+    },
+  });
+  if (!client) throw new Error("Client not found");
+
+  const contextLines: string[] = [
+    "## Client",
+    `Company: ${client.company}`,
+    `Industry: ${client.industry}`,
+  ];
+  if (client.description) contextLines.push(`About: ${client.description}`);
+  if (client.companyKeyFacts.length) contextLines.push(`Key facts: ${client.companyKeyFacts.join("; ")}`);
+
+  contextLines.push(
+    "",
+    "## Primary contact",
+    `${client.primaryContact.name} — ${client.primaryContact.title}`,
+  );
+  if (client.primaryContact.interactions.length) {
+    contextLines.push("", "## Discovery interactions (newest first)");
+    for (const i of client.primaryContact.interactions) {
+      contextLines.push(`- ${formatDate(i.date)} · ${i.type.replace("_", "-")} — ${i.summary}`);
+    }
+  }
+  if (client.brandColors.length) {
+    contextLines.push(
+      "",
+      "## Client brand colors (deck accent only — Shift fonts and layout stay)",
+      `Primary: ${client.brandColors[0]}`,
+    );
+    if (client.brandColors[1]) contextLines.push(`Secondary: ${client.brandColors[1]}`);
+  }
+  const context = contextLines.join("\n");
+
+  const intake = [
+    "## Discovery findings (systems to build + what we found + the one new insight)",
+    findings,
+    "",
+    "## Time-back target",
+    input.timeBack?.trim() || "(not supplied — mark [NEEDS INPUT: time-back target])",
+    "",
+    "## The two outcomes the close confirms (X and Y)",
+    input.outcomes?.trim() || "(not supplied — mark [NEEDS INPUT: outcomes X and Y])",
+  ].join("\n");
+
+  const body = await generate({ skill: "discovery-report", context, intake, maxTokens: 10000 });
+  return { body: body.trim() };
+}
+
+export async function saveDiscoveryReport(clientId: string, input: { body: string }) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const body = input.body.trim();
+  if (!body) throw new Error("Report body is required");
+  assertNoNeedsInput(body, "discovery report");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { id: true, company: true, driveFolderUrl: true },
+  });
+  if (!client) throw new Error("Client not found");
+
+  const parentFolderId = resolveClientFolderId(client.driveFolderUrl);
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `${today}-${client.company.replace(/\s+/g, "-")}-discovery-report.html`;
+  const { fileId, webViewLink } = await uploadHtml(body, fileName, parentFolderId);
+
+  const artifact = await prisma.$transaction(async (tx) => {
+    const created = await tx.artifact.create({
+      data: {
+        type: "report" as ArtifactType,
+        title: `Discovery report · ${client.company} · ${today}`,
+        driveUrl: webViewLink,
+        fileName,
+        createdBy: partnerLabel,
+        generatedFromSkill: "discovery-report",
+        reviewStatus: "draft",
+        clientId: client.id,
+      },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "create.artifact.discovery-report.draft",
+      targetType: "Artifact",
+      targetId: created.id,
+      changes: { clientId, driveFileId: fileId, bodyLength: body.length },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: client.company,
+      detail: "Drafted discovery report, awaiting review",
+      link: `/clients/${clientId}`,
+    });
+
+    return created;
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  return { artifactId: artifact.id, driveUrl: webViewLink };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Upload client files — ingest round-trip (e.g. Fireflies meeting notes).
 // No generation: the partner supplies the content; we file it to Drive,
 // register an Artifact, and — if it's a meeting — log an Interaction so the
@@ -301,7 +447,7 @@ export async function uploadClientFile(
 
 // Fields the enrich-company-web skill is allowed to touch, split by shape so
 // the merge knows append (list) vs set-if-empty (scalar).
-const COMPANY_ENRICH_LIST_FIELDS = ["companyKeyFacts"] as const;
+const COMPANY_ENRICH_LIST_FIELDS = ["companyKeyFacts", "brandColors"] as const;
 const COMPANY_ENRICH_SCALAR_FIELDS = [
   "companySize",
   "headquarters",
@@ -410,6 +556,7 @@ export async function generateCompanyEnrichment(
       ownership: true,
       description: true,
       companyKeyFacts: true,
+      brandColors: true,
     },
   });
   if (!client) throw new Error("Client not found");
@@ -425,6 +572,7 @@ export async function generateCompanyEnrichment(
     `Ownership: ${client.ownership || "(empty)"}`,
     `Description: ${client.description || "(empty)"}`,
     `Key facts: ${client.companyKeyFacts.length ? client.companyKeyFacts.join("; ") : "(none)"}`,
+    `Brand colors: ${client.brandColors.length ? client.brandColors.join(", ") : "(none)"}`,
   ];
 
   const raw = await generate({
@@ -463,6 +611,7 @@ export async function applyCompanyEnrichment(
       ownership: true,
       description: true,
       companyKeyFacts: true,
+      brandColors: true,
     },
   });
   if (!client) throw new Error("Client not found");
@@ -471,15 +620,21 @@ export async function applyCompanyEnrichment(
   // set scalar fields ONLY if currently empty (never overwrite — that's a
   // conflict the partner resolves by hand).
   const data: Record<string, unknown> = {};
-  const keyFacts = [...client.companyKeyFacts];
+  // Each list field appends to its own array (case-insensitive dedupe); scalars
+  // set only if empty. brandColors keeps insertion order (primary first).
+  const lists: Record<CompanyEnrichListField, string[]> = {
+    companyKeyFacts: [...client.companyKeyFacts],
+    brandColors: [...client.brandColors],
+  };
   const applied: CompanyEnrichAddition[] = [];
   const skipped: CompanyEnrichAddition[] = [];
 
   for (const a of clean) {
     if ((COMPANY_ENRICH_LIST_FIELDS as readonly string[]).includes(a.field)) {
-      const exists = keyFacts.some((v) => v.toLowerCase() === a.value.toLowerCase());
+      const arr = lists[a.field as CompanyEnrichListField];
+      const exists = arr.some((v) => v.toLowerCase() === a.value.toLowerCase());
       if (!exists) {
-        keyFacts.push(a.value);
+        arr.push(a.value);
         applied.push(a);
       } else {
         skipped.push(a);
@@ -497,7 +652,9 @@ export async function applyCompanyEnrichment(
     }
   }
 
-  if (keyFacts.length !== client.companyKeyFacts.length) data.companyKeyFacts = keyFacts;
+  for (const lf of COMPANY_ENRICH_LIST_FIELDS) {
+    if (lists[lf].length !== client[lf].length) data[lf] = lists[lf];
+  }
 
   if (applied.length === 0) {
     return { applied: 0, skipped: skipped.length };

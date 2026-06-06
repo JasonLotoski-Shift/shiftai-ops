@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FolderOpen, Terminal, Check, ClipboardList, NotebookPen, Upload, FileInput } from "lucide-react";
+import { FolderOpen, Terminal, Check, ClipboardList, NotebookPen, Presentation, Upload, FileInput } from "lucide-react";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ClientDocModal } from "@/components/client-doc-modal";
+import { DiscoveryReportModal } from "@/components/discovery-report-modal";
 import { UploadFileModal } from "@/components/upload-file-modal";
 
 // The client's Actions panel (under the title). The header keeps the page's
@@ -22,13 +23,13 @@ export function ClientActionsPanel({
   workspacePath: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState<"survey" | "discussion" | "upload" | null>(null);
+  const [open, setOpen] = useState<"survey" | "discussion" | "discovery-report" | "upload" | null>(null);
 
   // Auto-open from the dashboard Quick Action (routes here with ?qa=survey|discussion|upload).
   const searchParams = useSearchParams();
   const qa = searchParams.get("qa");
   useEffect(() => {
-    if (qa === "survey" || qa === "discussion" || qa === "upload") setOpen(qa);
+    if (qa === "survey" || qa === "discussion" || qa === "discovery-report" || qa === "upload") setOpen(qa);
   }, [qa]);
 
   async function copyWorkspacePath() {
@@ -73,6 +74,13 @@ export function ClientActionsPanel({
       onClick: () => setOpen("discussion"),
     },
     {
+      key: "discovery-report",
+      icon: Presentation,
+      title: "Discovery report",
+      description: "Draft the client-facing discovery deck: findings, build plan, time back.",
+      onClick: () => setOpen("discovery-report"),
+    },
+    {
       key: "upload",
       icon: Upload,
       title: "Upload files",
@@ -92,7 +100,7 @@ export function ClientActionsPanel({
     <>
       <ActionsPanel
         actions={actions}
-        forceOpen={qa === "survey" || qa === "discussion" || qa === "upload"}
+        forceOpen={qa === "survey" || qa === "discussion" || qa === "discovery-report" || qa === "upload"}
       />
 
       {open === "survey" && (
@@ -118,6 +126,9 @@ export function ClientActionsPanel({
           focusPlaceholder="e.g. Mid-Build check-in — confirm scope for the work-order module and surface blockers"
           onClose={() => setOpen(null)}
         />
+      )}
+      {open === "discovery-report" && (
+        <DiscoveryReportModal clientId={clientId} company={company} onClose={() => setOpen(null)} />
       )}
       {open === "upload" && (
         <UploadFileModal clientId={clientId} company={company} onClose={() => setOpen(null)} />

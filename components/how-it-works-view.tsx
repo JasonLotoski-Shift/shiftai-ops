@@ -25,6 +25,7 @@ import {
   Flag,
   Calculator,
   Target,
+  Presentation,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -510,6 +511,17 @@ const flows: Flow[] = [
       { tone: "claude", kind: "Claude", label: "Prototype = frame → spec → write HTML (multi-step); deck = scope/timeline/price + a Demo-prototype link" },
       { tone: "review", kind: "You review", label: "Preview in the browser, edit the HTML; [NEEDS INPUT] blocks save until resolved" },
       { tone: "write", kind: "Saved", label: "Each files to Drive as a self-contained .html + an Artifact on the deal" },
+    ],
+  },
+  {
+    icon: <Presentation size={16} strokeWidth={1.5} />,
+    title: "Draft a discovery report",
+    blurb: "After discovery, a client-facing deck that plays back the findings, lays out the build as an idea, and confirms the value. Rendered in the client's brand colors when we have them.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Client → Discovery report · give the findings, the time-back number, and the two outcomes" },
+      { tone: "claude", kind: "Claude", label: "Builds a light-mode HTML deck: Shift type + layout, the client's accent colors; no pricing (that's the proposal)" },
+      { tone: "review", kind: "You review", label: "Preview in the browser, edit the HTML; [NEEDS INPUT] blocks save until the number + outcomes are real" },
+      { tone: "write", kind: "Saved", label: "Filed to Drive as a .html + an Artifact on the client" },
     ],
   },
   {
