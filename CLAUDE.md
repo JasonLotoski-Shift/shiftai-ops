@@ -164,12 +164,13 @@ Three pathways, ordered by integration depth:
 
 ### Before every push to `main` — run this checklist
 
-A push auto-deploys to prod. Before pushing, confirm both, and act if the answer is yes:
+A push auto-deploys to prod. Before pushing, confirm all three, and act if the answer is yes:
 
 1. **What's new** — did this change add or alter anything a partner would notice (a new thing they can do, a visible change, a fix)? If so, add an entry to [lib/data/updates.ts](lib/data/updates.ts) (top, dated, plain English, no jargon).
 2. **How it works** — did this change how a process works or add a new one (a new flow, a changed step, a new "what happens when I do X")? If so, update the How-it-works page so the walkthrough stays accurate.
+3. **Partner-gating** — does this change surface anything sensitive (firm economics, rate card, revenue splits, margins, payouts, other partners' pay, firm-wide money)? If so, recommend gating it to managing partners and flag it to Jason — don't ship firm-money surfaces visible to every partner by default. The gate is `currentIsManagingPartner()` / `requireManagingPartner()` in [lib/permissions.ts](lib/permissions.ts) for the page render, plus a server-side guard on the matching mutation (see [app/(app)/settings/page.tsx](app/(app)/settings/page.tsx) + [actions.ts](app/(app)/settings/actions.ts) for the pattern).
 
-If neither applies (pure refactor/infra), say so in the push summary and move on. Also: `npx tsc --noEmit` + `npm run build` must be clean before pushing.
+If none apply (pure refactor/infra), say so in the push summary and move on. Also: `npx tsc --noEmit` + `npm run build` must be clean before pushing.
 
 ---
 

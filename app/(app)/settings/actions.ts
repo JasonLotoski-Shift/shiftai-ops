@@ -11,10 +11,14 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, partnerActor } from "@/lib/audit";
+import { requireManagingPartner } from "@/lib/permissions";
 
 async function getActor() {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  // The rate card is firm economics — managing partners only (matches the
+  // Settings page gating; guards direct calls that skip the hidden UI).
+  await requireManagingPartner();
   return {
     actor: partnerActor(
       session.user.partnerId,

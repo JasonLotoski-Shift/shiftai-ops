@@ -5,10 +5,15 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_ORIGINATION_PCT, FIRM_POOL_PCT } from "@/lib/billing/economics";
 import { RateCardEditor } from "@/components/settings/rate-card-editor";
 import { GmailConnect } from "@/components/settings/gmail-connect";
+import { currentIsManagingPartner } from "@/lib/permissions";
 
 // Firm Settings — firm-wide billing defaults (rate card + a read-only economics
 // summary) plus per-partner integrations (Gmail email logging). Per-project
 // billing overrides still live on each project's Financials tab.
+//
+// The rate card and firm-economics blocks are firm money — managing partners
+// only. Non-managing partners see just their own integrations (Gmail). The
+// matching mutation (updateRateTier) is guarded server-side too.
 
 export default async function SettingsPage({
   searchParams,
@@ -18,12 +23,15 @@ export default async function SettingsPage({
   const { gmail: gmailFlag } = await searchParams;
   const session = await auth();
   const partnerId = session?.user?.partnerId;
+  const managingPartner = await currentIsManagingPartner();
 
   const [tiers, gmailAuth] = await Promise.all([
-    prisma.rateTier.findMany({
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, key: true, name: true, billRateCents: true, payRateCents: true, active: true },
-    }),
+    managingPartner
+      ? prisma.rateTier.findMany({
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, key: true, name: true, billRateCents: true, payRateCents: true, active: true },
+        })
+      : Promise.resolve([]),
     partnerId
       ? prisma.partnerGmailAuth.findUnique({ where: { partnerId }, select: { email: true } })
       : Promise.resolve(null),
@@ -38,7 +46,7 @@ export default async function SettingsPage({
       <Header eyebrow="Firm · settings" title="Settings." />
 
       <div className="px-8 py-8 flex flex-col gap-8 max-w-[860px]">
-        <RateCardEditor tiers={tiers} />
+        {managingPartner && <RateCardEditor tiers={tiers} />}
 
         <GmailConnect
           connected={!!gmailAuth}
@@ -47,6 +55,7 @@ export default async function SettingsPage({
           statusFlag={gmailFlag ?? null}
         />
 
+        {managingPartner && (
         <Card>
           <CardHeader className="flex flex-col gap-0.5">
             <h2 className="title-md">Firm economics</h2>
@@ -66,6 +75,7 @@ export default async function SettingsPage({
             </ul>
           </CardBody>
         </Card>
+        )}
       </div>
     </>
   );
