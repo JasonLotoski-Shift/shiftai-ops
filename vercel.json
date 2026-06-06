@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/cron/gmail-poll", "schedule": "0 * * * *" }
+    { "path": "/api/cron/gmail-poll", "schedule": "0 * * * *" },
+    { "path": "/api/cron/fireflies-poll", "schedule": "30 * * * *" }
   ]
 }
