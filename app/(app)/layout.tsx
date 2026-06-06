@@ -32,6 +32,15 @@ export default async function AppLayout({
     role: partner?.role ?? "Partner",
   };
 
+  // Has this partner connected Gmail for email logging? Drives the red
+  // "Connect Gmail" nudge on the Settings nav row until they do.
+  const gmailConnected = partnerId
+    ? !!(await prisma.partnerGmailAuth.findUnique({
+        where: { partnerId },
+        select: { id: true },
+      }))
+    : true; // no partner → nothing to nudge
+
   // (a) Total unread messages across this partner's channel memberships —
   // mirrors the per-channel count logic on the Messages page.
   let totalUnreadMessages = 0;
@@ -70,6 +79,7 @@ export default async function AppLayout({
         user={user}
         totalUnreadMessages={totalUnreadMessages}
         whatsNewUnread={whatsNewUnread}
+        gmailConnected={gmailConnected}
       />
       <main className="flex-1 flex flex-col min-w-0">{children}</main>
     </div>

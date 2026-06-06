@@ -6,7 +6,7 @@
 // page, so no useSearchParams / Suspense needed).
 
 import { useTransition, useState } from "react";
-import { Mail, Check, ShieldAlert } from "lucide-react";
+import { Mail, Check, ShieldAlert, Info, Tag, Clock, Lock } from "lucide-react";
 import { Card, CardHeader, CardBody, Button } from "@/components/ui";
 import { startGmailConnect, disconnectGmail } from "@/app/(app)/settings/gmail-actions";
 
@@ -23,6 +23,7 @@ export function GmailConnect({
 }) {
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const [howOpen, setHowOpen] = useState(false);
 
   function connect() {
     setErr(null);
@@ -50,13 +51,73 @@ export function GmailConnect({
   return (
     <Card>
       <CardHeader className="flex flex-col gap-0.5">
-        <h2 className="title-md">Email logging</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="title-md">Email logging</h2>
+          <button
+            type="button"
+            onClick={() => setHowOpen((o) => !o)}
+            aria-expanded={howOpen}
+            aria-label="How email logging works"
+            className="text-bone-mute hover:text-bone transition-colors shrink-0"
+          >
+            <Info size={14} strokeWidth={1.5} />
+          </button>
+        </div>
         <span className="text-[11px] text-bone-mute">
           Connect your Gmail so any thread you label <span className="text-bone">{label}</span> is logged to the
           matching client — for review on Ingest. Read-only; only labeled threads are ever read.
         </span>
       </CardHeader>
       <CardBody className="flex flex-col gap-4 pt-0">
+        {howOpen && (
+          <div className="rounded-[var(--radius)] border border-edge bg-bitumen px-4 py-3.5 flex flex-col gap-3">
+            <span className="label text-[10px]">How to set it up</span>
+            <ol className="flex flex-col gap-2 text-[12px] text-bone-dim list-none">
+              <li className="flex gap-2.5">
+                <span className="mono text-track-gold shrink-0">1.</span>
+                <span>
+                  In Gmail, make a label called <span className="text-bone">{label}</span> — Settings → See all settings →
+                  Labels → Create new label. (Type it exactly; it&apos;s case-insensitive.)
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span className="mono text-track-gold shrink-0">2.</span>
+                <span>
+                  Click <span className="text-bone">Connect Gmail</span> below and grant read access on Google&apos;s screen.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span className="mono text-track-gold shrink-0">3.</span>
+                <span>
+                  On any client email thread, apply the <span className="text-bone">{label}</span> label (the label
+                  dropdown in Gmail&apos;s toolbar). That&apos;s the only signal we watch.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span className="mono text-track-gold shrink-0">4.</span>
+                <span>
+                  Once an hour we check for newly labeled threads and drop them on <span className="text-bone">Ingest</span>{" "}
+                  for you to review and approve. Nothing is logged until you approve it.
+                </span>
+              </li>
+            </ol>
+            <div className="flex flex-col gap-1.5 border-t border-edge pt-3 text-[11px] text-bone-mute">
+              <span className="flex items-start gap-2">
+                <Tag size={12} strokeWidth={1.5} className="text-bone-dim mt-0.5 shrink-0" />
+                We only ever read threads carrying the <span className="text-bone">{label}</span> label — never your whole inbox.
+              </span>
+              <span className="flex items-start gap-2">
+                <Clock size={12} strokeWidth={1.5} className="text-bone-dim mt-0.5 shrink-0" />
+                The check runs hourly, on the hour — not in real time, so a labeled thread may take up to an hour to appear.
+              </span>
+              <span className="flex items-start gap-2">
+                <Lock size={12} strokeWidth={1.5} className="text-bone-dim mt-0.5 shrink-0" />
+                Read-only access. We can&apos;t send, change, or delete anything in your mail. Disconnect anytime below.
+              </span>
+            </div>
+          </div>
+        )}
+
         {statusFlag === "connected" && (
           <Banner ok>Gmail connected. Label client threads <span className="text-bone">{label}</span> and they&apos;ll appear on Ingest.</Banner>
         )}

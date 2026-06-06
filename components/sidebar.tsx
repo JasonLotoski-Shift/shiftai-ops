@@ -74,10 +74,12 @@ export function Sidebar({
   user,
   totalUnreadMessages = 0,
   whatsNewUnread = false,
+  gmailConnected = true,
 }: {
   user: SidebarUser;
   totalUnreadMessages?: number;
   whatsNewUnread?: boolean;
+  gmailConnected?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -121,6 +123,8 @@ export function Sidebar({
       (item.href === "/messages" && totalUnreadMessages > 0) ||
       (item.href === "/whats-new" && whatsNewUnread);
     const emphasize = item.href === "/whats-new" && whatsNewUnread;
+    // Nudge partners to connect Gmail for email logging until they have.
+    const showGmailTag = item.href === "/settings" && !gmailConnected;
 
     return (
       <li>
@@ -136,6 +140,11 @@ export function Sidebar({
         >
           <Icon size={15} strokeWidth={1.5} />
           <span className={cn(emphasize && "font-semibold text-bone")}>{item.label}</span>
+          {showGmailTag && (
+            <span className="ml-auto shrink-0 rounded-[var(--radius-pill)] bg-flag-red/15 text-flag-red text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 leading-none">
+              Connect Gmail
+            </span>
+          )}
           {showDot && <RedDot />}
         </Link>
       </li>

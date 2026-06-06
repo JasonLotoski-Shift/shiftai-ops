@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-06",
+    tag: "new",
+    title: "Settings nudges you to connect Gmail for email logging",
+    detail:
+      "If you haven't connected your Gmail yet, Settings now shows a red “Connect Gmail” tag in the sidebar. On the Settings page there's an info icon next to Email logging that walks you through it step by step: make a label called “ops-log”, connect, then label any client thread you want logged. We only ever read threads you've labeled — never your whole inbox — it's read-only, and we check once an hour.",
+  },
+  {
+    date: "2026-06-06",
     tag: "improved",
     title: "Ingest won't create duplicate tasks, and names them simpler",
     detail:
