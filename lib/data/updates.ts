@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-09",
+    tag: "new",
+    title: "A System status tab in Settings",
+    detail:
+      "Settings now has a System status tab (everyone can see it) that shows whether the tool's automation is healthy: Claude actions in the last 24h with any errors and a rough cost, the Fireflies and Gmail sweeps' last runs, your Gmail connections, a live Google Drive check, and a feed of recent activity with failures in red. If a scheduled sync or an integration fails, the responsible partner also gets a message — so a quiet breakage doesn't go unnoticed.",
+  },
+  {
     date: "2026-06-06",
     tag: "new",
     title: "Statement of Work drafts, as a Google Doc",
