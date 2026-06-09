@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   FileText,
@@ -14,6 +14,7 @@ import {
   CircleAlert,
   Upload,
   FolderOpen,
+  Link2,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -29,9 +30,10 @@ import {
   rejectProjectProposal,
   type ProjectExtractedProposal,
 } from "@/app/(app)/projects/[id]/drop-actions";
+import { crossReferenceProposal } from "@/app/(app)/ingest/composer-actions";
 import { IngestComposer } from "@/components/ingest/ingest-composer";
 import UnifiedProposalCard from "@/components/ingest/unified-proposal-card";
-import type { IngestTargetKind, UnifiedProposal } from "@/lib/ingest/types";
+import type { IngestTargetKind, UnifiedProposal, CrossReferenceResult } from "@/lib/ingest/types";
 
 export type ProposalProp = {
   id: string;
@@ -365,6 +367,35 @@ function ProposalCard({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // Cross-reference: re-resolve the record this belongs to (for email/Fireflies
+  // items that arrived unmatched) + flag action items that already exist as open
+  // tasks. Advisory — approval still dedupes.
+  const [xref, setXref] = useState<CrossReferenceResult | null>(null);
+  const [xrefPending, startXref] = useTransition();
+  const taskOverlap = useMemo(
+    () => new Map((xref?.taskOverlaps ?? []).map((o) => [o.index, o] as const)),
+    [xref],
+  );
+
+  function runCrossReference() {
+    setError(null);
+    startXref(async () => {
+      try {
+        const res = await crossReferenceProposal(p.id, { scopeClientId: clientId || null });
+        // Fill an empty selector with the re-resolved record — never override a manual pick.
+        if (!contactId && res.suggestedContactId) setContactId(res.suggestedContactId);
+        if (!clientId && res.suggestedClientId) setClientId(res.suggestedClientId);
+        if (!dealId && res.suggestedDealId) setDealId(res.suggestedDealId);
+        // Default a duplicate action item to unchecked (skip) — re-check to force it.
+        const dupIdx = new Set(res.taskOverlaps.map((o) => o.index));
+        if (dupIdx.size) setItems((prev) => prev.map((x, i) => (dupIdx.has(i) ? { ...x, keep: false } : x)));
+        setXref(res);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Cross-reference failed");
+      }
+    });
+  }
+
   function approve() {
     setError(null);
     const actionItems = items
@@ -446,6 +477,26 @@ function ProposalCard({
             </div>
           </div>
 
+          {/* Cross-reference records & tasks */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button variant="ghost" size="sm" onClick={runCrossReference} disabled={isPending || xrefPending}>
+                <Link2 size={13} strokeWidth={1.5} />
+                {xrefPending ? "Checking…" : "Cross-reference records & tasks"}
+              </Button>
+              {xref && (
+                <span className="text-[11px] text-bone-mute">
+                  {xref.suggestedMatches.length === 0 && xref.taskOverlaps.length === 0
+                    ? "No matches found and nothing duplicates open work."
+                    : `${xref.suggestedMatches.length} record match(es) · ${xref.taskOverlaps.length} task(s) already on the board`}
+                </span>
+              )}
+            </div>
+            {xref?.ambiguous && (
+              <span className="text-[11px] text-track-gold">More than one client matched — confirm the right one above.</span>
+            )}
+          </div>
+
           {/* Summary */}
           <div className="flex flex-col gap-2">
             <Label gold>Summary (logged as the interaction)</Label>
@@ -474,7 +525,13 @@ function ProposalCard({
                     <div className="flex items-center gap-3">
                       <input type="checkbox" checked={it.keep} onChange={() => setItems((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="accent-track-gold" />
                       <Input value={it.title} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} className="flex-1 h-8" disabled={isPending} />
+                      {taskOverlap.has(i) && <Badge tone="red">already on the board</Badge>}
                     </div>
+                    {taskOverlap.has(i) && (
+                      <p className="text-[11px] text-flag-red pl-7 leading-snug">
+                        Matches an open task: “{taskOverlap.get(i)!.existingTitle}” — unchecked to avoid a duplicate.
+                      </p>
+                    )}
                     <div className="grid grid-cols-[1fr_160px] gap-3 pl-7">
                       <Input value={it.context} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, context: e.target.value } : x))} placeholder="context" className="h-8 text-[12px]" disabled={isPending} />
                       <div className="flex gap-2">

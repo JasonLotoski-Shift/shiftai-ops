@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-09",
     tag: "new",
+    title: "Cross-reference an Ingest item before you approve it",
+    detail:
+      "Reviewing a meeting, email, or uploaded file on Ingest now has a “Cross-reference records & tasks” button. It works out which client or deal the item belongs to — handy when an email arrived without a match — and fills that in for you, and it flags any action item that's already an open task, unchecking it so you don't add a duplicate. Nothing is written until you approve, as always.",
+  },
+  {
+    date: "2026-06-09",
+    tag: "new",
     title: "A System status tab in Settings",
     detail:
       "Settings now has a System status tab (everyone can see it) that shows whether the tool's automation is healthy: Claude actions in the last 24h with any errors and a rough cost, the Fireflies and Gmail sweeps' last runs, your Gmail connections, a live Google Drive check, and a feed of recent activity with failures in red. If a scheduled sync or an integration fails, the responsible partner also gets a message — so a quiet breakage doesn't go unnoticed.",

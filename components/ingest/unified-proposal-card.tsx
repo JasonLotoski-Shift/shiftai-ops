@@ -22,12 +22,14 @@ import {
   ListChecks,
   CalendarClock,
   ArrowRight,
+  Link2,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Textarea, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
   approveUnified,
   rejectUnified,
+  crossReferenceProposal,
 } from "@/app/(app)/ingest/composer-actions";
 import type {
   IngestType,
@@ -41,6 +43,9 @@ import type {
   ApproveUnifiedSelections,
   ApprovedRecord,
   ApprovedTask,
+  CrossReferenceResult,
+  CrossRefSuggestedMatch,
+  CrossRefMilestoneOverlap,
 } from "@/lib/ingest/types";
 
 // ── Display maps ──────────────────────────────────────────────────────────
@@ -192,6 +197,22 @@ export default function UnifiedProposalCard({
     data.tasks.map((t) => ({ keep: true, ownerId: resolveOwner(t.ownerHint) })),
   );
 
+  // Cross-reference: re-resolve the focus + flag tasks/milestones already on the board.
+  const [xref, setXref] = useState<CrossReferenceResult | null>(null);
+  const [xrefPending, startXref] = useTransition();
+  const taskOverlap = useMemo(
+    () => new Map((xref?.taskOverlaps ?? []).map((o) => [o.index, o] as const)),
+    [xref],
+  );
+  const milestoneOverlap = useMemo(() => {
+    const m = new Map<number, Map<number, CrossRefMilestoneOverlap>>();
+    for (const o of xref?.milestoneOverlaps ?? []) {
+      if (!m.has(o.recordIndex)) m.set(o.recordIndex, new Map());
+      m.get(o.recordIndex)!.set(o.milestoneIndex, o);
+    }
+    return m;
+  }, [xref]);
+
   // ── counts for the header ────────────────────────────────────────────────
   const counts = useMemo(() => {
     let adds = 0;
@@ -212,6 +233,45 @@ export default function UnifiedProposalCard({
   }
   function patchTask(ti: number, patch: (s: TaskState) => TaskState) {
     setTasks((prev) => prev.map((t, i) => (i === ti ? patch(t) : t)));
+  }
+
+  function runCrossReference(persist?: { kind: IngestTargetKind; id: string }) {
+    setError(null);
+    startXref(async () => {
+      try {
+        const res = await crossReferenceProposal(
+          proposal.id,
+          persist ? { persistFocusKind: persist.kind, persistFocusId: persist.id } : undefined,
+        );
+        // Default a duplicate task/milestone to unchecked (skip) — re-check to force it.
+        const dupTasks = new Set(res.taskOverlaps.map((o) => o.index));
+        if (dupTasks.size) setTasks((prev) => prev.map((t, i) => (dupTasks.has(i) ? { ...t, keep: false } : t)));
+        if (res.milestoneOverlaps.length) {
+          setRecords((prev) =>
+            prev.map((r, ri) => {
+              const skip = new Set(
+                res.milestoneOverlaps.filter((o) => o.recordIndex === ri).map((o) => o.milestoneIndex),
+              );
+              if (!skip.size) return r;
+              return { ...r, milestones: r.milestones.map((m, mi) => (skip.has(mi) ? { ...m, keep: false } : m)) };
+            }),
+          );
+        }
+        setXref(res);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Cross-reference failed");
+      }
+    });
+  }
+
+  // A suggested-match chip: a deal sets the local deal link; client / project /
+  // contact confirm + persist the focus (matched* on the proposal).
+  function applyMatchChip(m: CrossRefSuggestedMatch) {
+    if (m.kind === "deal") {
+      setDealId(m.id);
+      return;
+    }
+    runCrossReference({ kind: m.kind, id: m.id });
   }
 
   // ── build approval payload from ONLY checked items ───────────────────────
@@ -344,6 +404,42 @@ export default function UnifiedProposalCard({
             </Select>
           </div>
 
+          {/* Cross-reference records & tasks */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button variant="ghost" size="sm" onClick={() => runCrossReference()} disabled={isPending || xrefPending}>
+                <Link2 size={13} strokeWidth={1.5} />
+                {xrefPending ? "Checking…" : "Cross-reference records & tasks"}
+              </Button>
+              {xref && (
+                <span className="text-[11px] text-bone-mute">
+                  {xref.taskOverlaps.length === 0 && xref.milestoneOverlaps.length === 0
+                    ? "Nothing duplicates open work."
+                    : `${xref.taskOverlaps.length} task(s) · ${xref.milestoneOverlaps.length} milestone(s) already on the board`}
+                </span>
+              )}
+            </div>
+            {xref && !xref.alreadyMatched && xref.suggestedMatches.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] text-bone-mute">Looks like:</span>
+                {xref.suggestedMatches.map((m) => (
+                  <button
+                    key={`${m.kind}-${m.id}`}
+                    type="button"
+                    onClick={() => applyMatchChip(m)}
+                    disabled={isPending || xrefPending}
+                    className="text-[11px] px-2 py-0.5 rounded-[var(--radius-pill)] bg-track-gold-dim/15 text-track-gold hover:bg-track-gold-dim/25 transition-colors"
+                  >
+                    {m.label} · {m.kind}
+                  </button>
+                ))}
+              </div>
+            )}
+            {xref?.ambiguous && (
+              <span className="text-[11px] text-track-gold">More than one client matched — pick the focus above.</span>
+            )}
+          </div>
+
           {/* Key points (read-only) */}
           {data.keyPoints.length > 0 && (
             <div className="flex flex-col gap-2">
@@ -366,6 +462,7 @@ export default function UnifiedProposalCard({
               record={r}
               state={records[ri]}
               disabled={isPending}
+              milestoneOverlaps={milestoneOverlap.get(ri)}
               onToggleField={(i) =>
                 patchRecord(ri, (s) => ({
                   ...s,
@@ -445,9 +542,15 @@ export default function UnifiedProposalCard({
                             ) : (
                               <Badge tone="neutral">new task</Badge>
                             )}
+                            {taskOverlap.has(ti) && <Badge tone="red">already on the board</Badge>}
                           </div>
                           {t.context && (
                             <p className="text-[12px] text-bone-dim mt-0.5 leading-snug">{t.context}</p>
+                          )}
+                          {taskOverlap.has(ti) && (
+                            <p className="text-[11px] text-flag-red mt-0.5 leading-snug">
+                              Matches an open task: “{taskOverlap.get(ti)!.existingTitle}” — unchecked to skip.
+                            </p>
                           )}
                           <div className="flex items-center gap-3 mt-1 text-[11px] text-bone-mute">
                             <span className="inline-flex items-center gap-1">
@@ -527,6 +630,7 @@ function RecordSection({
   record,
   state,
   disabled,
+  milestoneOverlaps,
   onToggleField,
   onToggleList,
   onToggleInteraction,
@@ -538,6 +642,7 @@ function RecordSection({
   record: RecordProposal;
   state: RecordState;
   disabled?: boolean;
+  milestoneOverlaps?: Map<number, CrossRefMilestoneOverlap>;
   onToggleField: (i: number) => void;
   onToggleList: (i: number) => void;
   onToggleInteraction: (i: number) => void;
@@ -735,6 +840,7 @@ function RecordSection({
                       className="accent-track-gold"
                     />
                     <span className="text-[13px] text-bone leading-snug flex-1 min-w-0">{m.title}</span>
+                    {milestoneOverlaps?.has(i) && <Badge tone="red">already on the board</Badge>}
                   </div>
                   <div className="grid grid-cols-[160px_1fr] gap-3 pl-7 items-center">
                     <span className="text-[11px] text-bone-mute">

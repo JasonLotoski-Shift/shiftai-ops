@@ -119,3 +119,45 @@ export type ApproveUnifiedSelections = {
   // contact-scoped, so the deal's primary contact carries the logged summary.
   dealId?: string | null;
 };
+
+// ── Cross-reference — the "check this against existing records & tasks" assist ──
+// Computed on demand when a partner clicks "Cross-reference records & tasks" on a
+// pending proposal (v1 ProposalCard or v2 UnifiedProposalCard). It re-resolves
+// which record an item belongs to — for proposals that arrived UNMATCHED from
+// Gmail/Fireflies — and flags proposed tasks/milestones that already exist as
+// OPEN work, so approval doesn't create a duplicate. Advisory only: the
+// approval-time dedup in approve(Proposal|Unified) stays the backstop. Shared
+// client+server (no server-only deps here).
+
+export type CrossRefSuggestedMatch = { kind: IngestTargetKind; id: string; label: string };
+
+/** A proposed task that duplicates an open task. `index` points into the v1
+ *  ExtractedProposal.actionItems OR the v2 UnifiedProposal.tasks array. */
+export type CrossRefTaskOverlap = {
+  index: number;
+  title: string;
+  existingTaskId: string;
+  existingTitle: string;
+};
+
+/** A proposed milestone (v2 project records) that duplicates a live milestone. */
+export type CrossRefMilestoneOverlap = {
+  recordIndex: number; // index into UnifiedProposal.records
+  milestoneIndex: number; // index into that record's milestones[]
+  title: string;
+  existingMilestoneId: string;
+  existingTitle: string;
+};
+
+export type CrossReferenceResult = {
+  schemaVersion: 1 | 2; // which proposal shape was cross-referenced
+  alreadyMatched: boolean; // the proposal already had a focus / attached record
+  ambiguous: boolean; // >1 candidate client — partner must choose the focus
+  suggestedMatches: CrossRefSuggestedMatch[]; // ordered: clients, then deals, then contacts
+  // First match of each kind — convenience for the v1 attach selectors.
+  suggestedContactId: string | null;
+  suggestedClientId: string | null;
+  suggestedDealId: string | null;
+  taskOverlaps: CrossRefTaskOverlap[];
+  milestoneOverlaps: CrossRefMilestoneOverlap[]; // always [] for v1
+};

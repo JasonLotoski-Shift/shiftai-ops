@@ -29,6 +29,7 @@ import { applyContactChanges, applyClientChanges, applyProjectChanges, applyDeal
 import { fetchTargetData, buildIngestContext, formatPartnerRoster, type TargetRef } from "@/lib/ingest/context";
 import { parseUnified } from "@/lib/ingest/parse";
 import { findDuplicateOpenTask, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
+import { resolveTargetsFromText, computeCrossReference, type DetectedTarget } from "@/lib/ingest/cross-reference";
 import { createContact } from "@/app/(app)/contacts/actions";
 import type {
   IngestType,
@@ -38,6 +39,7 @@ import type {
   TaskProposal,
   UnifiedProposal,
   ApproveUnifiedSelections,
+  CrossReferenceResult,
 } from "@/lib/ingest/types";
 import { INGEST_TYPES } from "@/lib/ingest/types";
 import type {
@@ -47,151 +49,67 @@ import type {
   TaskPriority,
 } from "@/lib/generated/prisma/enums";
 
-// ── 1. detectTargets — cheap, no model call. Two complementary passes:
-//   (a) emails scraped from the text → Contact → its Client/Deal (high precision);
-//   (b) company / contact NAMES mentioned in the text → Client / Deal / Contact.
-// Pass (b) is what makes "detect the target client" work when the notes name the
-// client but carry no recognizable contact email. Results are deduped; clients
-// are surfaced first so a single matched client becomes the composer's focus. ──
-function emailsFromText(text: string): string[] {
-  const m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ?? [];
-  return [...new Set(m.map((e) => e.toLowerCase()))];
-}
-
-// Common legal suffixes / filler tokens — stripped before name matching and
-// never used alone as a single-token match (too generic to be a signal).
-const NAME_STOPWORDS = new Set([
-  "the", "and", "group", "inc", "llc", "ltd", "co", "corp", "corporation",
-  "company", "holdings", "partners", "international", "global", "industries",
-  "solutions", "services", "systems", "technologies", "labs", "studio", "studios",
-]);
-
-// Build the set of lowercase strings whose presence in the text counts as a hit
-// for a company name: the full name, the name minus a trailing legal suffix, and
-// the leading word if it's distinctive (≥5 chars, not a stopword). Each variant
-// must be ≥4 chars to avoid matching short, ambiguous fragments.
-function companyVariants(raw: string): string[] {
-  const name = raw.trim();
-  if (!name) return [];
-  const variants = new Set<string>();
-  const full = name.toLowerCase();
-  if (full.length >= 4) variants.add(full);
-
-  const core = name
-    .replace(/[,.]/g, "")
-    .replace(/\b(inc|llc|ltd|co|corp|corporation|company|holdings|group|gmbh|sa|plc)\b\.?$/i, "")
-    .trim()
-    .toLowerCase();
-  if (core.length >= 4) variants.add(core);
-
-  const firstWord = core.split(/\s+/)[0] ?? "";
-  if (firstWord.length >= 5 && !NAME_STOPWORDS.has(firstWord)) variants.add(firstWord);
-
-  return [...variants];
-}
-
-// Whole-word, case-insensitive presence of `phrase` in the already-lowercased text.
-function textHasPhrase(lowerHaystack: string, phrase: string): boolean {
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(lowerHaystack);
-}
-
+// ── 1. detectTargets — cheap, no model call. Delegates to the shared matcher
+// (lib/ingest/cross-reference.ts) so the composer's "detect the target client"
+// and the review-card cross-reference button resolve targets identically. ──
 export async function detectTargets(input: {
   content: string;
   emailBlock?: string;
   title?: string;
-}): Promise<{ targets: { kind: IngestTargetKind; id: string; label: string }[]; ambiguous: boolean }> {
+}): Promise<{ targets: DetectedTarget[]; ambiguous: boolean }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  return resolveTargetsFromText(input);
+}
+
+// ── 1b. crossReferenceProposal — the review-card "Cross-reference records &
+// tasks" button (v1 + v2). Re-resolves the record a pending proposal belongs to
+// and flags proposed tasks/milestones that already exist as open work. Advisory:
+// the approval-time dedup stays the backstop. Pure read by default; when a
+// partner confirms a focus (persistFocus*), it sets that one matched* column and
+// writes one audit row — the only thing that happens is logged. ──
+export async function crossReferenceProposal(
+  proposalId: string,
+  opts?: {
+    scopeClientId?: string | null; // v1: scope task overlap to the attached client
+    persistFocusKind?: IngestTargetKind; // v2: confirm + persist the focus
+    persistFocusId?: string;
+  },
+): Promise<CrossReferenceResult> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
 
-  type T = { kind: IngestTargetKind; id: string; label: string };
-  // Keep matches bucketed by kind so we can order the output (clients first) and
-  // dedupe within each kind.
-  const byKind: Record<IngestTargetKind, Map<string, T>> = {
-    client: new Map(),
-    deal: new Map(),
-    contact: new Map(),
-    project: new Map(),
-  };
-  const add = (t: T) => {
-    if (!byKind[t.kind].has(t.id)) byKind[t.kind].set(t.id, t);
-  };
-
-  // ── Pass (a): emails → contacts → their client/deal ──
-  const explicit = emailsFromText(input.emailBlock ?? "");
-  const emails = explicit.length ? explicit : emailsFromText(input.content ?? "");
-  let emailContacts = 0;
-  if (emails.length) {
-    const matched = await prisma.contact.findMany({
-      where: { email: { in: emails, mode: "insensitive" } },
-      select: {
-        id: true,
-        name: true,
-        company: true,
-        primaryForClients: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 1 },
-        deals: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 1 },
-      },
+  if (opts?.persistFocusKind && opts.persistFocusId) {
+    const existing = await prisma.ingestProposal.findUnique({
+      where: { id: proposalId },
+      select: { status: true },
     });
-    emailContacts = matched.length;
-    for (const c of matched) {
-      add({ kind: "contact", id: c.id, label: `${c.name} · ${c.company}` });
-      const client = c.primaryForClients[0];
-      if (client) add({ kind: "client", id: client.id, label: client.company });
-      else if (c.deals[0]) add({ kind: "deal", id: c.deals[0].id, label: `${c.deals[0].company} (deal)` });
-    }
-  }
-
-  // ── Pass (b): names mentioned in the text → client / deal / contact ──
-  const haystack = [input.title ?? "", input.content ?? "", input.emailBlock ?? ""]
-    .join("\n")
-    .toLowerCase();
-
-  if (haystack.trim()) {
-    const [clients, deals, contacts] = await Promise.all([
-      prisma.client.findMany({ select: { id: true, company: true } }),
-      prisma.deal.findMany({ select: { id: true, company: true } }),
-      prisma.contact.findMany({
-        select: {
-          id: true,
-          name: true,
-          company: true,
-          primaryForClients: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 1 },
-          deals: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 1 },
+    if (!existing) throw new Error("Proposal not found");
+    if (existing.status !== "pending") throw new Error("Proposal already reviewed");
+    const k = opts.persistFocusKind;
+    await prisma.$transaction(async (tx) => {
+      await tx.ingestProposal.update({
+        where: { id: proposalId },
+        // Set only the matching column; Prisma ignores the undefined ones.
+        data: {
+          matchedContactId: k === "contact" ? opts.persistFocusId : undefined,
+          matchedClientId: k === "client" ? opts.persistFocusId : undefined,
+          matchedDealId: k === "deal" ? opts.persistFocusId : undefined,
+          matchedProjectId: k === "project" ? opts.persistFocusId : undefined,
         },
-      }),
-    ]);
-
-    const companyHit = (company: string) =>
-      companyVariants(company).some((v) => textHasPhrase(haystack, v));
-
-    for (const cl of clients) {
-      if (companyHit(cl.company)) add({ kind: "client", id: cl.id, label: cl.company });
-    }
-    for (const d of deals) {
-      if (companyHit(d.company)) add({ kind: "deal", id: d.id, label: `${d.company} (deal)` });
-    }
-    // A contact is a hit on their full name (whole-word). Pull their client/deal
-    // in too — a named person usually implies the engagement they belong to.
-    for (const c of contacts) {
-      const nameLc = c.name.trim().toLowerCase();
-      if (nameLc.length >= 4 && textHasPhrase(haystack, nameLc)) {
-        add({ kind: "contact", id: c.id, label: `${c.name} · ${c.company}` });
-        const client = c.primaryForClients[0];
-        if (client) add({ kind: "client", id: client.id, label: client.company });
-        else if (c.deals[0]) add({ kind: "deal", id: c.deals[0].id, label: `${c.deals[0].company} (deal)` });
-      }
-    }
+      });
+      await writeAudit(tx, {
+        actor: agentActor("ingest"),
+        action: "crossReference.ingestProposal",
+        targetType: "IngestProposal",
+        targetId: proposalId,
+        changes: { focus: { kind: k, id: opts.persistFocusId } },
+      });
+    });
+    revalidatePath("/ingest");
   }
 
-  // Order: clients → deals → contacts. The composer makes the FIRST target the
-  // focus, so a matched client leads — which is what "target client" wants.
-  const targets = [...byKind.client.values(), ...byKind.deal.values(), ...byKind.contact.values()];
-
-  // Ambiguous = the partner must choose which is THE focus: more than one client
-  // matched, or more than one participant came in via email.
-  const ambiguous = byKind.client.size > 1 || emailContacts > 1;
-
-  return { targets, ambiguous };
+  return computeCrossReference(proposalId, { clientId: opts?.scopeClientId ?? null });
 }
 
 // ── 2. checkContactDuplicate — case-insensitive email (and optional name). ──
