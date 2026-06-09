@@ -11,6 +11,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { generate } from "@/lib/ai";
+import { logOps } from "@/lib/ops";
 
 const FIREFLIES_GRAPHQL = "https://api.fireflies.ai/graphql";
 
@@ -138,6 +139,43 @@ export type FirefliesIngestResult =
  * internal-only gate unless `force`.
  */
 export async function ingestFirefliesMeeting(opts: {
+  meetingId: string;
+  apiKey: string;
+  force?: boolean;
+}): Promise<FirefliesIngestResult> {
+  // One ingest OpsEvent per call — covers the webhook AND the poll (both delegate
+  // here), so neither double-logs. The inner generate() still logs its own
+  // `claude` row (different grain: model call vs. ingest outcome).
+  const t0 = Date.now();
+  try {
+    const result = await ingestOne(opts);
+    void logOps({
+      kind: "ingest",
+      name: "fireflies",
+      status: "ok",
+      actor: "AGENT · CLAUDE",
+      actorLabel: "AGENT · CLAUDE",
+      durationMs: Date.now() - t0,
+      detail: result.status,
+      meta: { result: result.status, meetingId: opts.meetingId },
+    });
+    return result;
+  } catch (e) {
+    void logOps({
+      kind: "ingest",
+      name: "fireflies",
+      status: "error",
+      actor: "AGENT · CLAUDE",
+      actorLabel: "AGENT · CLAUDE",
+      durationMs: Date.now() - t0,
+      error: e instanceof Error ? e.message : "fireflies ingest failed",
+      meta: { meetingId: opts.meetingId },
+    });
+    throw e;
+  }
+}
+
+async function ingestOne(opts: {
   meetingId: string;
   apiKey: string;
   force?: boolean;

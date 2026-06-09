@@ -288,10 +288,11 @@ function ChannelPane({
     if (!isSystem || sort === "newest") return messages;
     // Sort by kind, keeping newest-first within each group.
     const order: Record<string, number> = {
-      approval_needed: 0,
-      task_assigned: 1,
-      deliverable_added: 2,
-      chat: 3,
+      ops_alert: 0,
+      approval_needed: 1,
+      task_assigned: 2,
+      deliverable_added: 3,
+      chat: 4,
     };
     return [...messages].sort((a, b) => {
       const ra = order[a.kind] ?? 9;
@@ -398,6 +399,12 @@ const KIND_STYLE: Record<
     accent: "text-signal-warming",
     bg: "bg-signal-warming/10",
     label: "Approval needed",
+  },
+  ops_alert: {
+    Icon: AlertCircle,
+    accent: "text-flag-red",
+    bg: "bg-flag-red/10",
+    label: "System alert",
   },
 };
 

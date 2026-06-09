@@ -21,7 +21,8 @@ export type MessageKindValue =
   | "chat"
   | "task_assigned"
   | "deliverable_added"
-  | "approval_needed";
+  | "approval_needed"
+  | "ops_alert";
 
 export type ChatMessage = {
   id: string;

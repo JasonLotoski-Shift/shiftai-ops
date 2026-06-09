@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { generate } from "@/lib/ai";
 import { decryptSecret } from "@/lib/crypto";
 import { notifyPartner } from "@/lib/messaging";
+import { logOps, notifyOpsFailure, pruneOpsEvents } from "@/lib/ops";
 import {
   gmailForRefreshToken,
   resolveLabelId,
@@ -115,14 +116,15 @@ async function matchByEmails(emails: string[]): Promise<{
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const t0 = Date.now();
   const label = process.env.GMAIL_INGEST_LABEL ?? "ops-log";
 
   // Inert before the migration runs: if the table doesn't exist yet, no-op
   // cleanly so a pre-migration deploy doesn't 500 every hour.
-  let conns: { partnerId: string; email: string; refreshToken: string }[];
+  let conns: { partnerId: string; email: string; refreshToken: string; lastError: string | null }[];
   try {
     conns = await prisma.partnerGmailAuth.findMany({
-      select: { partnerId: true, email: true, refreshToken: true },
+      select: { partnerId: true, email: true, refreshToken: true, lastError: true },
     });
   } catch {
     return NextResponse.json({ ok: true, total: 0, note: "gmail ingest not migrated yet" });
@@ -130,6 +132,7 @@ export async function GET(req: Request) {
 
   const summary: Record<string, number | string> = {};
   let total = 0;
+  let errorCount = 0;
 
   for (const conn of conns) {
     let created = 0;
@@ -220,6 +223,12 @@ export async function GET(req: Request) {
         });
       }
 
+      // Recovered — clear a prior error so the status card goes healthy and the
+      // next failure re-notifies (ok→error transition).
+      if (conn.lastError) {
+        await prisma.partnerGmailAuth.update({ where: { partnerId: conn.partnerId }, data: { lastError: null } }).catch(() => {});
+      }
+
       if (created > 0) {
         await notifyPartner(
           prisma,
@@ -233,11 +242,31 @@ export async function GET(req: Request) {
       total += created;
     } catch (e) {
       const msg = e instanceof Error ? e.message.slice(0, 300) : "poll failed";
+      errorCount++;
       // Surface the failure on the connection so the UI can prompt a reconnect.
       await prisma.partnerGmailAuth.update({ where: { partnerId: conn.partnerId }, data: { lastError: msg } }).catch(() => {});
+      void logOps({ kind: "integration", name: "gmail", status: "error", actor: conn.email, actorLabel: conn.email, detail: conn.email, error: msg });
+      // Notify the connection owner once, on the ok→error transition (lastError null→set).
+      if (!conn.lastError) await notifyOpsFailure([conn.partnerId], `Gmail sync failed for ${conn.email} — reconnect in Settings.`);
       summary[conn.email] = `error: ${msg}`;
     }
   }
+
+  // Per-partner failures already alerted their owner above; the cron row carries
+  // the run health for the status page (no extra firm-wide notify to avoid noise).
+  void logOps({
+    kind: "cron",
+    name: "gmail-poll",
+    status: errorCount > 0 ? "error" : "ok",
+    actor: "CRON",
+    actorLabel: "CRON",
+    durationMs: Date.now() - t0,
+    detail: `Polled ${conns.length} partner(s) — ${total} new, ${errorCount} failed`,
+    meta: { partners: conns.length, created: total, errors: errorCount, summary },
+  });
+
+  // Opportunistic retention prune (hourly cron — no dedicated job).
+  await pruneOpsEvents(30);
 
   return NextResponse.json({ ok: true, total, partners: conns.length, summary });
 }

@@ -167,6 +167,7 @@ enum MessageKind {
   task_assigned     @map("task-assigned")
   deliverable_added @map("deliverable-added")
   approval_needed   @map("approval-needed")
+  ops_alert         @map("ops-alert")
 }
 
 enum IngestSource {
@@ -1556,4 +1557,51 @@ model AuditLog {
 
   @@index([ts])
   @@index([targetType, targetId])
+}
+
+// Operational telemetry — every Claude call, cron run, ingest, integration
+// check, and MCP tool call writes one row (success AND failure) so the Settings
+// "System status" tab can show health, latency, token usage, and recent
+// failures. Append-only log; pruned to ~30 days (pruneOpsEvents in lib/ops.ts).
+// Written via the fire-and-forget logOps() helper — telemetry must never break
+// the path it observes. Sibling of AuditLog (mutations) / Activity (human feed).
+enum OpsKind {
+  claude
+  cron
+  ingest
+  integration
+  mcp
+}
+
+enum OpsStatus {
+  ok
+  error
+}
+
+model OpsEvent {
+  id         String    @id @default(cuid())
+  ts         DateTime  @default(now())
+  kind       OpsKind
+  // Sub-type: claude→skill name; cron→"gmail-poll"|"fireflies-poll";
+  // integration→"gmail"|"drive"; mcp→tool name; ingest→"fireflies"|"gmail".
+  name       String
+  status     OpsStatus
+  actor      String // "AGENT · CLAUDE" | "AGENT · MCP" | "system" | partner name
+  actorLabel String
+  detail     String?
+  error      String? // truncated ~500 chars; null on ok
+  durationMs Int?
+
+  inputTokens      Int?
+  outputTokens     Int?
+  cacheReadTokens  Int?
+  cacheWriteTokens Int?
+  model            String?
+
+  clientId String? // loose scope link, no FK (matches Activity/AuditLog convention)
+  meta     Json? // { skipped, created, deduped, partners, webSearch, … }
+
+  @@index([ts])
+  @@index([kind, ts])
+  @@index([kind, status, ts])
 }

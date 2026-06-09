@@ -30,6 +30,24 @@ export const drive: drive_v3.Drive = globalForDrive.drive ?? makeClient();
 
 if (process.env.NODE_ENV !== "production") globalForDrive.drive = drive;
 
+// Lightweight reachability check for the System status tab — lists one file to
+// confirm the service account can reach the Shared Drive. Returns ok + latency
+// instead of throwing, so the caller can render a red/green card + logOps it.
+export async function pingDrive(): Promise<{ ok: boolean; ms: number; error?: string }> {
+  const t0 = Date.now();
+  try {
+    await drive.files.list({
+      pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      fields: "files(id)",
+    });
+    return { ok: true, ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, ms: Date.now() - t0, error: e instanceof Error ? e.message : "drive ping failed" };
+  }
+}
+
 // Extract a folder ID from a Drive URL like
 // https://drive.google.com/drive/u/0/folders/<id>  or  .../folders/<id>?usp=...
 export function folderIdFromUrl(url: string): string {
@@ -55,6 +73,30 @@ export async function uploadFile(
     supportsAllDrives: true,
   });
   if (!res.data.id || !res.data.webViewLink) throw new Error("Drive upload returned no ID");
+  return { fileId: res.data.id, webViewLink: res.data.webViewLink };
+}
+
+// Upload HTML and let Drive convert it into a NATIVE Google Doc in the folder.
+// The requestBody mimeType (application/vnd.google-apps.document) is the target
+// that triggers Drive's import conversion; the media mimeType (text/html) is the
+// source. Use for documents meant to be redlined in Google Docs (e.g. an SOW),
+// not for self-contained HTML that should open in the browser (use uploadFile).
+export async function uploadAsGoogleDoc(
+  html: string,
+  fileName: string,
+  parentFolderId: string,
+): Promise<{ fileId: string; webViewLink: string }> {
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      parents: [parentFolderId],
+      mimeType: "application/vnd.google-apps.document",
+    },
+    media: { mimeType: "text/html", body: Readable.from(html) },
+    fields: "id, webViewLink",
+    supportsAllDrives: true,
+  });
+  if (!res.data.id || !res.data.webViewLink) throw new Error("Drive Google Doc create returned no ID");
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
 

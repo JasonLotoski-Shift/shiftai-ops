@@ -18,6 +18,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { logOps } from "./ops";
 
 // Sonnet by default: these are drafts a partner reviews before sending, volume is
 // low (three partners), and Sonnet is the cost/quality sweet spot. Pass model to
@@ -148,14 +149,45 @@ export type GenerateInput = {
   webSearchMaxUses?: number;
 };
 
-/** One-shot generation. Returns the full text. */
+/** One-shot generation. Returns the full text. Logs one OpsEvent per call
+ *  (fire-and-forget — never blocks the return) with status, latency, and usage. */
 export async function generate(input: GenerateInput): Promise<string> {
   const params = await buildMessageParams(input);
-  const res = await client().messages.create(params);
-  return res.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+  const t0 = Date.now();
+  try {
+    const res = await client().messages.create(params);
+    const text = res.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+    void logOps({
+      kind: "claude",
+      name: input.skill,
+      status: "ok",
+      actor: "AGENT · CLAUDE",
+      actorLabel: "AGENT · CLAUDE",
+      durationMs: Date.now() - t0,
+      model: params.model,
+      inputTokens: res.usage.input_tokens,
+      outputTokens: res.usage.output_tokens,
+      cacheReadTokens: res.usage.cache_read_input_tokens ?? undefined,
+      cacheWriteTokens: res.usage.cache_creation_input_tokens ?? undefined,
+      meta: { webSearch: !!input.webSearch, maxTokens: params.max_tokens },
+    });
+    return text;
+  } catch (e) {
+    void logOps({
+      kind: "claude",
+      name: input.skill,
+      status: "error",
+      actor: "AGENT · CLAUDE",
+      actorLabel: "AGENT · CLAUDE",
+      durationMs: Date.now() - t0,
+      model: params.model,
+      error: e instanceof Error ? e.message : "generate failed",
+    });
+    throw e;
+  }
 }
 
 /** Streaming generation. Yields text deltas as they arrive — for streaming UI. */
@@ -163,13 +195,44 @@ export async function* generateStream(
   input: GenerateInput,
 ): AsyncGenerator<string> {
   const params = await buildMessageParams(input);
+  const t0 = Date.now();
   const stream = client().messages.stream(params);
-  for await (const event of stream) {
-    if (
-      event.type === "content_block_delta" &&
-      event.delta.type === "text_delta"
-    ) {
-      yield event.delta.text;
+  let errored: unknown = null;
+  try {
+    for await (const event of stream) {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        yield event.delta.text;
+      }
+    }
+  } catch (e) {
+    errored = e;
+    throw e;
+  } finally {
+    // Usage is only available after the stream is consumed. Guard finalMessage()
+    // — a consumer that abandons the generator early can make it reject; skip the
+    // row in that case rather than throw out of a finally.
+    try {
+      const final = await stream.finalMessage();
+      void logOps({
+        kind: "claude",
+        name: input.skill,
+        status: errored ? "error" : "ok",
+        actor: "AGENT · CLAUDE",
+        actorLabel: "AGENT · CLAUDE",
+        durationMs: Date.now() - t0,
+        model: params.model,
+        inputTokens: final.usage.input_tokens,
+        outputTokens: final.usage.output_tokens,
+        cacheReadTokens: final.usage.cache_read_input_tokens ?? undefined,
+        cacheWriteTokens: final.usage.cache_creation_input_tokens ?? undefined,
+        error: errored ? (errored instanceof Error ? errored.message : "stream failed") : null,
+        meta: { streamed: true },
+      });
+    } catch {
+      /* stream abandoned before finalMessage — skip telemetry */
     }
   }
 }

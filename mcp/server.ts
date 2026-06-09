@@ -32,6 +32,7 @@ import {
 
 import { prisma } from "../lib/prisma";
 import { writeAudit, writeActivity, agentActor } from "../lib/audit";
+import { logOps } from "../lib/ops";
 import type { EngagementStatus, TaskPriority, ArtifactType, InteractionType } from "../lib/generated/prisma/enums";
 
 const ACTOR = agentActor("mcp");
@@ -302,13 +303,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const tool = tools.find((t) => t.name === req.params.name);
   if (!tool) {
+    void logOps({ kind: "mcp", name: req.params.name ?? "unknown", status: "error", actor: "AGENT · MCP", actorLabel: "AGENT · MCP", error: "Unknown tool" });
     return { content: [{ type: "text", text: `Unknown tool: ${req.params.name}` }], isError: true };
   }
+  const t0 = Date.now();
   try {
     const result = await tool.handler((req.params.arguments ?? {}) as Record<string, unknown>);
+    void logOps({ kind: "mcp", name: tool.name, status: "ok", actor: "AGENT · MCP", actorLabel: "AGENT · MCP", durationMs: Date.now() - t0 });
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    void logOps({ kind: "mcp", name: tool.name, status: "error", actor: "AGENT · MCP", actorLabel: "AGENT · MCP", durationMs: Date.now() - t0, error: msg });
     return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
   }
 });

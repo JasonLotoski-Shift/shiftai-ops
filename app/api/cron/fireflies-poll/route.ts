@@ -9,6 +9,7 @@
 
 import { NextResponse } from "next/server";
 import { listRecentTranscripts, titleMatches, ingestFirefliesMeeting } from "@/lib/fireflies";
+import { logOps, wasLastOpError, managingPartnerIds, notifyOpsFailure } from "@/lib/ops";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Pro plan — scans recent meetings × extraction
@@ -23,6 +24,7 @@ function authorized(req: Request): boolean {
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const t0 = Date.now();
   const apiKey = process.env.FIREFLIES_API_KEY;
   if (!apiKey) return NextResponse.json({ ok: true, created: 0, note: "FIREFLIES_API_KEY not set" });
 
@@ -30,7 +32,11 @@ export async function GET(req: Request) {
   try {
     recent = await listRecentTranscripts(apiKey, 25);
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Fireflies list failed" }, { status: 502 });
+    const msg = e instanceof Error ? e.message : "Fireflies list failed";
+    const transition = !(await wasLastOpError("cron", "fireflies-poll"));
+    void logOps({ kind: "cron", name: "fireflies-poll", status: "error", actor: "CRON", actorLabel: "CRON", durationMs: Date.now() - t0, detail: "Fireflies list failed", error: msg });
+    if (transition) await notifyOpsFailure(await managingPartnerIds(), `Fireflies poll failed: ${msg}`);
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 
   let created = 0;
@@ -55,6 +61,21 @@ export async function GET(req: Request) {
       results.push({ id: m.id, title: m.title, status: "error: " + (e instanceof Error ? e.message : "?") });
     }
   }
+
+  const errorCount = results.filter((r) => r.status.startsWith("error")).length;
+  const isError = errorCount > 0;
+  const transition = isError && !(await wasLastOpError("cron", "fireflies-poll"));
+  void logOps({
+    kind: "cron",
+    name: "fireflies-poll",
+    status: isError ? "error" : "ok",
+    actor: "CRON",
+    actorLabel: "CRON",
+    durationMs: Date.now() - t0,
+    detail: `Scanned ${recent.length} — ${created} new, ${deduped} dup, ${skipped} skipped, ${errorCount} failed`,
+    meta: { scanned: recent.length, created, deduped, skipped, errors: errorCount },
+  });
+  if (transition) await notifyOpsFailure(await managingPartnerIds(), `Fireflies poll: ${errorCount} meeting(s) failed to ingest`);
 
   return NextResponse.json({ ok: true, scanned: recent.length, created, deduped, skipped, results });
 }
