@@ -547,6 +547,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <FileCheck2 size={16} strokeWidth={1.5} />,
+    title: "Draft a Statement of Work",
+    blurb: "After the proposal is accepted, a contract-grade SOW draft as a Google Doc for you and counsel to redline. Never signature-ready.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Client → Statement of Work · give the agreed terms (fee, subscription, buy-out, dates, deployment)" },
+      { tone: "claude", kind: "Claude", label: "Drafts scope + acceptance, the commercial terms, and the firm's IP model; stamps DRAFT + [for counsel] markers" },
+      { tone: "review", kind: "You review", label: "Preview, edit the source; [NEEDS INPUT] blocks save until every fee/party/date is real" },
+      { tone: "write", kind: "Saved", label: "Filed to the client's Drive as a Google Doc + an Artifact; counsel redlines before signature" },
+    ],
+  },
+  {
     icon: <GitBranch size={16} strokeWidth={1.5} />,
     title: "Convert a deal to a client",
     blurb: "A signed deal becomes a live engagement with everything scaffolded.",

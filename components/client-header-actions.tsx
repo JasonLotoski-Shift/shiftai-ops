@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FolderOpen, Terminal, Check, ClipboardList, NotebookPen, Presentation, Upload, FileInput } from "lucide-react";
+import { FolderOpen, Terminal, Check, ClipboardList, NotebookPen, Presentation, FileSignature, Upload, FileInput } from "lucide-react";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ClientDocModal } from "@/components/client-doc-modal";
 import { DiscoveryReportModal } from "@/components/discovery-report-modal";
+import { SowModal } from "@/components/sow-modal";
 import { UploadFileModal } from "@/components/upload-file-modal";
 
 // The client's Actions panel (under the title). The header keeps the page's
@@ -23,13 +24,13 @@ export function ClientActionsPanel({
   workspacePath: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState<"survey" | "discussion" | "discovery-report" | "upload" | null>(null);
+  const [open, setOpen] = useState<"survey" | "discussion" | "discovery-report" | "sow" | "upload" | null>(null);
 
   // Auto-open from the dashboard Quick Action (routes here with ?qa=survey|discussion|upload).
   const searchParams = useSearchParams();
   const qa = searchParams.get("qa");
   useEffect(() => {
-    if (qa === "survey" || qa === "discussion" || qa === "discovery-report" || qa === "upload") setOpen(qa);
+    if (qa === "survey" || qa === "discussion" || qa === "discovery-report" || qa === "sow" || qa === "upload") setOpen(qa);
   }, [qa]);
 
   async function copyWorkspacePath() {
@@ -81,6 +82,13 @@ export function ClientActionsPanel({
       onClick: () => setOpen("discovery-report"),
     },
     {
+      key: "sow",
+      icon: FileSignature,
+      title: "Statement of Work",
+      description: "Draft a contract-grade SOW as a Google Doc, for partner + counsel review.",
+      onClick: () => setOpen("sow"),
+    },
+    {
       key: "upload",
       icon: Upload,
       title: "Upload files",
@@ -100,7 +108,7 @@ export function ClientActionsPanel({
     <>
       <ActionsPanel
         actions={actions}
-        forceOpen={qa === "survey" || qa === "discussion" || qa === "discovery-report" || qa === "upload"}
+        forceOpen={qa === "survey" || qa === "discussion" || qa === "discovery-report" || qa === "sow" || qa === "upload"}
       />
 
       {open === "survey" && (
@@ -129,6 +137,9 @@ export function ClientActionsPanel({
       )}
       {open === "discovery-report" && (
         <DiscoveryReportModal clientId={clientId} company={company} onClose={() => setOpen(null)} />
+      )}
+      {open === "sow" && (
+        <SowModal clientId={clientId} company={company} onClose={() => setOpen(null)} />
       )}
       {open === "upload" && (
         <UploadFileModal clientId={clientId} company={company} onClose={() => setOpen(null)} />

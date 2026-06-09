@@ -14,7 +14,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { folderIdFromUrl, uploadFile } from "@/lib/drive";
+import { folderIdFromUrl, uploadFile, uploadAsGoogleDoc } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
@@ -329,6 +329,129 @@ export async function saveDiscoveryReport(clientId: string, input: { body: strin
       type: "doc",
       target: client.company,
       detail: "Drafted discovery report, awaiting review",
+      link: `/clients/${clientId}`,
+    });
+
+    return created;
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  return { artifactId: artifact.id, driveUrl: webViewLink };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Statement of Work — a contract-grade draft filed as a native Google Doc in
+// the client's Drive folder for the partner and counsel to redline. Output is
+// semantic HTML; Drive converts it to a Doc on save. Never signature-ready: the
+// skill stamps a DRAFT banner and [for counsel] / [NEEDS INPUT] markers.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function generateSow(
+  clientId: string,
+  input: { terms: string; scopeNotes?: string },
+): Promise<{ body: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+
+  const terms = input.terms.trim();
+  if (!terms) throw new Error("Agreed terms are required");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      company: true,
+      industry: true,
+      contractValue: true,
+      description: true,
+      primaryContact: { select: { name: true, title: true } },
+      projects: {
+        orderBy: { startDate: "desc" },
+        select: { name: true, phase: true, status: true },
+      },
+    },
+  });
+  if (!client) throw new Error("Client not found");
+
+  const contextLines: string[] = [
+    "## Client",
+    `Company: ${client.company}`,
+    `Industry: ${client.industry}`,
+    `Contract value on file: ${client.contractValue}`,
+  ];
+  if (client.description) contextLines.push(`About: ${client.description}`);
+  contextLines.push(
+    "",
+    "## Primary contact",
+    `${client.primaryContact.name} — ${client.primaryContact.title}`,
+  );
+  if (client.projects.length) {
+    contextLines.push("", "## Projects / engagement");
+    for (const p of client.projects) {
+      contextLines.push(`- ${p.name} — phase: ${p.phase}, status: ${p.status.replace("_", "-")}`);
+    }
+  }
+  const context = contextLines.join("\n");
+
+  const intake = [
+    "## Final agreed terms (parties' legal names, build fee, monthly subscription, any buy-out price, milestone dates, deployment choice)",
+    terms,
+    "",
+    "## Scope notes",
+    input.scopeNotes?.trim() || "(use the project scope from the context)",
+  ].join("\n");
+
+  const body = await generate({ skill: "sow", context, intake, maxTokens: 12000 });
+  return { body: body.trim() };
+}
+
+export async function saveSow(clientId: string, input: { body: string }) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const body = input.body.trim();
+  if (!body) throw new Error("SOW body is required");
+  assertNoNeedsInput(body, "statement of work");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { id: true, company: true, driveFolderUrl: true },
+  });
+  if (!client) throw new Error("Client not found");
+
+  const parentFolderId = resolveClientFolderId(client.driveFolderUrl);
+  const today = new Date().toISOString().slice(0, 10);
+  const docName = `Statement of Work (DRAFT) - ${client.company} - ${today}`;
+  const { fileId, webViewLink } = await uploadAsGoogleDoc(body, docName, parentFolderId);
+
+  const artifact = await prisma.$transaction(async (tx) => {
+    const created = await tx.artifact.create({
+      data: {
+        type: "sow" as ArtifactType,
+        title: `SOW (draft) · ${client.company} · ${today}`,
+        driveUrl: webViewLink,
+        fileName: docName,
+        createdBy: partnerLabel,
+        generatedFromSkill: "sow",
+        reviewStatus: "draft",
+        clientId: client.id,
+      },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "create.artifact.sow.draft",
+      targetType: "Artifact",
+      targetId: created.id,
+      changes: { clientId, driveFileId: fileId, bodyLength: body.length },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: client.company,
+      detail: "Drafted a Statement of Work (for partner + counsel review)",
       link: `/clients/${clientId}`,
     });
 

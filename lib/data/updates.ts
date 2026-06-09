@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-06",
     tag: "new",
+    title: "Statement of Work drafts, as a Google Doc",
+    detail:
+      "A new Statement of Work action on a client drafts a contract-grade SOW: scope and acceptance, the build + subscription + buy-out terms, and the firm's IP and ownership model. It files to the client's Drive folder as a Google Doc you and counsel redline. It is a draft, never signature-ready: it stamps a DRAFT banner, tags the binding wording for counsel, and won't save until every fee, party, and date is real.",
+  },
+  {
+    date: "2026-06-06",
+    tag: "new",
     title: "Link an Ingest item to a pipeline deal",
     detail:
       "When you review a meeting, email, or uploaded file on Ingest, you can now pick a pipeline deal to link it to. Approving logs the summary against that deal's main contact, so the touch shows up on the deal — handy for calls and emails that belong to a deal you haven't signed yet. Works for Fireflies, Gmail, and uploads.",

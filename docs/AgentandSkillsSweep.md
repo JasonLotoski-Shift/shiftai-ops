@@ -38,7 +38,7 @@
 
 ## 2. Coverage map
 
-36 items: 29 ops-runtime skills · 2 cc/firm-cc skills · 5 agents. **Audited 2026-06-05 (rubric v1): 17 pass, 14 pass-with-notes, 0 fail/stale/blocked.** Status column: P = pass, PN = pass-with-notes; agents show readiness. Full scores + open fixes in §2a; per-record detail in §3-5.
+37 items: 30 ops-runtime skills · 2 cc/firm-cc skills · 5 agents. **Audited (rubric v1): 18 pass, 14 pass-with-notes, 0 fail/stale/blocked.** Status column: P = pass, PN = pass-with-notes; agents show readiness. Full scores + open fixes in §2a; per-record detail in §3-5.
 
 | # | Name | Plane | Type | What it does (short) | Audit |
 |---|---|---|---|---|---|
@@ -48,6 +48,7 @@
 | 3 | client-survey | ops | md | Tailored client/prospect survey | P |
 | 4 | proposal-deck | ops | html | Slide-style HTML proposal deck | PN |
 | 31 | discovery-report | ops | html | Client-facing Discovery build-plan deck (light mode + client brand) | P |
+| 32 | sow | ops | gdoc | Statement of Work contract draft (counsel-flagged) | P |
 | | **- Prototype workflow (3 steps) -** | | | | |
 | 5 | prototype-brief | ops | md | Step 1: scope what to prototype | P |
 | 6 | prototype-spec | ops | md | Step 2: build-ready blueprint | PN |
@@ -101,6 +102,7 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 | client-survey | 5·n·5·5·5·5 | P | clean |
 | proposal-deck | 5·5·5·5·5·5 | PN | ✓ Edition-06 brand block added (was B 3/5: "serif display" + no tokens) |
 | discovery-report | 5·5·5·5·5·5 | P | NEW 2026-06-05: light mode + fuller client-brand match; born-audited via the pipeline |
+| sow | 5·n·5·5·5·5 | P | NEW 2026-06-06: contract skill (HTML to Google Doc); v2 IP model + escrow, all counsel-flagged; born-audited |
 | prototype-brief | 5·n·5·5·5·5 | P | clean |
 | prototype-spec | 5·n·4·5·5·5 | PN | clean (brand lives in the downstream HTML step) |
 | html-prototype | 5·4·5·5·5·5 | PN | ✓ Edition-06 brand-floor backstop added |
@@ -175,6 +177,14 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 - **Inputs:** client context + discovery interactions + client brand colors (when captured) + partner intake. **Dependencies:** `_firm/context.md`; Prisma Client/Deal/Interaction; client brand from enrichment (the brand chain); pairs with `ingest-meeting` upstream and `scope-ops`/SOW downstream.
 - **Baseline refs:** voice · **brand** · audience. **Audit:** pass 2026-06-05 · T5 B5 A5 G5 F5 H5 (born-audited via the pipeline).
 - **Notes:** New 2026-06-05, fully wired (Gate 6 done). Light mode + fuller client-brand match (their colors, Shift fonts/layout, wordmark AI stays gold), falls back to Shift light. No pricing (proposal/SOW carry it). Distinctive: the value-confirmation close. Wiring: `generateDiscoveryReport`/`saveDiscoveryReport` in `clients/[id]/actions.ts` + `DiscoveryReportModal` (preview + source editor) on the Client actions panel. Brand-capture chain live: `enrich-company-web` now proposes `brandColors` (stored on `Client.brandColors`), which the deck reads as its accent.
+
+#### 32. sow · ops-runtime · gdoc (HTML to Google Doc)
+- **Goal:** Turn an accepted engagement into a contract-grade Statement of Work draft (scope, terms, IP, schedule) for partner + counsel review.
+- **Audience:** the client (signs), the partner (drafts/refines), counsel (reviews). **Produces:** semantic HTML rendered to a native Google Doc in the client's Drive folder, with a visible "DRAFT, not for signature" banner.
+- **Where it works:** ops Quick Action on the Client page (wiring is Gate 6). **How it works:** context (client + project scope/value/schedule/modules) + intake (final agreed terms: parties, build fee, subscription, buy-out, milestones, deployment) returns semantic HTML; partner + counsel redline the resulting Google Doc.
+- **Inputs:** client + project context + partner intake of the agreed terms. **Dependencies:** `_firm/context.md`; the v2 commercial + IP model (inlined from `business-model-v2.md`); Prisma Client/Project; a Drive HTML-to-Google-Doc save helper (Gate 6); pairs downstream of `scope`.
+- **Baseline refs:** voice · audience · business-model-v2 (commercial + IP). **Audit:** pass 2026-06-06 · T5 B(n/a) A5 G5 F5 H5 (born-audited).
+- **Notes:** New 2026-06-06. Contract skill: drafts the v2 three-layer IP model + source escrow + per-deal buy-out; every output is flagged "DRAFT, for partner + counsel, not for signature" with `[for counsel]` markers on the binding wording. Brand is intentionally minimal (plain contract for clean Doc conversion, not a branded deck), so B is n/a. The inlined IP/commercial terms are a deploy-time copy of business-model-v2.md; keep in sync if the model changes.
 
 ### Prototype workflow (brief → spec → HTML)
 
@@ -441,6 +451,7 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 | 2026-06-04 | Registry built - descriptive records for all 30 skills + 5 agents. Baseline gaps (personas, ICP) drafted. `scope` (firm) Edition-06 corners fixed. | - | No formal scores yet; first scored audit gated on Jason filling the persona + ICP `[NEEDS INPUT]` markers. |
 | 2026-06-05 | Full sweep: all 30 skills scored on rubric v1; 5 agents reviewed. Baselines filled (personas + ICP). 7 fixes applied + AGENTLEADPLAN "locked" cleanup. | v1 | 16 pass · 14 pass-with-notes · 0 fail/stale/blocked. H = 5 on every skill. Only open drift is the vote-gated Run→Operate rename. |
 | 2026-06-05 | New skill `discovery-report` authored via the pipeline (Gate 0-5): client-facing Discovery build-plan deck, light mode + client-brand match. | v1 | pass · T5 B5 A5 G5 F5 H5. Gate 6 (wiring) + the brand-capture chain pending. |
+| 2026-06-06 | New skill `sow` authored via the pipeline (Gate 0-5): contract-grade Statement of Work draft, HTML to Google Doc, v2 IP model + escrow, counsel-flagged. | v1 | pass · T5 B(n/a) A5 G5 F5 H5. Gate 6 (wiring + Google-Doc save helper) next. |
 
 ---
 
