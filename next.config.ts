@@ -3,6 +3,9 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // @react-pdf/renderer (invoice PDF render) ships native-ish deps + a wasm
+  // layout engine; let Next require it at runtime instead of bundling it.
+  serverExternalPackages: ["@react-pdf/renderer"],
   // Anchor file-tracing to this project; silences the multi-lockfile warning
   // caused by a stray package-lock.json in C:\Users\jason\.
   outputFileTracingRoot: path.resolve(__dirname),

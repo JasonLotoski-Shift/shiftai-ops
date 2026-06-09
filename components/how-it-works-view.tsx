@@ -629,7 +629,7 @@ const flows: Flow[] = [
     blurb: "Build an invoice off the engagement and track it to paid.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Project → Raise invoice · pick a stage or amount + due date" },
-      { tone: "claude", kind: "Claude", label: "Generates the invoice doc — or tick \"sent manually\" to just log it" },
+      { tone: "claude", kind: "System", label: "The PDF button builds a formatted invoice on Shift letterhead and files it to Drive; or tick \"sent manually\" to just log it" },
       { tone: "review", kind: "You review", label: "Edit a draft's amount/due, mark Sent (pick the real send date) or Paid (the date it cleared) — back-date either" },
       { tone: "write", kind: "Saved", label: "Invoice (draft→sent→paid, with the sent date) + Artifact + change log + AuditLog" },
     ],

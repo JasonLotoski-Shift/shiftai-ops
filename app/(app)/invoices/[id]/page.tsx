@@ -1,14 +1,15 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
-import { Card, CardBody, Label, Badge, Button, Avatar } from "@/components/ui";
+import { Card, CardBody, Label, Badge, Avatar } from "@/components/ui";
 import { InvoiceStatusActions } from "@/components/invoice-status-actions";
+import { InvoicePdfButton } from "@/components/invoice-pdf-button";
 import { InvoiceDraftEdit } from "@/components/billing/invoice-draft-edit";
 import { ChangeThread } from "@/components/billing/change-thread";
 import { prisma } from "@/lib/prisma";
 import { getInvoiceThread } from "@/lib/audit-read";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
-import { ArrowLeft, Download, FileOutput } from "lucide-react";
+import { ArrowLeft, FileOutput } from "lucide-react";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -39,10 +40,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         title={formatCAD(invoice.amount).replace("CA$", "$")}
         actions={
           <>
-            <Button variant="ghost" size="sm">
-              <Download size={13} strokeWidth={1.5} />
-              PDF
-            </Button>
+            <InvoicePdfButton invoiceId={invoice.id} />
             <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} />
           </>
         }

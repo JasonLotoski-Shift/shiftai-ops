@@ -100,6 +100,23 @@ export async function uploadAsGoogleDoc(
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
 
+// Upload a binary PDF Buffer to a Drive folder (e.g. a rendered invoice). Same
+// shape as uploadFile, but takes a Buffer and fixes the mime to application/pdf.
+export async function uploadPdf(
+  pdf: Buffer,
+  fileName: string,
+  parentFolderId: string,
+): Promise<{ fileId: string; webViewLink: string }> {
+  const res = await drive.files.create({
+    requestBody: { name: fileName, parents: [parentFolderId], mimeType: "application/pdf" },
+    media: { mimeType: "application/pdf", body: Readable.from(pdf) },
+    fields: "id, webViewLink",
+    supportsAllDrives: true,
+  });
+  if (!res.data.id || !res.data.webViewLink) throw new Error("Drive PDF upload returned no ID");
+  return { fileId: res.data.id, webViewLink: res.data.webViewLink };
+}
+
 // The standard subfolder structure seeded inside every new client folder.
 // Mirrors the onboard-client skill's scaffold (skills/onboard-client/SKILL.md).
 export const CLIENT_SUBFOLDERS = [

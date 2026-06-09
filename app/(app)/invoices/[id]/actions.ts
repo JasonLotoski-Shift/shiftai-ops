@@ -10,6 +10,10 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { folderIdFromUrl, uploadPdf } from "@/lib/drive";
+import { renderInvoicePdf } from "@/lib/invoice-pdf";
+import { formatDate } from "@/lib/format";
+import type { InvoiceTemplateData } from "@/lib/invoice-template";
 
 async function getActor() {
   const session = await auth();
@@ -113,4 +117,114 @@ export async function markInvoicePaid(invoiceId: string, paidDate?: string | nul
   revalidatePath("/invoices");
   revalidatePath("/dashboard");
   return { status: "paid" as const, paidAt };
+}
+
+// Resolve a client's Drive folder ID, falling back to the Shared Drive root when
+// the stored URL is a placeholder (mirrors the client-actions resolver).
+function clientFolderId(driveFolderUrl: string): string {
+  try {
+    return folderIdFromUrl(driveFolderUrl);
+  } catch {
+    const shared = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
+    if (!shared) throw new Error("DRIVE_SHARED_DRIVE_FOLDER_ID is not configured");
+    return shared;
+  }
+}
+
+// Render the invoice as a real PDF and file it to the client's Drive folder.
+// Deterministic: the values come straight from the Invoice record into the fixed
+// template (no LLM, no recompute). Works for any status; re-runnable. Returns the
+// Drive link so the caller can open it.
+export async function generateInvoicePdf(invoiceId: string) {
+  const { actor } = await getActor();
+  const partnerLabel = actor.kind === "partner" ? actor.label : "AGENT · CLAUDE";
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: {
+      number: true,
+      amount: true,
+      total: true,
+      status: true,
+      issuedAt: true,
+      dueAt: true,
+      clientId: true,
+      projectId: true,
+      client: {
+        select: {
+          company: true,
+          notes: true,
+          driveFolderUrl: true,
+          billingContact: { select: { name: true, title: true, email: true } },
+          primaryContact: { select: { name: true, title: true, email: true } },
+        },
+      },
+      project: { select: { name: true } },
+    },
+  });
+  if (!invoice) throw new Error("Invoice not found");
+
+  const contact = invoice.client.billingContact ?? invoice.client.primaryContact;
+  const projectShort = invoice.project.name.split("·")[1]?.trim() ?? invoice.project.name;
+  const status = (invoice.status.charAt(0).toUpperCase() +
+    invoice.status.slice(1)) as InvoiceTemplateData["status"];
+
+  const data: InvoiceTemplateData = {
+    number: invoice.number,
+    issuedAt: formatDate(invoice.issuedAt),
+    dueAt: formatDate(invoice.dueAt),
+    status,
+    billTo: {
+      company: invoice.client.company,
+      contactName: contact?.name,
+      contactTitle: contact?.title,
+      email: contact?.email,
+      address: invoice.client.notes ? invoice.client.notes.split(".")[0] : undefined,
+    },
+    lineDescription: `Professional services — ${projectShort}`,
+    amountCad: invoice.amount,
+    totalCad: invoice.total || invoice.amount,
+  };
+
+  // Render + upload outside the transaction (don't hold a DB tx during I/O).
+  const pdf = await renderInvoicePdf(data);
+  const fileName = `${invoice.number}.pdf`;
+  const { fileId, webViewLink } = await uploadPdf(
+    pdf,
+    fileName,
+    clientFolderId(invoice.client.driveFolderUrl),
+  );
+
+  await prisma.$transaction(async (tx) => {
+    const artifact = await tx.artifact.create({
+      data: {
+        type: "invoice",
+        title: `Invoice ${invoice.number} — ${invoice.client.company}`,
+        driveUrl: webViewLink,
+        fileName,
+        createdBy: partnerLabel,
+        generatedFromSkill: null,
+        reviewStatus: "approved",
+        clientId: invoice.clientId,
+        projectId: invoice.projectId,
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "generate.invoice.pdf",
+      targetType: "Invoice",
+      targetId: invoiceId,
+      changes: { number: invoice.number, artifactId: artifact.id, driveFileId: fileId },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: invoice.client.company,
+      detail: `Generated invoice PDF ${invoice.number}`,
+      link: `/invoices/${invoiceId}`,
+    });
+  });
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  return { driveUrl: webViewLink };
 }
