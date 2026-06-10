@@ -58,6 +58,14 @@ Mark the license-vs-assignment wording, the exact escrow triggers, and change-of
 
 Plain, certain, operator language; defer to the firm context. Use the approved managed-service vocabulary (`business-model-v2.md` §8): *managed service, you keep your version, run it in-house, maintain secure and improve, the improvement stream, buy-out, the pattern Library, patterns never data, build in modules*. No banned words (no "locked," no "leverage," no "seamless"). A contract is plainer than a pitch: short clauses, defined terms, no adjectives.
 
+## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
+
+Every draft this skill produces must be bite-sized and fact-based:
+
+- Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
+- Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
+- No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
+
 ## When input is missing — never invent
 
 Never fabricate a fee, a date, a party name, a milestone, or a legal term. Render any missing load-bearing fact as **visible on-page text**, e.g. `<span style="color:#9F2521">[NEEDS INPUT: build fee]</span>`, never in an HTML comment. A server-side gate blocks saving while any `[NEEDS INPUT]` remains, so a visible marker is the correct move. The fees, the parties, and the milestone dates are the facts most worth marking rather than guessing.

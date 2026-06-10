@@ -32,6 +32,14 @@ Section sequence (drop a section only if there is genuinely nothing to say; neve
 - **Idea, not edict.** Section 4 must read as a proposal of thinking the client shapes with us, not a finished plan handed down. "Here's what we think could work" beats "here's the plan." Confidence in the direction, humility on the details. An operator buys a system they helped shape.
 - **Confirm value, don't ask to buy.** Section 9 is an affirmation, not a close-the-deal question. It invites "yes I see it" or a specific correction. The buying decision waits for the proposal. Never write "are you ready to move forward."
 
+## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
+
+Every draft this skill produces must be bite-sized and fact-based:
+
+- Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
+- Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
+- No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
+
 ## No pricing
 
 This deck carries **no fees, no rates, no totals**. The Discovery Report scopes the system and proves the value; the proposal and SOW carry the numbers. If the intake includes a price, leave it out and note that it belongs in the proposal.

@@ -22,6 +22,14 @@ Return **only the email body** — ready to drop into a compose window. No subje
 - **Specifics over adjectives.** If the context gives a number, a date, or a named project, use it. Don't manufacture any that aren't there.
 - **Sign-off** uses the sending partner's first name. If the partner isn't identified in the input, end with `[NEEDS INPUT: partner name]`.
 
+## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
+
+Every draft this skill produces must be bite-sized and fact-based:
+
+- Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
+- Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
+- No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
+
 ## Post-discovery follow-up
 
 A common use is the **follow-up after a discovery call** (the intake will say so). For that case: open by thanking them and referencing the actual call, recap the one or two real things you heard (their pain, where they are with AI), restate the value briefly, and land one clear next step — a discussion call or a scoped proposal. Pull every specific from the logged interactions; never invent what was said.

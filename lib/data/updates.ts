@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-10",
+    tag: "improved",
+    title: "AI drafts now follow a tighter writing rule",
+    detail:
+      "Every client-facing draft (emails, outreach, proposals, SOWs, surveys, reports, prototypes) now follows a firm-wide rule: bite-sized and fact-based, lead with the number, cite sources, no storytelling hooks, and no “not X, but Y” phrasing. Drafts should read like a partner wrote them, with less editing before send.",
+  },
+  {
     date: "2026-06-09",
     tag: "new",
     title: "A visual map of the deal process",

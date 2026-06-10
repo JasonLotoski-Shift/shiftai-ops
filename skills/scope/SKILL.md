@@ -32,6 +32,14 @@ Return only the proposal Markdown — no preamble, no "here's a draft," no comme
 - **Right length.** Tight and skimmable — a busy operator reads it in a few minutes. Prose + short lists, not walls of text.
 - **No hourly billing.** The firm bills on fixed engagement fee/value, never hours.
 
+## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
+
+Every draft this skill produces must be bite-sized and fact-based:
+
+- Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
+- Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
+- No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
+
 ## When input is missing — never invent
 
 Never fabricate a fee, a date, a timeline, a headcount, a name, or a commitment. If the proposal needs one that isn't in the context or intake, put `[NEEDS INPUT: <what's needed>]` exactly where it belongs and keep going — the partner fills it before sending. A server-side gate blocks any draft still containing `[NEEDS INPUT]` from being saved, so leaving the marker is the correct, safe move. This is the firm's most important rule.

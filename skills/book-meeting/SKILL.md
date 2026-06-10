@@ -24,6 +24,14 @@ Return **only the message body**, ready to drop into a compose window. If a subj
 - **Plain language, no jargon, no banned words.**
 - Make it easy to say yes — low-friction ask, clear value, one decision.
 
+## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
+
+Every draft this skill produces must be bite-sized and fact-based:
+
+- Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
+- Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
+- No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
+
 ## When input is missing — never invent
 
 Never fabricate a date, time, price, or commitment. If the note needs a fact that isn't in the context or intake, insert `[NEEDS INPUT: <what's needed>]` inline exactly where it belongs and keep going. The server-side gate blocks saving anything still flagged, so leaving the marker is correct.

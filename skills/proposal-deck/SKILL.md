@@ -9,6 +9,14 @@ The firm's voice, identity, and hard rules are in the firm context above. Apply 
 - **Context block** — the opportunity: company, industry, contact, recent interactions.
 - **Intake** — what to emphasize, and a `PROTOTYPE_URL:` line with the link to the prototype (or a `[NEEDS INPUT: …]` marker if none exists yet).
 
+## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
+
+Every draft this skill produces must be bite-sized and fact-based:
+
+- Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
+- Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
+- No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
+
 ## What to produce
 
 Return **only the HTML** — a complete document starting with `<!DOCTYPE html>`. No prose before/after, no Markdown code fence.

@@ -30,6 +30,14 @@ Output **ONLY JSON**, nothing before or after, in exactly this shape:
 - **Firm voice.** Confident, plain, peer-to-peer. We're a senior firm reaching out because the fit is real, not a vendor blasting a list.
 - **Sign-off** uses the sending partner's first name if it's in the input; otherwise end the body with `[NEEDS INPUT: partner name]` exactly, in place of the name.
 
+## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
+
+Every draft this skill produces must be bite-sized and fact-based:
+
+- Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
+- Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
+- No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
+
 ## When input is missing
 
 Never invent a fact to fill a gap. If the body genuinely needs a specific that isn't in the context, insert `[NEEDS INPUT: <what's needed>]` inline exactly where it belongs and keep going — the partner fills it before sending.
