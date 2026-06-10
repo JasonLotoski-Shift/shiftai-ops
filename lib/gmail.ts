@@ -143,6 +143,8 @@ export type ParsedEmail = {
   cc: string[];
   date: Date;
   body: string; // plain text (HTML stripped); capped
+  // Attachment parts (metadata only — bytes fetched separately via fetchAttachment).
+  attachments: { fileName: string; mimeType: string; attachmentId: string; size: number }[];
 };
 
 function headerValue(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, name: string): string {
@@ -169,6 +171,23 @@ function extractBody(part: gmail_v1.Schema$MessagePart | undefined): string {
   return "";
 }
 
+/** Walk the MIME tree collecting attachment parts (anything with a filename + attachmentId). */
+function collectAttachments(
+  part: gmail_v1.Schema$MessagePart | undefined,
+  out: ParsedEmail["attachments"],
+): void {
+  if (!part) return;
+  if (part.filename && part.body?.attachmentId) {
+    out.push({
+      fileName: part.filename,
+      mimeType: part.mimeType ?? "application/octet-stream",
+      attachmentId: part.body.attachmentId,
+      size: part.body.size ?? 0,
+    });
+  }
+  for (const p of part.parts ?? []) collectAttachments(p, out);
+}
+
 function emailsIn(headerVal: string): string[] {
   return [...headerVal.matchAll(/[\w.+-]+@[\w-]+\.[\w.-]+/g)].map((m) => m[0].toLowerCase());
 }
@@ -179,6 +198,8 @@ export async function getEmail(gmail: gmail_v1.Gmail, id: string): Promise<Parse
   const m = res.data;
   const headers = m.payload?.headers ?? undefined;
   const dateMs = m.internalDate ? Number(m.internalDate) : NaN;
+  const attachments: ParsedEmail["attachments"] = [];
+  collectAttachments(m.payload ?? undefined, attachments);
   return {
     id: m.id ?? id,
     threadId: m.threadId ?? "",
@@ -188,5 +209,16 @@ export async function getEmail(gmail: gmail_v1.Gmail, id: string): Promise<Parse
     cc: emailsIn(headerValue(headers, "Cc")),
     date: Number.isNaN(dateMs) ? new Date() : new Date(dateMs),
     body: (extractBody(m.payload ?? undefined) || m.snippet || "").slice(0, 20_000),
+    attachments,
   };
+}
+
+/** Fetch one attachment's bytes (Gmail returns base64url-encoded `data`). */
+export async function fetchAttachment(
+  gmail: gmail_v1.Gmail,
+  messageId: string,
+  attachmentId: string,
+): Promise<Buffer> {
+  const res = await gmail.users.messages.attachments.get({ userId: "me", messageId, id: attachmentId });
+  return Buffer.from(res.data.data ?? "", "base64url");
 }

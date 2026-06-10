@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-09",
+    tag: "improved",
+    title: "Ingest reads your attachments and uploaded files",
+    detail:
+      "Ingest now reads the content of PDF, Word, Excel, HTML, Markdown, and text files — not just the email body or pasted notes. Drop a file into the composer, or just label an email that has attachments: Claude reads the attachments too and folds them into what it proposes. Large files are capped, and anything it can't read (like a scanned image-only PDF) is flagged rather than silently dropped.",
+  },
+  {
+    date: "2026-06-09",
     tag: "new",
     title: "Cross-reference an Ingest item before you approve it",
     detail:

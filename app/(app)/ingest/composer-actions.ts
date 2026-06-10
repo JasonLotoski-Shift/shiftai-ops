@@ -30,6 +30,7 @@ import { fetchTargetData, buildIngestContext, formatPartnerRoster, type TargetRe
 import { parseUnified } from "@/lib/ingest/parse";
 import { findDuplicateOpenTask, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
 import { resolveTargetsFromText, computeCrossReference, type DetectedTarget } from "@/lib/ingest/cross-reference";
+import { extractFile, isExtractable } from "@/lib/ingest/extract-file";
 import { createContact } from "@/app/(app)/contacts/actions";
 import type {
   IngestType,
@@ -176,6 +177,8 @@ export async function extractUnified(input: {
   emailBlock?: string;
   focus?: { kind: IngestTargetKind; id: string } | null;
   targets: { kind: IngestTargetKind; id: string }[];
+  // Uploaded files (base64) — parsed server-side and appended to the content.
+  files?: { base64: string; mimeType: string; fileName: string }[];
 }): Promise<{ id: string }> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
@@ -185,8 +188,34 @@ export async function extractUnified(input: {
   if (!(INGEST_TYPES as readonly string[]).includes(input.ingestType)) {
     throw new Error(`Invalid ingest type: ${input.ingestType}`);
   }
-  const content = input.content.trim();
-  if (content.length < 40) throw new Error("Content is too short to extract anything useful");
+  let content = input.content.trim();
+
+  // Append extracted text from any uploaded files (PDF / Word / Excel / HTML / MD).
+  // Each file is best-effort: a parse failure adds a note, never throws.
+  const fileNotes: string[] = [];
+  for (const f of input.files ?? []) {
+    if (!isExtractable(f.fileName)) {
+      fileNotes.push(`Unsupported file — skipped: ${f.fileName}`);
+      continue;
+    }
+    try {
+      const bytes = Buffer.from(f.base64, "base64");
+      const ex = await extractFile({ bytes, fileName: f.fileName, mimeType: f.mimeType });
+      if (ex.text) content += `\n\n## Attachment: ${f.fileName}\n${ex.text}${ex.truncated ? "\n…(truncated)" : ""}`;
+      if (ex.note) fileNotes.push(ex.note);
+    } catch {
+      fileNotes.push(`Couldn't read file: ${f.fileName}`);
+    }
+  }
+  if (fileNotes.length) content += `\n\n## Attachment notes\n${fileNotes.join("\n")}`;
+
+  if (content.length < 40) {
+    throw new Error(
+      input.files?.length
+        ? "Couldn't extract enough text from the file(s) — paste the notes, or check the file."
+        : "Content is too short to extract anything useful",
+    );
+  }
   const title = input.title.trim() || "Untitled ingest";
   const date = input.date?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(input.date.trim()) ? input.date.trim() : new Date().toISOString().slice(0, 10);
   const meetingDate = new Date(date);

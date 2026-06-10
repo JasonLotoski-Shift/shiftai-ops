@@ -25,9 +25,12 @@ import {
   addContactInline,
 } from "@/app/(app)/ingest/composer-actions";
 
-// Plain-text formats we can read in the browser straight into the content box.
-// Binary formats (.docx/.pdf) need server-side parsing — not wired; paste instead.
+// Plain-text formats read straight into the content box in the browser.
 const TEXT_EXTS = [".txt", ".md", ".markdown", ".vtt", ".srt", ".text", ".log", ".csv", ".rtf"];
+// Binary formats now read server-side (lib/ingest/extract-file.ts) — the browser
+// base64-uploads the bytes and the extract action parses them.
+const BINARY_EXTS = [".pdf", ".docx", ".xlsx", ".xls", ".html", ".htm"];
+const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB client-side cap
 
 type Opt = { id: string; name: string; company: string };
 type ClientOpt = { id: string; company: string };
@@ -87,6 +90,8 @@ export function IngestComposer({
   const [content, setContent] = useState("");
   const [emailBlock, setEmailBlock] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  // Binary files (PDF/Word/Excel/HTML) base64-uploaded for server-side parsing.
+  const [files, setFiles] = useState<{ base64: string; mimeType: string; fileName: string }[]>([]);
   const [dragging, setDragging] = useState(false);
 
   const [targets, setTargets] = useState<Target[]>(() =>
@@ -101,28 +106,47 @@ export function IngestComposer({
   const [submitted, setSubmitted] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const hasContent = content.trim().length >= 20 || emailBlock.trim().length >= 20;
+  const hasContent = content.trim().length >= 20 || emailBlock.trim().length >= 20 || files.length > 0;
+
+  function titleFromFile(name: string) {
+    if (!title.trim()) setTitle(name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim());
+  }
 
   function loadFile(file: File) {
     const lower = file.name.toLowerCase();
-    const okExt = TEXT_EXTS.some((e) => lower.endsWith(e));
-    const okType = file.type.startsWith("text/") || file.type === "";
-    if (!okExt && !okType) {
-      setError(`"${file.name}" looks like a binary file (e.g. .docx / .pdf). Export it to text/markdown, or paste it below.`);
+    if (file.size > MAX_FILE_BYTES) {
+      setError(`"${file.name}" is too large (max 25 MB).`);
       return;
     }
+    const isText = TEXT_EXTS.some((e) => lower.endsWith(e)) || file.type.startsWith("text/") || file.type === "";
+    if (isText) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result ?? "");
+        setContent((prev) => (prev.trim() ? prev + "\n\n" + text : text));
+        setFileName(file.name);
+        setError(null);
+        titleFromFile(file.name);
+      };
+      reader.onerror = () => setError("Couldn't read that file.");
+      reader.readAsText(file);
+      return;
+    }
+    if (!BINARY_EXTS.some((e) => lower.endsWith(e))) {
+      setError(`"${file.name}" isn't a supported type. Supported: PDF, Word, Excel, HTML, Markdown, text.`);
+      return;
+    }
+    // Binary — base64-upload for server-side parsing (extractFile on the server).
     const reader = new FileReader();
     reader.onload = () => {
-      const text = String(reader.result ?? "");
-      setContent((prev) => (prev.trim() ? prev + "\n\n" + text : text));
-      setFileName(file.name);
+      const result = String(reader.result ?? "");
+      const base64 = result.includes(",") ? result.slice(result.indexOf(",") + 1) : result;
+      setFiles((prev) => [...prev, { base64, mimeType: file.type || "application/octet-stream", fileName: file.name }]);
       setError(null);
-      if (!title.trim()) {
-        setTitle(file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim());
-      }
+      titleFromFile(file.name);
     };
     reader.onerror = () => setError("Couldn't read that file.");
-    reader.readAsText(file);
+    reader.readAsDataURL(file);
   }
 
   function addTarget(kind: IngestTargetKind, id: string) {
@@ -180,6 +204,7 @@ export function IngestComposer({
           emailBlock: emailBlock.trim() || undefined,
           focus: focus ? { kind: focus.kind, id: focus.id } : null,
           targets: targets.filter((t) => t.id).map((t) => ({ kind: t.kind, id: t.id })),
+          files: files.length ? files : undefined,
         });
         setSubmitted(true);
         router.refresh();
@@ -410,16 +435,37 @@ export function IngestComposer({
                 {fileName ? (
                   <span className="text-[12px] text-bone">Loaded <span className="text-track-gold">{fileName}</span> · appended below</span>
                 ) : (
-                  <span className="text-[12px] text-bone-dim">Drop a notes file or <span className="text-track-gold">click to browse</span> · .txt .md .vtt .srt</span>
+                  <span className="text-[12px] text-bone-dim">Drop a file or <span className="text-track-gold">click to browse</span> · PDF, Word, Excel, HTML, Markdown, text</span>
                 )}
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt,.md,.markdown,.vtt,.srt,.text,.log,.rtf,.csv,text/*"
+                  accept=".txt,.md,.markdown,.vtt,.srt,.text,.log,.rtf,.csv,.pdf,.docx,.xlsx,.xls,.html,.htm,text/*,application/pdf"
                   className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ""; }}
                 />
               </div>
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-1">
+                  {files.map((f, i) => (
+                    <span
+                      key={`${f.fileName}-${i}`}
+                      className="inline-flex items-center gap-2 pl-2.5 pr-1.5 py-1 rounded-[var(--radius-pill)] border border-track-gold/40 bg-track-gold-dim/15 text-[12px] text-track-gold"
+                    >
+                      {f.fileName}
+                      <span className="text-[10px] text-bone-mute">parsed on extract</span>
+                      <button
+                        type="button"
+                        onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                        disabled={isPending}
+                        className="text-bone-mute hover:text-bone"
+                      >
+                        <X size={12} strokeWidth={1.5} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <Textarea
                 rows={8}
                 value={content}
