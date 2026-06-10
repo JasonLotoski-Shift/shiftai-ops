@@ -37,6 +37,46 @@ export type Contact = {
   hobbies?: string[]; // hobbies and interests — rapport surface
   networkAffiliations?: string[]; // boards, associations, alma mater, shared contacts
   enrichedAt?: string; // ISO date of last AI/web enrichment, if any
+
+  // Reach & personal (D40) — all optional
+  linkedinUrl?: string;
+  location?: string; // city/region
+  timezone?: string;
+  mobilePhone?: string;
+  preferredChannel?: PreferredChannel;
+  relationshipStrength?: RelationshipStrength; // partner judgment — manual only
+  importantDates?: string[]; // free text, e.g. "Birthday — March 12"
+};
+
+/* Contact ↔ Deal/Client link (D40). Two independent dimensions:
+ * `relationship` = how the person connects to the company;
+ * `role` = their pull in the buying decision (mainly for works_there).
+ * Exactly one of dealId/clientId is set. */
+
+export type RelationshipType = "works_there" | "introduced_us" | "advisor" | "other";
+export type StakeholderRole =
+  | "decision_maker"
+  | "champion"
+  | "influencer"
+  | "budget_holder"
+  | "technical"
+  | "gatekeeper"
+  | "blocker"
+  | "other";
+export type PreferredChannel = "email" | "call" | "text" | "linkedin";
+export type RelationshipStrength = "cold" | "warm" | "strong";
+
+export type ContactLink = {
+  id: string;
+  contactId: string;
+  dealId?: string;
+  clientId?: string;
+  relationship: RelationshipType;
+  role?: StakeholderRole;
+  roleLabel?: string; // free text — "VP Ops", "met at SEMA"
+  isPrimary: boolean;
+  notes?: string;
+  addedBy: string; // partner name or "AGENT · CLAUDE"
 };
 
 export type InteractionType =
@@ -75,6 +115,32 @@ export type Deal = {
   coldOutreachAt?: string; // ISO date — set when the deal entered via a sent cold email (D36)
   outreachRepliedAt?: string; // ISO date — set when the prospect was marked as replied (lead → qualified)
   notes?: string;
+
+  // Company profile (D40) — gathered at deal stage, copied to the Client on convert
+  website?: string;
+  domain?: string; // normalized bare host
+  linkedinUrl?: string;
+  instagramUrl?: string;
+  revenueEstimate?: number; // whole CAD
+  employeeCount?: number;
+  companySize?: string;
+  headquarters?: string;
+  founded?: string;
+  ownership?: string;
+  description?: string;
+  subIndustry?: string;
+  currentSystems?: string[];
+  painPoints?: string[];
+  companyKeyFacts?: string[];
+  enrichedAt?: string; // ISO date
+
+  // Sales intelligence (D40)
+  nextStep?: string;
+  competitor?: string;
+  probability?: number; // 0–100 — partner judgment, manual only
+  budget?: string; // as stated/floated — soft until contracted
+  lostReason?: string;
+  lostAt?: string; // ISO date
 };
 
 export type EngagementStatus = "on-track" | "at-risk" | "blocked" | "closing" | "closed";
@@ -105,7 +171,24 @@ export type Client = {
   companyKeyFacts?: string[]; // operating facts that shape the engagement
   enrichedAt?: string; // ISO date of last profile enrichment
 
+  // Presence & firmographics (D40)
+  linkedinUrl?: string;
+  instagramUrl?: string;
+  domain?: string; // normalized bare host
+  revenueEstimate?: number; // whole CAD — filterable, alongside free-text `revenue`
+  employeeCount?: number;
+  subIndustry?: string;
+  locations?: string; // sites/regions, free text
+
+  // Shift-specific signal (D40)
+  currentSystems?: string[];
+  painPoints?: string[];
+  keyServices?: string[];
+  competitors?: string[];
+
   // Engagement / billing (sub-tab B)
+  statusNote?: string; // partner's health note — manual only
+  renewalDate?: string; // ISO date
   paymentTerms?: string; // "Net 30", "50% up front"
   contractEndAt?: string;
   billingContactId?: string;
@@ -128,6 +211,14 @@ export type Project = {
   scheduleType?: ScheduleType;
   originationPct?: number; // % of labour revenue (default 10)
   isFirstContract?: boolean;
+
+  // Scope & outcomes (D40)
+  clientLeadId?: string; // client-side contact who owns this project
+  objectives?: string;
+  successMetrics?: string[];
+  systemsBuilt?: string[];
+  risks?: string[];
+  statusNote?: string;
 };
 
 export type ProjectType = "discovery-report" | "pilot-project" | "subscription" | "full-build" | "buyout";

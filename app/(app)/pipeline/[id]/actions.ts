@@ -10,11 +10,13 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, seedClientSubfolders } from "@/lib/drive";
-import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { buildDealContext } from "@/lib/deal-context";
+import { linkContact, repointDealLinksToClient } from "@/lib/contact-links";
+import { normalizeDomain } from "@/lib/apollo";
 import type { DealStage, Industry, ArtifactType } from "@/lib/generated/prisma/enums";
 
 /**
@@ -45,15 +47,13 @@ export async function convertDeal(
 ) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
-  const actor = partnerActor(
-    session.user.partnerId,
-    session.user.name ?? session.user.email ?? "Unknown",
-  );
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
 
-  // Validate
+  // Validate — an empty scope falls back to the deal's gathered notes below,
+  // so the new project always opens with a real description.
   const scope = input.scope.trim();
-  if (!scope) throw new Error("Engagement scope is required");
-  assertNoNeedsInput(scope, "engagement scope");
+  if (scope) assertNoNeedsInput(scope, "engagement scope");
 
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
@@ -63,6 +63,9 @@ export async function convertDeal(
   if (deal.stage === "signed") {
     throw new Error("Deal is already signed");
   }
+
+  const projectDescription = scope || deal.notes?.trim() || "";
+  if (!projectDescription) throw new Error("Engagement scope is required");
 
   // Accepted estimate (if any) → seeds the new project's economics + fee.
   const acceptedEstimate = await prisma.estimate.findFirst({
@@ -125,6 +128,26 @@ export async function convertDeal(
         notes: deal.notes?.trim() || null,
         partnerLeadId: deal.partnerLeadId,
         primaryContactId: deal.contactId,
+        // Carry the company profile gathered at deal stage onto the new
+        // Client — only fields the deal actually has (?? undefined = omit).
+        website: deal.website ?? undefined,
+        domain:
+          deal.domain ??
+          (deal.website ? normalizeDomain(deal.website) || undefined : undefined),
+        linkedinUrl: deal.linkedinUrl ?? undefined,
+        instagramUrl: deal.instagramUrl ?? undefined,
+        revenueEstimate: deal.revenueEstimate ?? undefined,
+        employeeCount: deal.employeeCount ?? undefined,
+        companySize: deal.companySize ?? undefined,
+        headquarters: deal.headquarters ?? undefined,
+        founded: deal.founded ?? undefined,
+        ownership: deal.ownership ?? undefined,
+        description: deal.description ?? undefined,
+        subIndustry: deal.subIndustry ?? undefined,
+        companyKeyFacts: deal.companyKeyFacts.length ? deal.companyKeyFacts : undefined,
+        currentSystems: deal.currentSystems.length ? deal.currentSystems : undefined,
+        painPoints: deal.painPoints.length ? deal.painPoints : undefined,
+        enrichedAt: deal.enrichedAt ?? undefined,
       },
     });
 
@@ -139,9 +162,11 @@ export async function convertDeal(
         // Seed the fee from the accepted estimate if present, else the deal's
         // estimated value, so the project doesn't start at $0; editable later.
         budgetFee: acceptedEstimate && acceptedEstimate.totalValue > 0 ? acceptedEstimate.totalValue : deal.valueEstimate || 0,
-        description: scope,
+        description: projectDescription,
         clientId: client.id,
         partnerLeadId: deal.partnerLeadId,
+        // The deal's contact owns the project on their side until told otherwise.
+        clientLeadId: deal.contactId,
       },
     });
 
@@ -165,6 +190,34 @@ export async function convertDeal(
         });
       }
     }
+
+    // Carry any discovery questionnaire + its responses/report over to the new
+    // client — repoint (don't copy) so the one row stays reachable from the deal
+    // too (both FKs nullable, like Artifact).
+    const surveyCarry = await tx.discoverySurvey.updateMany({ where: { dealId }, data: { clientId: client.id } });
+    await tx.artifact.updateMany({
+      where: { dealId, generatedFromSkill: { in: ["discovery-questionnaire", "discovery-report"] } },
+      data: { clientId: client.id },
+    });
+
+    // Carry the buying committee + intro paths: every Contact↔Deal link
+    // re-points to the new client (merging where the contact is already
+    // linked). Then make sure the deal's contact is on the client as the
+    // single primary — keeping a partner-set relationship if one carried
+    // over (the helper merges if the repoint already moved that link, and
+    // un-stars any other primary).
+    const linkCarry = await repointDealLinksToClient(tx, { dealId, clientId: client.id });
+    const carriedLink = await tx.contactLink.findFirst({
+      where: { contactId: deal.contactId, clientId: client.id },
+      select: { relationship: true },
+    });
+    await linkContact(tx, {
+      contactId: deal.contactId,
+      clientId: client.id,
+      relationship: carriedLink?.relationship ?? "works_there",
+      isPrimary: true,
+      addedBy: partnerLabel,
+    });
 
     await tx.deal.update({
       where: { id: dealId },
@@ -198,6 +251,9 @@ export async function convertDeal(
         createdProjectId: project.id,
         installmentsCreated: scheduleCreated,
         driveFolderId: folderId,
+        discoverySurveysRepointed: surveyCarry.count,
+        contactLinksMoved: linkCarry.moved,
+        contactLinksMerged: linkCarry.merged,
       },
     });
 
@@ -233,8 +289,10 @@ export async function convertDeal(
 
 // ──────────────────────────────────────────────────────────────────────
 // updateDeal — edit a deal's core fields (company, value, stage, industry,
-// close-target date, notes) from the deal detail page. One write; the page
-// re-renders from it (no denormalized copies).
+// close-target date, notes) plus the D40 sales-intel fields (website,
+// next step, competitor, probability, budget, lost reason) from the deal
+// detail page. One write; the page re-renders from it (no denormalized
+// copies). A website change keeps the normalized domain in step.
 //
 // Stage rules mirror the board (pipeline/actions.ts updateDealStage):
 //   - "signed" is NOT settable here — signing runs Convert (scaffolds the
@@ -256,6 +314,12 @@ export async function updateDeal(
     industry?: string;
     closeTargetDate?: string; // YYYY-MM-DD
     notes?: string | null;
+    website?: string | null;
+    nextStep?: string | null;
+    competitor?: string | null;
+    probability?: number | null; // 0–100 whole percent
+    budget?: string | null; // as stated/floated — free text
+    lostReason?: string | null;
   },
 ) {
   const session = await auth();
@@ -274,6 +338,13 @@ export async function updateDeal(
       industry: true,
       closeTargetDate: true,
       notes: true,
+      website: true,
+      domain: true,
+      nextStep: true,
+      competitor: true,
+      probability: true,
+      budget: true,
+      lostReason: true,
     },
   });
   if (!deal) throw new Error("Deal not found");
@@ -288,6 +359,13 @@ export async function updateDeal(
     industry?: Industry;
     closeTargetDate?: Date;
     notes?: string | null;
+    website?: string | null;
+    domain?: string | null;
+    nextStep?: string | null;
+    competitor?: string | null;
+    probability?: number | null;
+    budget?: string | null;
+    lostReason?: string | null;
     lastTouchAt?: Date;
     stageEnteredAt?: Date;
   } = {};
@@ -347,6 +425,63 @@ export async function updateDeal(
     if (notes !== (deal.notes ?? null)) {
       data.notes = notes;
       changes.notes = { before: deal.notes ?? null, after: notes };
+    }
+  }
+
+  if (input.website !== undefined) {
+    const website = input.website?.trim() || null;
+    if (website !== (deal.website ?? null)) {
+      data.website = website;
+      changes.website = { before: deal.website ?? null, after: website };
+      // Keep the normalized domain in step with the website.
+      const domain = website ? normalizeDomain(website) || null : null;
+      if (domain !== (deal.domain ?? null)) {
+        data.domain = domain;
+        changes.domain = { before: deal.domain ?? null, after: domain };
+      }
+    }
+  }
+
+  if (input.nextStep !== undefined) {
+    const nextStep = input.nextStep?.trim() || null;
+    if (nextStep !== (deal.nextStep ?? null)) {
+      data.nextStep = nextStep;
+      changes.nextStep = { before: deal.nextStep ?? null, after: nextStep };
+    }
+  }
+
+  if (input.competitor !== undefined) {
+    const competitor = input.competitor?.trim() || null;
+    if (competitor !== (deal.competitor ?? null)) {
+      data.competitor = competitor;
+      changes.competitor = { before: deal.competitor ?? null, after: competitor };
+    }
+  }
+
+  if (input.probability !== undefined) {
+    const probability = input.probability === null ? null : Math.round(Number(input.probability));
+    if (probability !== null && (!Number.isFinite(probability) || probability < 0 || probability > 100)) {
+      throw new Error("Probability must be a whole number from 0 to 100");
+    }
+    if (probability !== (deal.probability ?? null)) {
+      data.probability = probability;
+      changes.probability = { before: deal.probability ?? null, after: probability };
+    }
+  }
+
+  if (input.budget !== undefined) {
+    const budget = input.budget?.trim() || null;
+    if (budget !== (deal.budget ?? null)) {
+      data.budget = budget;
+      changes.budget = { before: deal.budget ?? null, after: budget };
+    }
+  }
+
+  if (input.lostReason !== undefined) {
+    const lostReason = input.lostReason?.trim() || null;
+    if (lostReason !== (deal.lostReason ?? null)) {
+      data.lostReason = lostReason;
+      changes.lostReason = { before: deal.lostReason ?? null, after: lostReason };
     }
   }
 
@@ -589,6 +724,347 @@ export async function saveDealDoc(dealId: string, input: { skill: string; body: 
 
   revalidatePath(`/pipeline/${dealId}`);
   return { artifactId: artifact.id, driveUrl: webViewLink };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Deal company web enrichment — the "Enrich from web" card on the deal
+// page. Near-verbatim port of the client pattern (clients/[id]/actions.ts
+// generateCompanyEnrichment / applyCompanyEnrichment), same skill
+// (enrich-company-web) — the deal action passes its own current-values
+// block and its own field set (no brandColors; adds socials, firmographics,
+// and the Shift signal lists):
+//
+//   generateDealCompanyEnrichment() runs the skill with web search ON,
+//     PROPOSES company-profile additions + conflicts (cited from public
+//     sources), writes nothing.
+//   applyDealCompanyEnrichment() merges the partner-approved additions
+//     append-only: scalars set ONLY if currently empty; lists appended with
+//     case-insensitive dedupe. Never overwrites — divergences come back as
+//     conflicts the partner resolves by hand.
+//
+// revenueEstimate / employeeCount are Int columns — proposed values are
+// coerced (strip $ / commas / "~", parse "12M" / "1.2B" suffixes to whole
+// CAD) and skipped when ambiguous. When website lands and domain is empty,
+// domain derives via normalizeDomain.
+// ──────────────────────────────────────────────────────────────────────
+
+const DEAL_ENRICH_LIST_FIELDS = ["companyKeyFacts", "currentSystems", "painPoints"] as const;
+const DEAL_ENRICH_SCALAR_FIELDS = [
+  "website",
+  "companySize",
+  "headquarters",
+  "founded",
+  "ownership",
+  "description",
+  "linkedinUrl",
+  "instagramUrl",
+  "revenueEstimate",
+  "employeeCount",
+  "subIndustry",
+] as const;
+// Scalars stored as Int — string proposals are coerced before merging.
+const DEAL_ENRICH_INT_FIELDS = ["revenueEstimate", "employeeCount"] as const;
+type DealEnrichListField = (typeof DEAL_ENRICH_LIST_FIELDS)[number];
+type DealEnrichScalarField = (typeof DEAL_ENRICH_SCALAR_FIELDS)[number];
+type DealEnrichField = DealEnrichListField | DealEnrichScalarField;
+
+export type DealCompanyEnrichAddition = { field: DealEnrichField; value: string };
+export type DealCompanyEnrichConflict = {
+  field: DealEnrichScalarField;
+  existing: string;
+  proposed: string;
+  note?: string;
+};
+
+const ALL_DEAL_ENRICH_FIELDS: string[] = [
+  ...DEAL_ENRICH_LIST_FIELDS,
+  ...DEAL_ENRICH_SCALAR_FIELDS,
+];
+
+function isDealEnrichField(f: unknown): f is DealEnrichField {
+  return typeof f === "string" && ALL_DEAL_ENRICH_FIELDS.includes(f);
+}
+
+/**
+ * Coerce a proposed value for an Int column to a whole number. Strips a
+ * "(source: …)" tag plus $/commas/"~", then accepts exactly ONE number —
+ * optionally suffixed "12M" / "1.2B" / "12 million" style. Ranges or
+ * multi-number strings are ambiguous → null (caller skips the addition).
+ */
+function coerceEnrichInt(raw: string): number | null {
+  const cleaned = raw.replace(/\([^)]*\)/g, " ").replace(/[~$,]/g, "");
+  const tokens = [...cleaned.matchAll(/(\d+(?:\.\d+)?)\s*(k|m|b|thousand|million|billion)?/gi)];
+  if (tokens.length !== 1) return null;
+  const n = Number(tokens[0][1]);
+  if (!Number.isFinite(n)) return null;
+  const suffix = tokens[0][2]?.toLowerCase();
+  const mult =
+    !suffix ? 1
+    : suffix.startsWith("k") || suffix === "thousand" ? 1_000
+    : suffix.startsWith("m") ? 1_000_000
+    : 1_000_000_000;
+  const value = Math.round(n * mult);
+  return value > 0 ? value : null;
+}
+
+function parseDealEnrichmentJSON(raw: string): {
+  additions: DealCompanyEnrichAddition[];
+  conflicts: DealCompanyEnrichConflict[];
+} {
+  let text = raw.trim();
+  // Strip a ```json fence if the model added one despite instructions.
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  // Otherwise slice to the outermost braces.
+  if (!text.startsWith("{")) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end !== -1) text = text.slice(start, end + 1);
+  }
+
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    throw new Error("Enrichment returned malformed output — try again.");
+  }
+  const o = obj as { additions?: unknown; conflicts?: unknown };
+
+  const additions: DealCompanyEnrichAddition[] = Array.isArray(o.additions)
+    ? o.additions
+        .filter(
+          (a): a is { field: DealEnrichField; value: string } =>
+            !!a &&
+            typeof a === "object" &&
+            isDealEnrichField((a as { field?: unknown }).field) &&
+            typeof (a as { value?: unknown }).value === "string" &&
+            (a as { value: string }).value.trim().length > 0,
+        )
+        .map((a) => ({ field: a.field, value: a.value.trim() }))
+    : [];
+
+  const isScalarField = (f: unknown): f is DealEnrichScalarField =>
+    typeof f === "string" &&
+    (DEAL_ENRICH_SCALAR_FIELDS as readonly string[]).includes(f);
+
+  const conflicts: DealCompanyEnrichConflict[] = Array.isArray(o.conflicts)
+    ? o.conflicts
+        .filter(
+          (c): c is DealCompanyEnrichConflict =>
+            !!c &&
+            typeof c === "object" &&
+            isScalarField((c as { field?: unknown }).field) &&
+            typeof (c as { existing?: unknown }).existing === "string" &&
+            typeof (c as { proposed?: unknown }).proposed === "string",
+        )
+        .map((c) => ({
+          field: c.field,
+          existing: c.existing,
+          proposed: c.proposed,
+          note: typeof c.note === "string" ? c.note : undefined,
+        }))
+    : [];
+
+  return { additions, conflicts };
+}
+
+export async function generateDealCompanyEnrichment(
+  dealId: string,
+): Promise<{ additions: DealCompanyEnrichAddition[]; conflicts: DealCompanyEnrichConflict[] }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: {
+      company: true,
+      industry: true,
+      website: true,
+      linkedinUrl: true,
+      instagramUrl: true,
+      revenueEstimate: true,
+      employeeCount: true,
+      companySize: true,
+      headquarters: true,
+      founded: true,
+      ownership: true,
+      description: true,
+      subIndustry: true,
+      companyKeyFacts: true,
+      currentSystems: true,
+      painPoints: true,
+    },
+  });
+  if (!deal) throw new Error("Deal not found");
+
+  const ctx: string[] = [
+    "## Company record (existing — prospect, not yet a client)",
+    `Company: ${deal.company}`,
+    `Industry: ${deal.industry}`,
+    `Website: ${deal.website || "(empty)"}`,
+    `LinkedIn: ${deal.linkedinUrl || "(empty)"}`,
+    `Instagram: ${deal.instagramUrl || "(empty)"}`,
+    `Revenue estimate (CAD): ${deal.revenueEstimate ?? "(empty)"}`,
+    `Employee count: ${deal.employeeCount ?? "(empty)"}`,
+    `Company size: ${deal.companySize || "(empty)"}`,
+    `Headquarters: ${deal.headquarters || "(empty)"}`,
+    `Founded: ${deal.founded || "(empty)"}`,
+    `Ownership: ${deal.ownership || "(empty)"}`,
+    `Sub-industry: ${deal.subIndustry || "(empty)"}`,
+    `Description: ${deal.description || "(empty)"}`,
+    `Key facts: ${deal.companyKeyFacts.length ? deal.companyKeyFacts.join("; ") : "(none)"}`,
+    `Current systems: ${deal.currentSystems.length ? deal.currentSystems.join("; ") : "(none)"}`,
+    `Pain points: ${deal.painPoints.length ? deal.painPoints.join("; ") : "(none)"}`,
+  ];
+
+  const raw = await generate({
+    skill: "enrich-company-web",
+    context: ctx.join("\n"),
+    intake: [
+      "Use web search to find public, authoritative facts about this exact company (use the company name, industry, and website to disambiguate).",
+      "This record is a PROSPECT (deal), so use the deal field set — `field` must be exactly one of:",
+      "website, companySize, headquarters, founded, ownership, description, linkedinUrl, instagramUrl, revenueEstimate, employeeCount, subIndustry (single-value); companyKeyFacts, currentSystems, painPoints (lists — one addition per item).",
+      "No brandColors for deals. revenueEstimate and employeeCount must be numbers a source actually states.",
+      "Propose company-profile additions, citing a source for every fact. Return the JSON object exactly as specified.",
+    ].join("\n"),
+    webSearch: true,
+    maxTokens: 2000,
+  });
+
+  return parseDealEnrichmentJSON(raw);
+}
+
+export async function applyDealCompanyEnrichment(
+  dealId: string,
+  additions: DealCompanyEnrichAddition[],
+) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+
+  const clean = (additions ?? []).filter(
+    (a) => isDealEnrichField(a?.field) && a.value?.trim(),
+  );
+  if (clean.length === 0) throw new Error("No additions to apply");
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: {
+      company: true,
+      website: true,
+      domain: true,
+      linkedinUrl: true,
+      instagramUrl: true,
+      revenueEstimate: true,
+      employeeCount: true,
+      companySize: true,
+      headquarters: true,
+      founded: true,
+      ownership: true,
+      description: true,
+      subIndustry: true,
+      companyKeyFacts: true,
+      currentSystems: true,
+      painPoints: true,
+    },
+  });
+  if (!deal) throw new Error("Deal not found");
+
+  // Non-destructive update: append new list facts (case-insensitive dedupe);
+  // set scalar fields ONLY if currently empty (never overwrite — that's a
+  // conflict the partner resolves by hand). Int scalars coerce first; an
+  // unparseable number is skipped, never guessed.
+  const data: Record<string, unknown> = {};
+  const lists: Record<DealEnrichListField, string[]> = {
+    companyKeyFacts: [...deal.companyKeyFacts],
+    currentSystems: [...deal.currentSystems],
+    painPoints: [...deal.painPoints],
+  };
+  const applied: DealCompanyEnrichAddition[] = [];
+  const skipped: DealCompanyEnrichAddition[] = [];
+
+  for (const a of clean) {
+    if ((DEAL_ENRICH_LIST_FIELDS as readonly string[]).includes(a.field)) {
+      const arr = lists[a.field as DealEnrichListField];
+      const exists = arr.some((v) => v.toLowerCase() === a.value.toLowerCase());
+      if (!exists) {
+        arr.push(a.value);
+        applied.push(a);
+      } else {
+        skipped.push(a);
+      }
+    } else if ((DEAL_ENRICH_INT_FIELDS as readonly string[]).includes(a.field)) {
+      const f = a.field as (typeof DEAL_ENRICH_INT_FIELDS)[number];
+      const value = coerceEnrichInt(a.value);
+      if (value !== null && deal[f] === null) {
+        data[f] = value;
+        applied.push(a);
+      } else {
+        skipped.push(a);
+      }
+    } else {
+      const f = a.field as Exclude<DealEnrichScalarField, "revenueEstimate" | "employeeCount">;
+      const current = deal[f];
+      if (!current || !current.trim()) {
+        // URL fields land as the bare value — drop the trailing source tag so
+        // click-outs work and the domain derives clean.
+        const isUrlField = f === "website" || f === "linkedinUrl" || f === "instagramUrl";
+        const value = isUrlField ? a.value.replace(/\s*\(.*$/, "").trim() : a.value;
+        if (!value) {
+          skipped.push(a);
+          continue;
+        }
+        data[f] = value;
+        applied.push(a);
+        if (f === "website" && !deal.domain) {
+          const domain = normalizeDomain(value);
+          if (domain) data.domain = domain;
+        }
+      } else {
+        // Already set — don't overwrite. Partner resolves conflicts manually.
+        skipped.push(a);
+      }
+    }
+  }
+
+  for (const lf of DEAL_ENRICH_LIST_FIELDS) {
+    if (lists[lf].length !== deal[lf].length) data[lf] = lists[lf];
+  }
+
+  if (applied.length === 0) {
+    return { applied: 0, skipped: skipped.length };
+  }
+
+  data.enrichedAt = new Date();
+  // The act of enriching is itself an AI surface, attributed to the skill.
+  const aiActor = agentActor("enrich-company-web");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.deal.update({ where: { id: dealId }, data });
+
+    await writeAudit(tx, {
+      actor: aiActor,
+      action: "update.deal.enrich",
+      targetType: "Deal",
+      targetId: dealId,
+      changes: {
+        approvedBy: partnerLabel,
+        applied: applied.map((a) => ({ field: a.field, value: a.value })),
+        skipped: skipped.length,
+      },
+    });
+
+    await writeActivity(tx, {
+      actor: aiActor,
+      type: "ai",
+      target: deal.company,
+      detail: `Enriched company profile — ${applied.length} fact(s) added (approved by ${partnerLabel.split(" ")[0]})`,
+      link: `/pipeline/${dealId}`,
+    });
+  });
+
+  revalidatePath(`/pipeline/${dealId}`);
+  return { applied: applied.length, skipped: skipped.length };
 }
 
 export async function saveProposal(dealId: string, input: { body: string }) {

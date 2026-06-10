@@ -57,7 +57,7 @@
 | 8 | draft-email | ops | text | Outreach/follow-up email draft | P |
 | 9 | book-meeting | ops | md | Propose/confirm a meeting | P |
 | 10 | cold-outreach | ops | json | Cold intro email to a found lead | PN |
-| 11 | discovery-prep | ops | md | Internal prep brief for a discovery call | P |
+| 11 | discovery-prep | ops | md | Internal prep brief for a discovery call (field-notes upgrade 2026-06-09) | P |
 | | **- Ingest & extraction -** | | | | |
 | 12 | ingest | ops | json | Master multi-record ingest | P |
 | 13 | ingest-meeting | ops | json | Meeting transcript → records | P |
@@ -109,7 +109,7 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 | draft-email | 5·n·5·5·5·5 | P | clean (zero findings) |
 | book-meeting | 5·n·4·5·5·5 | P | clean |
 | cold-outreach | 5·n·4·5·5·5 | PN | ✓ "a small senior firm" → "a senior firm" |
-| discovery-prep | 5·n·5·5·5·5 | P | clean (zero findings) |
+| discovery-prep | 5·n·5·5·5·5 | P | ✓ 2026-06-09 field-notes upgrade: lessons distilled from 3 real call transcripts (analyzed critically, not copied); brief gained Watch-outs section + book-the-date close |
 | ingest | 5·n·5·5·5·5 | P | clean |
 | ingest-meeting | 5·n·4·5·5·5 | P | clean |
 | ingest-project | 5·n·4·5·5·5 | P | clean |
@@ -231,7 +231,8 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 
 #### 11. discovery-prep · ops-runtime · markdown-draft
 - **Goal:** Generate a tight internal prep brief before a partner runs a first discovery call.
-- **Audience:** the partner - **internal only**, never sent to the prospect. **Produces:** 5-section Markdown (Quick read, Agenda, Questions that qualify, How to run it, Win the next call).
+- **Audience:** the partner - **internal only**, never sent to the prospect. **Produces:** 6-section Markdown (Quick read, Agenda, Questions that qualify, How to run it, Win the next call, Watch-outs).
+- **Field notes (2026-06-09):** upgraded from a critical review of three real call transcripts (Tonnet, ZLC, Pilot Petroleum — what worked AND what hurt). Repeat: prospect talks first, match AI-maturity altitude, one demo, proactive security/IP/data-residency, name the playbook, pain-point homework, phase-one framing, SHRED/IRAP when it applies. Avoid: pitching on the first buying signal, monologues, walking in cold, naming other clients/their numbers, oversharing firm internals, ending without a booked date.
 - **Where it works:** ops Quick Action on a Deal/Contact page. **How it works:** prospect context + optional intake → grounded brief (generic advice = failure mode); `[NEEDS INPUT]`; save gate.
 - **Inputs:** company/industry/stage/value/contact/lead-source/interactions + intake. **Dependencies:** `_firm/context.md`, Prisma deal/contact/interaction.
 - **Baseline refs:** voice · audience · **personas**. **Audit:** not-audited · - · -.

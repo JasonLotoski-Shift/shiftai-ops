@@ -475,9 +475,9 @@ const flows: Flow[] = [
     blurb: "One place to log a meeting, email, or document and update the right records.",
     steps: [
       { tone: "trigger", kind: "You do", label: "+ Ingest → pick type, target records, paste content/email/files" },
-      { tone: "claude", kind: "Claude", label: "Proposes updates across contact, client, project, deal — incl. overwrites" },
-      { tone: "review", kind: "You review", label: "Approve each addition; every overwrite shows old → new" },
-      { tone: "write", kind: "Saved", label: "Records updated + Interaction/Tasks/Milestones + AuditLog" },
+      { tone: "claude", kind: "Claude", label: "Proposes updates across contact, client, project, deal — incl. overwrites, new people it spotted, and how they connect to the deal or client" },
+      { tone: "review", kind: "You review", label: "Approve each addition; every overwrite shows old → new; people + links wait in the same queue" },
+      { tone: "write", kind: "Saved", label: "Records updated + Contacts/links + Interaction/Tasks/Milestones + AuditLog" },
     ],
   },
   {
@@ -558,12 +558,23 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <UserPlus size={16} strokeWidth={1.5} />,
+    title: "Map the people on a deal or client",
+    blurb: "One company, many people — link contacts with how they're connected and their role in the decision.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Deal or Client → People → Link a contact · pick how they're connected (works there / introduced us / advisor)" },
+      { tone: "trigger", kind: "You do", label: "If they shape the buying decision, set their role (decision-maker, champion, budget holder, gatekeeper…) · mark one person as the main contact" },
+      { tone: "review", kind: "You review", label: "Ingest can propose people + links from emails and meetings — they wait in the same review queue until you approve" },
+      { tone: "write", kind: "Saved", label: "The link + AuditLog · on convert, a deal's people carry over to the new client" },
+    ],
+  },
+  {
     icon: <GitBranch size={16} strokeWidth={1.5} />,
     title: "Convert a deal to a client",
     blurb: "A signed deal becomes a live engagement with everything scaffolded.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Pipeline → Deal → Convert to client" },
-      { tone: "claude", kind: "System", label: "Creates the Drive folder + starter Discovery project + 50/25/25 schedule" },
+      { tone: "claude", kind: "System", label: "Creates the Drive folder + starter Discovery project + 50/25/25 schedule; the deal's people, intro path, and company profile carry to the new client" },
       { tone: "review", kind: "You review", label: "Confirm contract value, terms, partner lead" },
       { tone: "write", kind: "Saved", label: "Client + Project + billing schedule + kickoff Tasks + AuditLog" },
     ],
@@ -604,10 +615,10 @@ const flows: Flow[] = [
   {
     icon: <Search size={16} strokeWidth={1.5} />,
     title: "Enrich a record",
-    blurb: "Two modes: tidy from what's logged, or look it up on the web.",
+    blurb: "Two modes: tidy from what's logged, or look it up on the web. Works on contacts, clients — and now deals, which build the same company profile a client gets.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "On a record → Enrich · pick records-only or web" },
-      { tone: "claude", kind: "Claude", label: "Records-only reads logs · web searches with citations" },
+      { tone: "trigger", kind: "You do", label: "On a contact, client, or deal → Enrich · pick records-only or web" },
+      { tone: "claude", kind: "Claude", label: "Records-only reads logs · web searches with citations — for companies that includes socials, size, the systems they run, and pain points" },
       { tone: "review", kind: "You review", label: "Accept additions — existing facts never overwritten" },
       { tone: "write", kind: "Saved", label: "Updated fields + enrichedAt + AuditLog" },
     ],

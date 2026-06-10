@@ -11,6 +11,11 @@ import {
   type CompanyEnrichAddition,
   type CompanyEnrichConflict,
 } from "@/app/(app)/clients/[id]/actions";
+import {
+  ClientContactsCard,
+  type ClientContactLinkItem,
+  type ContactPickerOption,
+} from "@/components/client-contacts-card";
 import type {
   ClientModel as Client,
   PartnerModel as Partner,
@@ -31,6 +36,8 @@ import {
   Mail,
   Bot,
   ShieldAlert,
+  Linkedin,
+  Instagram,
 } from "lucide-react";
 
 interface ClientDetailTabsProps {
@@ -41,6 +48,8 @@ interface ClientDetailTabsProps {
   clientProjects: Project[];
   clientInvoices: Invoice[];
   clientArtifacts: Artifact[];
+  contactLinks: ClientContactLinkItem[];
+  allContacts: ContactPickerOption[];
 }
 
 export function ClientDetailTabs({
@@ -51,6 +60,8 @@ export function ClientDetailTabs({
   clientProjects,
   clientInvoices,
   clientArtifacts,
+  contactLinks,
+  allContacts,
 }: ClientDetailTabsProps) {
   const [tab, setTab] = useState("profile");
 
@@ -99,6 +110,8 @@ export function ClientDetailTabs({
               <Link href={`/contacts/${contact?.id}`} className="label-gold hover:underline">Open contact →</Link>
             </CardBody>
           </Card>
+
+          <ClientContactsCard clientId={client.id} links={contactLinks} contacts={allContacts} />
 
           <Card>
             <div className="px-5 pt-4 pb-2"><span className="title-md">Partner lead</span></div>
@@ -155,6 +168,17 @@ const COMPANY_ENRICH_FIELD_LABELS: Record<string, string> = {
   ownership: "Ownership",
   description: "Description",
   companyKeyFacts: "Key facts",
+  brandColors: "Brand colors",
+  linkedinUrl: "LinkedIn",
+  instagramUrl: "Instagram",
+  revenueEstimate: "Revenue (est.)",
+  employeeCount: "Employees",
+  subIndustry: "Sub-industry",
+  locations: "Locations",
+  currentSystems: "Current systems",
+  painPoints: "Pain points",
+  keyServices: "Key services",
+  competitors: "Competitors",
 };
 
 function CompanyProfile({ client }: { client: Client }) {
@@ -212,6 +236,16 @@ function CompanyProfile({ client }: { client: Client }) {
     { label: "Headquarters", value: client.headquarters },
     { label: "Founded", value: client.founded },
     { label: "Ownership", value: client.ownership },
+    // D40 firmographics — shown only when on file (no walls of empty fields)
+    ...(client.revenueEstimate != null
+      ? [{ label: "Revenue (est.)", value: formatCAD(client.revenueEstimate).replace("CA$", "$") }]
+      : []),
+    ...(client.employeeCount != null
+      ? [{ label: "Employees", value: String(client.employeeCount) }]
+      : []),
+    ...(client.subIndustry ? [{ label: "Sub-industry", value: client.subIndustry }] : []),
+    ...(client.locations ? [{ label: "Locations", value: client.locations }] : []),
+    ...(client.renewalDate ? [{ label: "Renewal", value: formatDate(client.renewalDate) }] : []),
   ];
 
   return (
@@ -232,6 +266,24 @@ function CompanyProfile({ client }: { client: Client }) {
                 {client.website}
                 <ExternalLink size={10} strokeWidth={1.5} className="opacity-50" />
               </a>
+            )}
+            {(client.linkedinUrl || client.instagramUrl) && (
+              <div className="flex items-center gap-4">
+                {client.linkedinUrl && (
+                  <a href={client.linkedinUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-[13px] text-bone-dim hover:text-bone">
+                    <Linkedin size={12} strokeWidth={1.5} />
+                    LinkedIn
+                    <ExternalLink size={10} strokeWidth={1.5} className="opacity-50" />
+                  </a>
+                )}
+                {client.instagramUrl && (
+                  <a href={client.instagramUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-[13px] text-bone-dim hover:text-bone">
+                    <Instagram size={12} strokeWidth={1.5} />
+                    Instagram
+                    <ExternalLink size={10} strokeWidth={1.5} className="opacity-50" />
+                  </a>
+                )}
+              </div>
             )}
             {client.brandColors && client.brandColors.length > 0 && (
               <div className="flex items-center gap-2 pt-1">
@@ -276,6 +328,20 @@ function CompanyProfile({ client }: { client: Client }) {
           </div>
         </Card>
       )}
+
+      {client.statusNote && (
+        <Card>
+          <div className="px-5 pt-4 pb-2"><span className="title-md">Health note</span></div>
+          <CardBody className="pt-0"><p className="text-[14px] text-bone-dim leading-relaxed">{client.statusNote}</p></CardBody>
+        </Card>
+      )}
+
+      {/* D40 Shift-signal lists — what they run, where it hurts, what they sell,
+          who they're up against. Each card renders only when there's data. */}
+      <ProfileListCard title="Current systems" items={client.currentSystems} />
+      <ProfileListCard title="Pain points" items={client.painPoints} />
+      <ProfileListCard title="Key services" items={client.keyServices} />
+      <ProfileListCard title="Competitors" items={client.competitors} />
 
       <Card className="border border-track-gold/40 bg-track-gold-dim/5">
         <div className="px-5 pt-4 pb-2 flex items-center justify-between">
@@ -385,6 +451,25 @@ function CompanyProfile({ client }: { client: Client }) {
         </CardBody>
       </Card>
     </>
+  );
+}
+
+// One compact list card per Shift-signal field. Returns nothing when the
+// field is empty so the profile never shows hollow sections.
+function ProfileListCard({ title, items }: { title: string; items: string[] }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <Card>
+      <div className="px-5 pt-4 pb-2"><span className="title-md">{title}</span></div>
+      <div className="flex flex-col pb-3">
+        {items.map((v, i) => (
+          <div key={i} className="flex items-start gap-3 px-5 py-2">
+            <span className="mono text-[11px] text-track-gold mt-0.5">—</span>
+            <p className="text-[13px] text-bone leading-snug">{v}</p>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 

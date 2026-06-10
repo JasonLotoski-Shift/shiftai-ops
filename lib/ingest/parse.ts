@@ -15,8 +15,11 @@ import type {
   ProposedInteraction,
   ProposedMilestone,
   ProposedDeliverable,
+  ProposedContact,
+  ContactLinkProposal,
 } from "@/lib/ingest/types";
-import { INGEST_TYPES } from "@/lib/ingest/types";
+import { INGEST_TYPES, RELATIONSHIP_TYPES, STAKEHOLDER_ROLES } from "@/lib/ingest/types";
+import type { RelationshipType, StakeholderRole } from "@/lib/types";
 
 // A field change as it comes off the model: proposed value only. The server
 // diffs against the live record to stamp op + existing.
@@ -55,7 +58,24 @@ export type ParsedUnified = {
   keyPoints: string[];
   records: ParsedRecord[];
   tasks: ParsedTask[];
+  proposedContacts: ProposedContact[];
+  contactLinks: ContactLinkProposal[];
 };
+
+// ── Firm-internal exclusion ──
+// Mirrors the FIRM_DOMAINS gate in app/api/cron/gmail-poll/route.ts — firm
+// people are never proposed as client/deal stakeholders. Lives here (not the
+// route) so server libs can import it without pulling in a route handler.
+export const FIRM_DOMAINS = ["shiftai.partners", "shiftcg.ai"];
+
+export function isFirmInternal(email: string): boolean {
+  const at = email.lastIndexOf("@");
+  return at !== -1 && FIRM_DOMAINS.includes(email.slice(at + 1).toLowerCase());
+}
+
+// Good-enough email shape check — the model must echo addresses from the
+// source verbatim; anything malformed (or absent) is dropped, never guessed.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── Allowed enum value sets (hyphenated DB forms the skill emits) ──
 const TARGET_KINDS = ["contact", "client", "project", "deal"] as const;
@@ -63,6 +83,7 @@ const MILESTONE_STATUSES = ["pending", "in-progress", "complete", "at-risk"] as 
 const TASK_PRIORITIES = ["high", "medium", "low"] as const;
 const INTERACTION_TYPES = ["meeting", "call", "email-received", "email-sent", "other"] as const;
 const ARTIFACT_TYPES = ["proposal", "deck", "email", "sow", "invoice", "report", "other"] as const;
+const DEAL_STAGES = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation", "signed"] as const;
 
 // Enum @map convention: the generated client expects the UNDERSCORED TS
 // identifier; the skill emits the hyphenated DB form. Normalize on parse,
@@ -80,6 +101,17 @@ function normInteractionType(v: string): string {
 }
 function normArtifactType(v: string): string {
   return (ARTIFACT_TYPES as readonly string[]).includes(v) ? v : "other";
+}
+// Relationship/role are plain underscored enums (no @map), but normalize a
+// hyphenated emission anyway. Unknown relationship → works_there; unknown
+// role → null (role is the optional dimension).
+function normRelationship(v: string): RelationshipType {
+  const n = v.trim().replace(/-/g, "_");
+  return (RELATIONSHIP_TYPES as readonly string[]).includes(n) ? (n as RelationshipType) : "works_there";
+}
+function normRole(v: string): StakeholderRole | null {
+  const n = v.trim().replace(/-/g, "_");
+  return (STAKEHOLDER_ROLES as readonly string[]).includes(n) ? (n as StakeholderRole) : null;
 }
 
 const isoDate = (v: unknown): string | null =>
@@ -153,8 +185,11 @@ function parseDeliverables(v: unknown): ProposedDeliverable[] {
 function parseStageSignal(v: unknown): { suggestion: string; rationale: string } | null {
   if (!v || typeof v !== "object") return null;
   const ss = v as Record<string, unknown>;
-  const suggestion = str(ss.suggestion);
-  if (!suggestion) return null;
+  const suggestion = str(ss.suggestion).toLowerCase();
+  // Off-list stages are dropped here — applyDealStage would silently ignore
+  // them, so an un-appliable suggestion never reaches the review card with
+  // an apply toggle.
+  if (!(DEAL_STAGES as readonly string[]).includes(suggestion)) return null;
   return { suggestion, rationale: str(ss.rationale) };
 }
 
@@ -191,6 +226,39 @@ function parseRecords(v: unknown): ParsedRecord[] {
     });
 }
 
+function parseProposedContacts(v: unknown): ProposedContact[] {
+  return objArr(v)
+    .map((pc) => ({
+      name: str(pc.name),
+      email: str(pc.email).toLowerCase(),
+      title: str(pc.title) || null,
+      company: str(pc.company) || null,
+      suggestedRelationship: normRelationship(str(pc.suggestedRelationship) || "works_there"),
+      suggestedRole: pc.suggestedRole == null ? null : normRole(str(pc.suggestedRole)),
+    }))
+    // No name, no valid email, or a firm address → dropped, never guessed.
+    .filter((pc) => pc.name && EMAIL_RE.test(pc.email) && !isFirmInternal(pc.email));
+}
+
+function parseContactLinks(v: unknown): ContactLinkProposal[] {
+  return objArr(v)
+    .map((cl) => ({
+      contactEmail: str(cl.contactEmail).toLowerCase(),
+      targetKind: str(cl.targetKind) as "deal" | "client",
+      targetId: str(cl.targetId),
+      relationship: normRelationship(str(cl.relationship) || "works_there"),
+      role: cl.role == null ? null : normRole(str(cl.role)),
+      isPrimary: cl.isPrimary === true,
+    }))
+    .filter(
+      (cl) =>
+        EMAIL_RE.test(cl.contactEmail) &&
+        !isFirmInternal(cl.contactEmail) &&
+        (cl.targetKind === "deal" || cl.targetKind === "client") &&
+        cl.targetId.length > 0,
+    );
+}
+
 function parseTasks(v: unknown): ParsedTask[] {
   return objArr(v)
     .filter((t) => typeof t.title === "string" && (t.title as string).trim())
@@ -221,5 +289,7 @@ export function parseUnified(raw: string): ParsedUnified {
     keyPoints: strArr(o.keyPoints),
     records: parseRecords(o.records),
     tasks: parseTasks(o.tasks),
+    proposedContacts: parseProposedContacts(o.proposedContacts),
+    contactLinks: parseContactLinks(o.contactLinks),
   };
 }

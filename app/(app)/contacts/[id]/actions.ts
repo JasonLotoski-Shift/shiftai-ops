@@ -10,6 +10,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, folderIdFromUrl } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
+import { normalizeDomain } from "@/lib/apollo";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { formatCAD, formatDate } from "@/lib/format";
@@ -495,9 +496,19 @@ export async function sendEmail(
 // ──────────────────────────────────────────────────────────────────────
 
 // Fields the enrich-contact skill is allowed to touch. Split by shape so the
-// merge knows append (lists) vs set-if-empty (scalars).
+// merge knows append (lists) vs set-if-empty (scalars). The reach scalars
+// (domain/linkedinUrl/location/timezone, D40) are web-enrich territory — the
+// log-only skill doesn't propose them, but one allowlist serves both paths.
 const ENRICH_LIST_FIELDS = ["keyFacts", "hobbies", "networkAffiliations"] as const;
-const ENRICH_SCALAR_FIELDS = ["persona", "communicationStyle", "background"] as const;
+const ENRICH_SCALAR_FIELDS = [
+  "persona",
+  "communicationStyle",
+  "background",
+  "domain",
+  "linkedinUrl",
+  "location",
+  "timezone",
+] as const;
 type EnrichListField = (typeof ENRICH_LIST_FIELDS)[number];
 type EnrichScalarField = (typeof ENRICH_SCALAR_FIELDS)[number];
 type EnrichField = EnrichListField | EnrichScalarField;
@@ -611,6 +622,10 @@ export async function generateWebEnrichment(
       persona: true,
       communicationStyle: true,
       background: true,
+      domain: true,
+      linkedinUrl: true,
+      location: true,
+      timezone: true,
       keyFacts: true,
       hobbies: true,
       networkAffiliations: true,
@@ -627,6 +642,10 @@ export async function generateWebEnrichment(
     `Persona: ${contact.persona || "(empty)"}`,
     `Communication style: ${contact.communicationStyle || "(empty)"}`,
     `Background: ${contact.background || "(empty)"}`,
+    `Website (domain): ${contact.domain || "(empty)"}`,
+    `LinkedIn: ${contact.linkedinUrl || "(empty)"}`,
+    `Location: ${contact.location || "(empty)"}`,
+    `Timezone: ${contact.timezone || "(empty)"}`,
     `Key facts: ${contact.keyFacts.length ? contact.keyFacts.join("; ") : "(none)"}`,
     `Hobbies: ${contact.hobbies.length ? contact.hobbies.join("; ") : "(none)"}`,
     `Network affiliations: ${contact.networkAffiliations.length ? contact.networkAffiliations.join("; ") : "(none)"}`,
@@ -723,6 +742,10 @@ export async function applyEnrichment(
       persona: true,
       communicationStyle: true,
       background: true,
+      domain: true,
+      linkedinUrl: true,
+      location: true,
+      timezone: true,
       keyFacts: true,
       hobbies: true,
       networkAffiliations: true,
@@ -754,10 +777,15 @@ export async function applyEnrichment(
       }
     } else {
       const f = a.field as EnrichScalarField;
+      // Proposed domains normalize to the bare host before the empty check —
+      // same single source of truth as pipeline dedup (lib/apollo.ts).
+      const value = f === "domain" ? normalizeDomain(a.value) : a.value;
       const current = contact[f];
-      if (!current || !current.trim()) {
-        data[f] = a.value;
-        applied.push(a);
+      if (!value) {
+        skipped.push(a);
+      } else if (!current || !current.trim()) {
+        data[f] = value;
+        applied.push({ field: f, value });
       } else {
         // Already set — don't overwrite. Partner resolves conflicts manually.
         skipped.push(a);

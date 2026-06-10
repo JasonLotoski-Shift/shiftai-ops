@@ -16,6 +16,8 @@ import {
   ShieldAlert,
   Sparkles,
   User,
+  UserPlus,
+  Users,
   Building2,
   FolderOpen,
   GitBranch,
@@ -43,10 +45,14 @@ import type {
   ApproveUnifiedSelections,
   ApprovedRecord,
   ApprovedTask,
+  ApprovedProposedContact,
+  ApprovedContactLink,
   CrossReferenceResult,
   CrossRefSuggestedMatch,
   CrossRefMilestoneOverlap,
 } from "@/lib/ingest/types";
+import { RELATIONSHIP_TYPES, STAKEHOLDER_ROLES } from "@/lib/ingest/types";
+import type { RelationshipType, StakeholderRole } from "@/lib/types";
 
 // ── Display maps ──────────────────────────────────────────────────────────
 
@@ -79,6 +85,34 @@ const FIELD_LABELS: Record<string, string> = {
   // project scalars
   phase: "Phase",
   status: "Status",
+  // contact reach (D40)
+  linkedinUrl: "LinkedIn",
+  location: "Location",
+  timezone: "Timezone",
+  mobilePhone: "Mobile phone",
+  preferredChannel: "Preferred channel",
+  importantDates: "Important dates",
+  // client/deal firmographics + signal (D40)
+  instagramUrl: "Instagram",
+  subIndustry: "Sub-industry",
+  locations: "Locations",
+  revenueEstimate: "Revenue estimate",
+  employeeCount: "Employee count",
+  renewalDate: "Renewal date",
+  currentSystems: "Current systems",
+  painPoints: "Pain points",
+  keyServices: "Key services",
+  competitors: "Competitors",
+  // deal sales intel (D40)
+  nextStep: "Next step",
+  competitor: "Competitor",
+  budget: "Budget (as stated)",
+  // project scope (D40)
+  objectives: "Objectives",
+  statusNote: "Status note",
+  successMetrics: "Success metrics",
+  systemsBuilt: "Systems built",
+  risks: "Risks",
 };
 
 const fieldLabel = (f: string) => FIELD_LABELS[f] ?? f;
@@ -98,7 +132,9 @@ const TYPE_TONE: Record<IngestType, "gold" | "steel" | "bone" | "neutral"> = {
 };
 
 const PRIORITY_OPTS = ["high", "medium", "low"] as const;
-const M_STATUS_OPTS = ["pending", "in-progress", "complete", "at-risk"] as const;
+// Underscored Prisma identifiers (the form the proposal carries after parse and
+// the form approveUnified writes); disp() renders the hyphenated label.
+const M_STATUS_OPTS = ["pending", "in_progress", "complete", "at_risk"] as const;
 
 // human display for @map'd enum strings (underscored TS → hyphenated label)
 const disp = (v: string) => v.replace(/_/g, "-");
@@ -123,6 +159,15 @@ type RecordState = {
 type TaskState = {
   keep: boolean;
   ownerId: string;
+};
+
+// New people + links (D40) — role "" = none (serialized to null on approve).
+type PersonState = { keep: boolean; relationship: RelationshipType; role: StakeholderRole | "" };
+type LinkState = {
+  keep: boolean;
+  relationship: RelationshipType;
+  role: StakeholderRole | "";
+  isPrimary: boolean;
 };
 
 // ── Props (cross-agent contract) ────────────────────────────────────────────
@@ -151,11 +196,14 @@ export type UnifiedProposalCardProps = {
 export default function UnifiedProposalCard({
   proposal,
   partners,
+  clients,
   deals,
   currentPartnerId,
 }: UnifiedProposalCardProps) {
   const router = useRouter();
   const data = proposal.data;
+  const proposedContacts = data.proposedContacts ?? [];
+  const contactLinks = data.contactLinks ?? [];
 
   const [open, setOpen] = useState(true);
   const [summary, setSummary] = useState(proposal.summary || data.summary || "");
@@ -197,6 +245,29 @@ export default function UnifiedProposalCard({
     data.tasks.map((t) => ({ keep: true, ownerId: resolveOwner(t.ownerHint) })),
   );
 
+  // New people + links (default: checked, seeded from the model's suggestions).
+  const [people, setPeople] = useState<PersonState[]>(() =>
+    proposedContacts.map((pc) => ({
+      keep: true,
+      relationship: pc.suggestedRelationship,
+      role: pc.suggestedRole ?? "",
+    })),
+  );
+  const [links, setLinks] = useState<LinkState[]>(() =>
+    contactLinks.map((cl) => ({
+      keep: true,
+      relationship: cl.relationship,
+      role: cl.role ?? "",
+      isPrimary: cl.isPrimary,
+    })),
+  );
+
+  // Resolve a link's target id to its display label.
+  const targetLabel = (kind: "deal" | "client", id: string): string =>
+    kind === "deal"
+      ? deals.find((d) => d.id === id)?.name ?? id
+      : clients.find((c) => c.id === id)?.company ?? id;
+
   // Cross-reference: re-resolve the focus + flag tasks/milestones already on the board.
   const [xref, setXref] = useState<CrossReferenceResult | null>(null);
   const [xrefPending, startXref] = useTransition();
@@ -224,7 +295,14 @@ export default function UnifiedProposalCard({
       adds += r.milestones?.length ?? 0;
       adds += r.deliverables?.length ?? 0;
     }
-    return { records: data.records.length, adds, overwrites, tasks: data.tasks.length };
+    return {
+      records: data.records.length,
+      adds,
+      overwrites,
+      tasks: data.tasks.length,
+      people: (data.proposedContacts ?? []).length,
+      links: (data.contactLinks ?? []).length,
+    };
   }, [data]);
 
   // ── mutation helpers ─────────────────────────────────────────────────────
@@ -233,6 +311,12 @@ export default function UnifiedProposalCard({
   }
   function patchTask(ti: number, patch: (s: TaskState) => TaskState) {
     setTasks((prev) => prev.map((t, i) => (i === ti ? patch(t) : t)));
+  }
+  function patchPerson(pi: number, patch: (s: PersonState) => PersonState) {
+    setPeople((prev) => prev.map((p, i) => (i === pi ? patch(p) : p)));
+  }
+  function patchLink(li: number, patch: (s: LinkState) => LinkState) {
+    setLinks((prev) => prev.map((l, i) => (i === li ? patch(l) : l)));
   }
 
   function runCrossReference(persist?: { kind: IngestTargetKind; id: string }) {
@@ -322,7 +406,38 @@ export default function UnifiedProposalCard({
         reassignTaskId: t.reassignTaskId,
       }));
 
-    return { records: approvedRecords, tasks: approvedTasks, dealId: dealId || null };
+    // Only the checked people/links; partner-edited relationship/role survive.
+    const approvedContacts: ApprovedProposedContact[] = proposedContacts
+      .map((pc, pi) => ({ pc, st: people[pi] }))
+      .filter(({ st }) => st?.keep)
+      .map(({ pc, st }) => ({
+        name: pc.name,
+        email: pc.email,
+        title: pc.title,
+        company: pc.company,
+        relationship: st.relationship,
+        role: st.role || null,
+      }));
+
+    const approvedLinks: ApprovedContactLink[] = contactLinks
+      .map((cl, li) => ({ cl, st: links[li] }))
+      .filter(({ st }) => st?.keep)
+      .map(({ cl, st }) => ({
+        contactEmail: cl.contactEmail,
+        targetKind: cl.targetKind,
+        targetId: cl.targetId,
+        relationship: st.relationship,
+        role: st.role || null,
+        isPrimary: st.isPrimary,
+      }));
+
+    return {
+      records: approvedRecords,
+      tasks: approvedTasks,
+      ...(approvedContacts.length ? { proposedContacts: approvedContacts } : {}),
+      ...(approvedLinks.length ? { contactLinks: approvedLinks } : {}),
+      dealId: dealId || null,
+    };
   }
 
   function approve() {
@@ -371,7 +486,9 @@ export default function UnifiedProposalCard({
             <span className="text-[14px] text-bone truncate">{proposal.title}</span>
             <p className="text-[11px] text-bone-mute truncate">
               {counts.records} record(s) · {counts.adds} add(s) · {counts.overwrites} overwrite(s) ·{" "}
-              {counts.tasks} task(s) · {proposal.createdBy}
+              {counts.tasks} task(s)
+              {counts.people > 0 && <> · {counts.people} new people</>}
+              {counts.links > 0 && <> · {counts.links} link(s)</>} · {proposal.createdBy}
             </p>
           </div>
         </div>
@@ -504,6 +621,169 @@ export default function UnifiedProposalCard({
               }
             />
           ))}
+
+          {/* New people — proposed contacts (created on approve, deduped by email) */}
+          {proposedContacts.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label gold>
+                <span className="inline-flex items-center gap-1.5">
+                  <UserPlus size={12} strokeWidth={1.5} />
+                  New people ({people.filter((p) => p.keep).length} kept)
+                </span>
+              </Label>
+              <div className="flex flex-col gap-2">
+                {proposedContacts.map((pc, pi) => {
+                  const st = people[pi];
+                  return (
+                    <div
+                      key={pi}
+                      className={cn(
+                        "bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2",
+                        !st?.keep && "opacity-50",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={st?.keep ?? false}
+                          onChange={() => patchPerson(pi, (s) => ({ ...s, keep: !s.keep }))}
+                          disabled={isPending}
+                          className="mt-1 accent-track-gold"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[13px] text-bone leading-snug">{pc.name}</span>
+                            <Badge tone="gold">new contact</Badge>
+                          </div>
+                          <p className="text-[12px] text-bone-dim mt-0.5 leading-snug">
+                            {pc.email}
+                            {pc.title ? ` · ${pc.title}` : ""}
+                            {pc.company ? ` · ${pc.company}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-[150px_150px] gap-3 pl-7">
+                        <Select
+                          value={st?.relationship ?? "works_there"}
+                          onChange={(e) =>
+                            patchPerson(pi, (s) => ({ ...s, relationship: e.target.value as RelationshipType }))
+                          }
+                          disabled={isPending}
+                          className="h-8 text-[12px]"
+                        >
+                          {RELATIONSHIP_TYPES.map((r) => (
+                            <option key={r} value={r}>
+                              {disp(r)}
+                            </option>
+                          ))}
+                        </Select>
+                        <Select
+                          value={st?.role ?? ""}
+                          onChange={(e) =>
+                            patchPerson(pi, (s) => ({ ...s, role: e.target.value as StakeholderRole | "" }))
+                          }
+                          disabled={isPending}
+                          className="h-8 text-[12px]"
+                        >
+                          <option value="">no role</option>
+                          {STAKEHOLDER_ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {disp(r)}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Link people — Contact ↔ Deal/Client links (buying committee + intro paths) */}
+          {contactLinks.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label gold>
+                <span className="inline-flex items-center gap-1.5">
+                  <Users size={12} strokeWidth={1.5} />
+                  Link people ({links.filter((l) => l.keep).length} kept)
+                </span>
+              </Label>
+              <div className="flex flex-col gap-2">
+                {contactLinks.map((cl, li) => {
+                  const st = links[li];
+                  return (
+                    <div
+                      key={li}
+                      className={cn(
+                        "bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex flex-col gap-2",
+                        !st?.keep && "opacity-50",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={st?.keep ?? false}
+                          onChange={() => patchLink(li, (s) => ({ ...s, keep: !s.keep }))}
+                          disabled={isPending}
+                          className="mt-1 accent-track-gold"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap text-[13px] text-bone leading-snug">
+                            <span>{cl.contactEmail}</span>
+                            <ArrowRight size={12} strokeWidth={1.5} className="text-track-gold shrink-0" />
+                            <span>{targetLabel(cl.targetKind, cl.targetId)}</span>
+                            <Badge tone="neutral">{cl.targetKind}</Badge>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 pl-7 flex-wrap">
+                        <Select
+                          value={st?.relationship ?? "works_there"}
+                          onChange={(e) =>
+                            patchLink(li, (s) => ({ ...s, relationship: e.target.value as RelationshipType }))
+                          }
+                          disabled={isPending}
+                          className="h-8 w-[150px] text-[12px]"
+                        >
+                          {RELATIONSHIP_TYPES.map((r) => (
+                            <option key={r} value={r}>
+                              {disp(r)}
+                            </option>
+                          ))}
+                        </Select>
+                        <Select
+                          value={st?.role ?? ""}
+                          onChange={(e) =>
+                            patchLink(li, (s) => ({ ...s, role: e.target.value as StakeholderRole | "" }))
+                          }
+                          disabled={isPending}
+                          className="h-8 w-[150px] text-[12px]"
+                        >
+                          <option value="">no role</option>
+                          {STAKEHOLDER_ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {disp(r)}
+                            </option>
+                          ))}
+                        </Select>
+                        <label className="inline-flex items-center gap-1.5 text-[11px] text-bone-dim cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={st?.isPrimary ?? false}
+                            onChange={() => patchLink(li, (s) => ({ ...s, isPrimary: !s.isPrimary }))}
+                            disabled={isPending}
+                            className="accent-track-gold"
+                          />
+                          primary contact
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Tasks */}
           {data.tasks.length > 0 && (
@@ -854,7 +1134,7 @@ function RecordSection({
                     >
                       {M_STATUS_OPTS.map((s) => (
                         <option key={s} value={s}>
-                          {s}
+                          {disp(s)}
                         </option>
                       ))}
                     </Select>

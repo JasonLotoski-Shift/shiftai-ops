@@ -20,30 +20,129 @@ import type { FieldChange, ListAddition } from "@/lib/ingest/types";
 type Tx = Pick<PrismaClient, "contact" | "client" | "project" | "deal">;
 
 // ── Allowlists ──────────────────────────────────────────────────────────
-export const CONTACT_LIST_FIELDS = ["keyFacts", "hobbies", "networkAffiliations"] as const;
+// Partner-judgment fields are NEVER proposable: relationshipStrength (contact),
+// statusNote (client), probability/lostReason (deal). Deal stage stays
+// signal-only via stageSignal — never a fieldChange.
+export const CONTACT_LIST_FIELDS = ["keyFacts", "hobbies", "networkAffiliations", "importantDates"] as const;
 // email excluded — it's the match key. company/title are high-impact but allowed
 // behind explicit per-item replace approval.
 export const CONTACT_SCALAR_FIELDS = [
   "persona", "communicationStyle", "background", "title", "company", "phone", "notes",
+  "linkedinUrl", "location", "timezone", "mobilePhone", "preferredChannel",
 ] as const;
 
-export const CLIENT_LIST_FIELDS = ["companyKeyFacts", "brandColors"] as const;
+export const CLIENT_LIST_FIELDS = [
+  "companyKeyFacts", "brandColors", "currentSystems", "painPoints", "keyServices", "competitors",
+] as const;
 export const CLIENT_SCALAR_FIELDS = [
   "description", "headquarters", "founded", "website", "ownership",
   "companySize", "logoMonogram", "revenue", "paymentTerms", "notes",
+  "linkedinUrl", "instagramUrl", "subIndustry", "locations",
+  "revenueEstimate", "employeeCount", "renewalDate",
 ] as const;
 
-// Project scalars that may be overwritten (enum-validated). `description` is
-// append-only via projectNotes, so it's not here.
-export const PROJECT_SCALAR_FIELDS = ["phase", "status"] as const;
+// Deal — first allowlist (deals previously allowed NO field changes). The
+// company profile gathered at deal stage + sales intel, enrichable from a
+// call/email like a client is.
+export const DEAL_SCALAR_FIELDS = [
+  "website", "linkedinUrl", "instagramUrl", "headquarters", "companySize", "founded",
+  "ownership", "description", "subIndustry", "revenueEstimate", "employeeCount",
+  "nextStep", "competitor", "budget",
+] as const;
+export const DEAL_LIST_FIELDS = ["companyKeyFacts", "currentSystems", "painPoints"] as const;
+
+// Project scalars that may be overwritten. phase/status are enum-validated;
+// objectives/statusNote are free text. `description` is append-only via
+// projectNotes, so it's not here.
+export const PROJECT_SCALAR_FIELDS = ["phase", "status", "objectives", "statusNote"] as const;
+export const PROJECT_LIST_FIELDS = ["successMetrics", "systemsBuilt", "risks"] as const;
 
 const PROJECT_PHASES = new Set(["discovery", "build", "run"]);
 const ENGAGEMENT_STATUSES = new Set(["on_track", "at_risk", "blocked", "closing", "closed"]);
 const DEAL_STAGES = new Set(["lead", "qualified", "discovery", "discussion", "proposal", "negotiation", "signed"]);
+const PREFERRED_CHANNELS = new Set(["email", "call", "text", "linkedin"]);
 
 /** Hyphenated DB enum values → underscored Prisma identifiers ("at-risk" → "at_risk"). */
 function normEnum(v: string): string {
   return v.trim().replace(/-/g, "_");
+}
+
+// ── Typed-column coercion ────────────────────────────────────────────────
+// mergeChanges works on strings; Int / DateTime columns get coerced around it.
+
+const INT_FIELDS = new Set(["revenueEstimate", "employeeCount"]);
+const DATE_FIELDS = new Set(["renewalDate"]);
+
+/** "$1,200,000" → "1200000"; "$1.2M" / "45 million" → the whole number
+ *  (suffix-aware, mirrors the enrich coercers — never truncate "1.2M" to 1).
+ *  Anything ambiguous (ranges, multiple figures, no digits) → null = drop. */
+function coerceIntString(v: string): string | null {
+  const cleaned = v.replace(/\([^)]*\)/g, " ").replace(/[~$,]/g, "");
+  const tokens = [...cleaned.matchAll(/(\d+(?:\.\d+)?)\s*(k|m|b|thousand|million|billion)?/gi)];
+  if (tokens.length !== 1) return null;
+  const n = Number(tokens[0][1]);
+  if (!Number.isFinite(n)) return null;
+  const suffix = tokens[0][2]?.toLowerCase();
+  const mult =
+    !suffix ? 1
+    : suffix.startsWith("k") || suffix === "thousand" ? 1_000
+    : suffix.startsWith("m") ? 1_000_000
+    : 1_000_000_000;
+  const value = Math.round(n * mult);
+  return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+}
+
+/** Pre-merge: clean Int fields to digit strings (drop if NaN), require
+ *  YYYY-MM-DD on date fields, validate preferredChannel. Drops invalid changes. */
+function normalizeTypedChanges(fieldChanges: FieldChange[]): FieldChange[] {
+  const out: FieldChange[] = [];
+  for (const fc of fieldChanges) {
+    if (INT_FIELDS.has(fc.field)) {
+      const cleaned = coerceIntString(fc.proposed ?? "");
+      if (cleaned === null) continue;
+      out.push({ ...fc, proposed: cleaned });
+    } else if (DATE_FIELDS.has(fc.field)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fc.proposed?.trim() ?? "")) continue;
+      out.push({ ...fc, proposed: fc.proposed.trim() });
+    } else if (fc.field === "preferredChannel") {
+      const v = normEnum(fc.proposed ?? "").toLowerCase();
+      if (!PREFERRED_CHANNELS.has(v)) continue;
+      out.push({ ...fc, proposed: v });
+    } else {
+      out.push(fc);
+    }
+  }
+  return out;
+}
+
+/** Pre-merge: stringify Int/Date current values so the string diff works
+ *  (Int → "1200000", Date → "2026-06-10"). */
+function stringifyCurrent(current: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(current)) {
+    if (typeof v === "number") out[k] = String(v);
+    else if (v instanceof Date) out[k] = v.toISOString().slice(0, 10);
+    else out[k] = v;
+  }
+  return out;
+}
+
+/** Post-merge: convert merged string values back onto the real column types. */
+function typeCoerceData(data: Record<string, unknown>): void {
+  for (const f of INT_FIELDS) {
+    if (typeof data[f] === "string") {
+      const n = Number.parseInt(data[f] as string, 10);
+      if (Number.isFinite(n)) data[f] = n;
+      else delete data[f];
+    }
+  }
+  for (const f of DATE_FIELDS) {
+    if (typeof data[f] === "string") {
+      const d = new Date(`${data[f]}T00:00:00.000Z`);
+      if (!Number.isNaN(d.getTime())) data[f] = d;
+      else delete data[f];
+    }
+  }
 }
 
 export type ApplyResult = {
@@ -118,13 +217,14 @@ export async function applyContactChanges(
     select: {
       persona: true, communicationStyle: true, background: true, title: true,
       company: true, phone: true, notes: true,
-      keyFacts: true, hobbies: true, networkAffiliations: true,
+      linkedinUrl: true, location: true, timezone: true, mobilePhone: true, preferredChannel: true,
+      keyFacts: true, hobbies: true, networkAffiliations: true, importantDates: true,
     },
   });
   if (!c) return emptyResult();
   const data: Record<string, unknown> = {};
   const result = mergeChanges(
-    c as Record<string, unknown>, input.fieldChanges, input.listAdditions,
+    c as Record<string, unknown>, normalizeTypedChanges(input.fieldChanges), input.listAdditions,
     CONTACT_SCALAR_FIELDS, CONTACT_LIST_FIELDS, data,
   );
   if (Object.keys(data).length) {
@@ -144,15 +244,20 @@ export async function applyClientChanges(
     select: {
       description: true, headquarters: true, founded: true, website: true,
       ownership: true, companySize: true, logoMonogram: true, revenue: true,
-      paymentTerms: true, notes: true, companyKeyFacts: true, brandColors: true,
+      paymentTerms: true, notes: true,
+      linkedinUrl: true, instagramUrl: true, subIndustry: true, locations: true,
+      revenueEstimate: true, employeeCount: true, renewalDate: true,
+      companyKeyFacts: true, brandColors: true,
+      currentSystems: true, painPoints: true, keyServices: true, competitors: true,
     },
   });
   if (!c) return emptyResult();
   const data: Record<string, unknown> = {};
   const result = mergeChanges(
-    c as Record<string, unknown>, input.fieldChanges, input.listAdditions,
+    stringifyCurrent(c as Record<string, unknown>), normalizeTypedChanges(input.fieldChanges), input.listAdditions,
     CLIENT_SCALAR_FIELDS, CLIENT_LIST_FIELDS, data,
   );
+  typeCoerceData(data);
   if (Object.keys(data).length) {
     data.enrichedAt = new Date();
     await tx.client.update({ where: { id: clientId }, data });
@@ -160,22 +265,67 @@ export async function applyClientChanges(
   return result;
 }
 
-/** Project: enum-validated phase/status overwrite + append-only notes. */
+/** Deal — company profile + sales intel (the deal's first apply path). Stage
+ *  is NOT here: it stays signal-only via applyDealStage below. */
+export async function applyDealChanges(
+  tx: Tx,
+  dealId: string,
+  input: { fieldChanges: FieldChange[]; listAdditions: ListAddition[] },
+): Promise<ApplyResult> {
+  const d = await tx.deal.findUnique({
+    where: { id: dealId },
+    select: {
+      website: true, linkedinUrl: true, instagramUrl: true, headquarters: true,
+      companySize: true, founded: true, ownership: true, description: true,
+      subIndustry: true, revenueEstimate: true, employeeCount: true,
+      nextStep: true, competitor: true, budget: true,
+      companyKeyFacts: true, currentSystems: true, painPoints: true,
+    },
+  });
+  if (!d) return emptyResult();
+  const data: Record<string, unknown> = {};
+  const result = mergeChanges(
+    stringifyCurrent(d as Record<string, unknown>), normalizeTypedChanges(input.fieldChanges), input.listAdditions,
+    DEAL_SCALAR_FIELDS, DEAL_LIST_FIELDS, data,
+  );
+  typeCoerceData(data);
+  if (Object.keys(data).length) {
+    data.enrichedAt = new Date();
+    await tx.deal.update({ where: { id: dealId }, data });
+  }
+  return result;
+}
+
+// Within PROJECT_SCALAR_FIELDS: enum-validated vs free-text.
+const PROJECT_ENUM_FIELDS = ["phase", "status"] as const;
+const PROJECT_TEXT_FIELDS = ["objectives", "statusNote"] as const;
+
+/** Project: enum-validated phase/status + free-text scope fields + scope
+ *  lists + append-only notes. */
 export async function applyProjectChanges(
   tx: Tx,
   projectId: string,
-  input: { fieldChanges: FieldChange[]; projectNotes?: string | null },
+  input: { fieldChanges: FieldChange[]; listAdditions?: ListAddition[]; projectNotes?: string | null },
 ): Promise<ApplyResult> {
   const p = await tx.project.findUnique({
     where: { id: projectId },
-    select: { phase: true, status: true, description: true },
+    select: {
+      phase: true, status: true, description: true,
+      objectives: true, statusNote: true,
+      successMetrics: true, systemsBuilt: true, risks: true,
+    },
   });
   if (!p) return emptyResult();
-  const result = emptyResult();
   const data: Record<string, unknown> = {};
 
+  // Free-text scalars + lists go through the shared merge.
+  const result = mergeChanges(
+    p as Record<string, unknown>, input.fieldChanges, input.listAdditions ?? [],
+    PROJECT_TEXT_FIELDS, PROJECT_LIST_FIELDS, data,
+  );
+
   for (const fc of input.fieldChanges) {
-    if (!(PROJECT_SCALAR_FIELDS as readonly string[]).includes(fc.field)) continue;
+    if (!(PROJECT_ENUM_FIELDS as readonly string[]).includes(fc.field)) continue;
     const proposed = normEnum(fc.proposed ?? "");
     const valid = fc.field === "phase" ? PROJECT_PHASES.has(proposed) : ENGAGEMENT_STATUSES.has(proposed);
     if (!valid) continue;

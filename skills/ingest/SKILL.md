@@ -21,7 +21,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
   "records": [
     {
       "kind": "contact | client | project | deal",
-      "recordId": "the id from the context block (or null only for an inline-new contact)",
+      "recordId": "the id from the context block — people not on file go in proposedContacts, never in records",
       "label": "display label, e.g. \"Heather Vance · Brightline\"",
       "fieldChanges": [ { "field": "title", "proposed": "VP Operations" } ],
       "listAdditions": [ { "field": "keyFacts", "value": "Defensible fact" } ],
@@ -29,21 +29,43 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
       "projectNotes": "Durable notes to append to the project — omit/null if nothing durable.",
       "milestones": [ { "title": "Short noun phrase — the thing, no verb/date", "dueDate": "YYYY-MM-DD or null", "status": "pending | in-progress | complete | at-risk" } ],
       "deliverables": [ { "type": "proposal | deck | email | sow | invoice | report | other", "title": "Short noun phrase" } ],
-      "stageSignal": { "suggestion": "e.g. proposal", "rationale": "Why the content implies it" }
+      "stageSignal": { "suggestion": "one of: lead | qualified | discovery | discussion | proposal | negotiation | signed", "rationale": "Why the content implies it" }
     }
   ],
-  "tasks": [ { "title": "Short noun phrase — the thing, no verb/date", "context": "1–2 sentences", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "ownerHint": "a roster name or null", "clientId": "id or null", "projectId": "id or null", "milestoneId": "a listed milestone id or null", "reassignTaskId": "an OPEN-TASK id or null" } ]
+  "tasks": [ { "title": "Short noun phrase — the thing, no verb/date", "context": "1–2 sentences", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "ownerHint": "a roster name or null", "clientId": "id or null", "projectId": "id or null", "milestoneId": "a listed milestone id or null", "reassignTaskId": "an OPEN-TASK id or null" } ],
+  "proposedContacts": [ { "name": "Full name", "email": "address exactly as written in the source", "title": "VP Operations or null", "company": "Brightline or null", "suggestedRelationship": "works_there | introduced_us | advisor | other", "suggestedRole": "decision_maker | champion | influencer | budget_holder | technical | gatekeeper | blocker | other — or null" } ],
+  "contactLinks": [ { "contactEmail": "an existing contact's email, or a proposedContacts email", "targetKind": "deal | client", "targetId": "a deal/client id from the context block", "relationship": "works_there | introduced_us | advisor | other", "role": "same set as suggestedRole, or null", "isPrimary": false } ]
 }
 ```
 
-- Allowed `fieldChanges[].field` by kind — **contact**: `persona`, `communicationStyle`, `background`, `title`, `company`, `phone`, `notes` (list fields: `keyFacts`, `hobbies`, `networkAffiliations`); **client**: `description`, `headquarters`, `founded`, `website`, `ownership`, `companySize`, `logoMonogram`, `revenue`, `paymentTerms`, `notes` (list fields: `companyKeyFacts`, `brandColors`); **project**: ONLY `phase`, `status` (durable text → `projectNotes`); **deal**: NO field changes — use `stageSignal` only.
+- Allowed `fieldChanges[].field` by kind — **contact**: `persona`, `communicationStyle`, `background`, `title`, `company`, `phone`, `notes`, `linkedinUrl`, `location`, `timezone`, `mobilePhone`, `preferredChannel` (one of `email | call | text | linkedin`) (list fields: `keyFacts`, `hobbies`, `networkAffiliations`, `importantDates`) — never `relationshipStrength` (partner judgment); **client**: `description`, `headquarters`, `founded`, `website`, `ownership`, `companySize`, `logoMonogram`, `revenue`, `paymentTerms`, `notes`, `linkedinUrl`, `instagramUrl`, `subIndustry`, `locations`, `revenueEstimate`, `employeeCount`, `renewalDate` (`YYYY-MM-DD`) (list fields: `companyKeyFacts`, `brandColors`, `currentSystems`, `painPoints`, `keyServices`, `competitors`) — never `statusNote` (partner judgment); **deal**: `website`, `linkedinUrl`, `instagramUrl`, `headquarters`, `companySize`, `founded`, `ownership`, `description`, `subIndustry`, `revenueEstimate`, `employeeCount`, `nextStep`, `competitor`, `budget` (list fields: `companyKeyFacts`, `currentSystems`, `painPoints`) — never `probability` or `lostReason`, and deal stage is `stageSignal` ONLY, never a field change; **project**: `phase` (one of `discovery | build | run`), `status` (one of `on-track | at-risk | blocked | closing | closed`), `objectives`, `statusNote` (list fields: `successMetrics`, `systemsBuilt`, `risks`) — other durable text → `projectNotes`. Off-list `phase`/`status`/stage values are discarded, so use these exact values only.
 - The server decides add vs replace and captures the existing value — you only ever supply `{field, proposed}`. Propose a field change ONLY when the content actually supports a value for it.
-- `interactions` are contact-scoped. `milestones`/`deliverables`/`projectNotes`/`stageSignal` apply to their kind only. Any array may be empty; omit what doesn't apply.
+- `interactions` are contact-scoped. `milestones`/`deliverables`/`projectNotes`/`stageSignal` apply to their kind only. Any array may be empty; omit what doesn't apply (`proposedContacts`/`contactLinks` included).
+
+## People & links
+
+- `proposedContacts` = people named in the source who aren't on file yet. `contactLinks` = how a person — existing or just proposed — connects to a deal or client supplied in the context block. Both are suggestions the partner confirms one by one.
+- **relationship** — how they connect. `works_there` when their email domain matches the company or the source describes them as staff. `introduced_us` when the source credits them with the intro or referral ("Bob connected us", "referred by Bob"). `advisor` / `other` only when the source says so.
+- **role** — their pull in the buying decision; meaningful mainly for `works_there`. Set it only when stated or strongly implied by title or description: owner / CEO / principal → `decision_maker`; "our champion" → `champion`; CFO / "signs off on the budget" → `budget_holder`; EA / "go through her" → `gatekeeper`; "she'll run it day-to-day" → `technical`. Otherwise `null` — never guess a role from nothing.
+- When someone is credited with the introduction, propose them as a contact (if new) **and** an `introduced_us` link to the deal or client.
+- **Never invent an email address.** Only addresses actually present in the source. No address, no proposal. Firm-internal addresses are never proposed as contacts or links.
+- Don't re-propose people already listed under CURRENT PEOPLE in the context block.
+- `isPrimary: true` only when the source makes clear they're the main contact on that company; default `false`.
+
+## Shift signal — systems & pain points
+
+When the source names tools the company runs, or states a problem, pull them into the deal/client list additions — this is the signal that tells the firm what to build:
+
+- `currentSystems` — named tools/software and what they're used for, one list item each.
+- `painPoints` — the stated problem, plainly, one list item each.
+
+Example: "we run everything in spreadsheets and dispatch is a nightmare" → `{ "field": "currentSystems", "value": "Spreadsheets (dispatch + scheduling)" }` + `{ "field": "painPoints", "value": "Dispatch is manual and slow" }`. Concrete enough to act on, always traceable to the source.
 
 ## Hard rules for this task
 
 - **Extract, don't invent.** Every item must trace to something actually in the content. No fabricated numbers, dates, names, or commitments. If a budget or date was *floated* (not agreed), put it in `keyPoints` as a soft claim — never as a committed field, dueDate, or `due`.
 - **Soft claims stay soft.** When in doubt, downgrade to a key point rather than a field change, task, or enrichment fact.
+- **Stated-only figures.** Propose `revenueEstimate`, `employeeCount`, `budget`, or `renewalDate` ONLY when the source literally states them ("we're about 120 people" → `employeeCount`). Floated or implied figures stay in `keyPoints` as soft claims.
 - **Dates only if stated.** Use a date only when the content names one. Otherwise `null`.
 - **Scope to the named targets.** Only propose changes for the records supplied in the context block. Don't invent records for other clients/projects.
 - **Never assert a stage moved.** `stageSignal` is a suggestion the partner acts on, nothing more.

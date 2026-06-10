@@ -11,6 +11,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { generate } from "@/lib/ai";
+import { linkContact } from "@/lib/contact-links";
 import type { DealStage, Industry } from "@/lib/generated/prisma/enums";
 
 const STAGE_LABELS: Record<DealStage, string> = {
@@ -110,7 +111,7 @@ export async function createDeal(input: {
 
   const contact = await prisma.contact.findUnique({
     where: { id: input.contactId },
-    select: { id: true, name: true, company: true, industry: true },
+    select: { id: true, name: true, company: true, industry: true, domain: true },
   });
   if (!contact) throw new Error("Pick a contact for this deal");
 
@@ -135,6 +136,10 @@ export async function createDeal(input: {
 
   const now = new Date();
 
+  // Seed the deal's web identity from the contact's normalized domain (D40) —
+  // the company profile starts with whatever we already know.
+  const domain = contact.domain?.trim() || null;
+
   const deal = await prisma.$transaction(async (tx) => {
     const created = await tx.deal.create({
       data: {
@@ -148,7 +153,18 @@ export async function createDeal(input: {
         notes: input.notes?.trim() || null,
         contactId: contact.id,
         partnerLeadId,
+        ...(domain ? { domain, website: domain } : {}),
       },
+    });
+
+    // The deal's contact is on the buying committee from day one —
+    // works-there + primary. Single write path: lib/contact-links.
+    await linkContact(tx, {
+      contactId: contact.id,
+      dealId: created.id,
+      relationship: "works_there",
+      isPrimary: true,
+      addedBy: partnerLabel,
     });
 
     await writeAudit(tx, {
@@ -156,7 +172,7 @@ export async function createDeal(input: {
       action: "create.deal",
       targetType: "Deal",
       targetId: created.id,
-      changes: { company, stage, valueEstimate: value, industry, contactId: contact.id },
+      changes: { company, stage, valueEstimate: value, industry, contactId: contact.id, domain },
     });
 
     await writeActivity(tx, {

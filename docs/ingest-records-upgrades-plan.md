@@ -1,11 +1,140 @@
 # Ingest & Records Upgrades - Implementation Plan
 
-> **Status: PLAN ONLY (2026-06-08).** Nothing built or migrated. Produced by a multi-agent planning workflow (4 parallel design agents -> reconcile). The adversarial critique + revise pass did not run (session usage cap) and can be re-run from cache.
->
-> **Four workstreams:** #4 cross-reference button, #3 attachment/file reading, #1 beef-up records, #2 email stakeholder capture.
-> **Invariants:** see CLAUDE.md - local `prisma migrate` hits PROD Supabase (every migration needs Jason's approval); propose-never-auto-write; every mutation writes an AuditLog via writeAudit.
+> **Status (2026-06-09).** #4 (cross-reference) and #3 (attachments / files + images) are **built + shipped to main**. #1 (beef-up records) and #2 (contacts / relationships) are **planned, not built** — and have been **re-scoped with Jason** into the unified model in the next section, which **supersedes the field proposals in Appendix Plans 3 & 4**. Both need a prod migration (Jason's approval). `OpsEvent` is already migrated, so a new migration is a clean diff (the "bundling" worry in the appendices is now moot).
+> **Invariants:** see CLAUDE.md — local `prisma migrate` hits PROD Supabase (approval required); propose-never-auto-write; every mutation writes an AuditLog via writeAudit.
 
 ---
+
+# AGREED RECORDS & RELATIONSHIP MODEL (#1 + #2, re-scoped with Jason 2026-06-09)
+
+> Current source of truth for #1 + #2. **Supersedes** the field lists in Appendix Plans 3 & 4. ★ = high-value; unmarked = optional (cut freely). Open redlines listed at the end — not yet final.
+
+## Mental model
+- **Contact** = a person. Standalone record, personal info + full comms log. Can have NO company, work at one, or **introduce us to many**.
+- **Client** = a signed company. Company info (much of it findable online) + many contacts + many projects + billing.
+- **Deal** = a prospect ("project-light"): a contact + a free-text company + the company info we gather. **No Client record yet.** On convert → creates Client + Project.
+- **Project** = deliverables / scope of work; belongs to a Client.
+
+Contacts and companies stay **separate** records, linked **many-to-many**:
+
+```
+CONTACT ──< Contact↔Company link >── DEAL or CLIENT
+        relationship + role + isPrimary
+```
+
+## The link table — `ContactLink` (Contact ↔ Deal/Client)
+Many-to-many. The company side is **polymorphic**: exactly one of `dealId` / `clientId` is set (precedent: the Task/Milestone scope FKs). On **Convert**, a deal's links flip `dealId → clientId` so people + committee + intro path carry into the new client.
+
+| Field | Notes |
+|---|---|
+| contactId | the person |
+| dealId / clientId | the company side (exactly one set) |
+| **relationship** | how they connect to the company — enum below |
+| **role** | their pull in the decision — enum below (mainly for "works there") |
+| isPrimary | the main contact on this company |
+| roleLabel | free text — their title or how they connect ("VP Ops", "met at SEMA") |
+| notes, addedBy | context + provenance ("AGENT · CLAUDE" or partner) |
+
+`@@unique([contactId, dealId])` / `@@unique([contactId, clientId])` — one link per person per company.
+
+- **`RelationshipType`** (nature of the link): `works_there` · `introduced_us` · `advisor` · `other`
+- **`StakeholderRole`** (buying influence — Jason: these matter): `decision_maker` · `champion` · `influencer` · `budget_holder` · `technical` · `gatekeeper` · `blocker` · `other`
+
+This gives: a company's **people** (works-there) + **who introduced us**; and a connector contact's **referral value** (every company they've introduced, in one place). Both enums are brand-new → plain underscored values, **no `@map`**.
+
+## Record fields (keep + add)
+
+### Contact — the person
+**Keep:** name, title, company (free-text employer), email, phone, industry, source, sourceCategory, notes, lastTouchAt, domain (now surfaced) + relationship intelligence (persona, communicationStyle, keyFacts, background, hobbies, networkAffiliations, enrichedAt) + the interaction log.
+**Add:** ★ linkedinUrl · ★ website (surface the hidden domain) · ★ location/city (+ timezone) · mobilePhone · preferredChannel (email/call/text/LinkedIn) · relationshipStrength (cold/warm/strong) · importantDates/birthday.
+*(roles/relationships live on the link, not on Contact)*
+
+### Client — the company
+**Keep:** company, industry, revenue, website, companySize, headquarters, founded, ownership, description, brandColors, logoMonogram, companyKeyFacts, enrichedAt, billing (contractValue/terms/dates), driveFolderUrl, workspacePath, primaryContact, billingContact, projects, invoices.
+**Add — presence & firmographics:** ★ linkedinUrl · ★ instagramUrl (+ facebook/youtube/x?) · ★ revenueEstimate (number) · ★ employeeCount (number) · ★ subIndustry/niche · locations / # of sites.
+**Add — Shift-specific (feeds what we'd build):** ★ currentSystems / tech stack · ★ painPoints / opportunities · keyServices · competitors.
+**Add — engagement:** healthScore/statusNote · renewalDate · engagementModel (subscription / buy-out).
+*(contacts + introducer come via the link table)*
+
+### Deal — the prospect (project-light)
+**Keep:** company (free text), contact, stage, valueEstimate, industry, closeTargetDate, lastTouchAt, stageEnteredAt, coldOutreachAt, outreachRepliedAt, notes.
+**Add — company profile (gathered now; copies to Client on convert):** ★ website · linkedinUrl · instagramUrl · domain · ★ revenueEstimate · employeeCount · companySize · headquarters · ownership · founded · description · subIndustry · ★ currentSystems · ★ painPoints · companyKeyFacts · enrichedAt.
+**Add — sales intelligence:** ★ introducedBy (contact → becomes an "introduced us" link on convert) · ★ buying committee (Contact↔Deal links with roles) · probability/confidence % · nextStep · competitor · budget? · lostReason/lostAt · dealName (optional, distinct from company).
+
+### Project — deliverables / SOW
+**Keep:** name, phase/projectType, status, startDate, targetEndDate, budgetFee, description, milestones, tasks, artifacts, economics, invoices, installments, payouts, originations.
+**Add:** ★ clientLead (client-side contact for the project) · ★ objectives / successMetrics · systemsBuilt/tech · risks/blockers · statusNote/health. On convert: seed `description` from the deal's gathered notes.
+
+## Convert flow (Deal → Client + Project)
+1. Create **Client** — copy the deal's company profile + socials + revenue/firmographics.
+2. Create **Project** — seed scope/value from the deal.
+3. **Re-point links** — the deal's contact links flip `dealId → clientId`; the deal's contact becomes works-there + primary; `introducedBy` becomes an "introduced us" link.
+
+## Migration impact
+One additive migration: Deal profile + sales fields; Client socials + firmographics + Shift fields; Contact reach fields; the `ContactLink` table + `RelationshipType` + `StakeholderRole` enums; project scope fields. All nullable / new tables → **no backfill**. Needs Jason's approval (prod Supabase). Mirror in `lib/types.ts`. Bigger than the original #1/#2, still safe + one pass.
+
+## Open redlines (Jason to finalize)
+- Final **role set** (trim/rename the 8?), and whether `relationship` needs `former` / `vendor` values.
+- Which **socials** beyond LinkedIn + Instagram (Facebook / YouTube / X?).
+- **dealName** separate from company — yes/no.
+- **clientLead** on projects — keep (★) or drop.
+- Which **optional** Contact/Client fields to cut (relationshipStrength, importantDates, preferredChannel, competitors…).
+
+---
+
+# INGEST SKILL + PIPELINE IMPACT (how all this actually gets populated)
+
+The new fields + links only matter if ingest can fill them. The unified ingest (the `skills/ingest` skill + `lib/ingest/*` + `approveUnified`) grows to match — still propose-never-auto-write.
+
+## 1. Wider field allowlists
+The skill's "allowed field changes by kind" and the `lib/ingest/apply.ts` allowlists expand:
+- **Contact:** + linkedinUrl, website/domain, location, preferredChannel, relationshipStrength.
+- **Client:** + linkedinUrl, instagramUrl, revenueEstimate, employeeCount, subIndustry, currentSystems (list), painPoints (list), keyServices, competitors.
+- **Deal:** **now overwritable** — today a deal has NO field changes (only a stage signal); it gains the whole company-profile + sales-intel set (website, currentSystems, painPoints, nextStep, competitor, budget-as-stated…). **Biggest behavioral change:** a deal becomes enrichable from a call/email like a client is.
+- **Project:** + objectives, successMetrics, systemsBuilt, risks, statusNote.
+
+Three carve-outs keep the allowlists honest:
+- **Stage stays signal-only.** Deal `stage` is still never a `fieldChange` — `stageSignal` remains the only stage mechanism (partner moves the stage, never the model).
+- **Never ingest-proposable (partner judgment):** probability/confidence %, relationshipStrength, healthScore, engagementModel, lostReason/lostAt. These are opinions the partner forms, not facts a source states — they get manual UI only.
+- **Stated-only firmographics:** revenueEstimate, employeeCount, socials, founded, ownership are primarily **web-enrich** territory. Ingest proposes them only when the source literally states them ("we're about 120 people" → employeeCount), never from inference.
+
+## 2. New proposal sections (the #2 capability, now with relationship + role)
+`UnifiedProposal` gains two optional arrays (optional ⇒ existing pending proposals still parse):
+- **proposedContacts** — people named in the source not yet on file: `{ name, email, title?, company?, suggestedRelationship, suggestedRole }`.
+- **contactLinks** — `{ contactRef, target: deal|client, relationship, role, isPrimary }` — the buying committee + intro paths.
+
+`parse.ts`, the review card, and `approveUnified` thread these through: create the contact via the existing dedupe path → write `ContactLink` rows via a new `lib/contact-links.ts` helper → audit. (This replaces the heavier `ClientStakeholder`/`ProjectStakeholder` design in Appendix Plan 4.)
+
+## 3. New skill inference rules (the prompt)
+- **Relationship:** infer `works_there` when a person's email domain matches the company; `introduced_us` when the source credits a referral/intro ("Bob connected us", "referred by", "introduced us to"). Suggestion only.
+- **Role:** infer from titles / how they're described — owner/CEO/principal → `decision_maker`; "our champion/advocate" → `champion`; "she'll be the one using it / the operator" → `technical`; CFO / "controls the budget" → `budget_holder`; EA / "go through" → `gatekeeper`. Only when stated; else leave role unset. Partner confirms every one.
+- **Intro paths:** when someone is credited with the introduction, propose them as a contact (if new) **and** an `introduced_us` link.
+- ★ **Shift signal extraction (highest value):** pull **currentSystems** (tools/software they mention running) and **painPoints** (problems/frustrations) into the client/deal fields — e.g. "we run everything in spreadsheets, dispatch is a nightmare" → currentSystems: ["spreadsheets"], painPoints: ["dispatch is manual/slow"]. Add explicit instruction + worked examples to the skill — this is the signal that tells Shift what to build.
+
+## 4. Guardrails preserved
+- **No invented data** — only emails/URLs/facts present in the source (web-enrich is the separate, citation-backed action; ingest is source-only).
+- **Soft claims stay soft** — floated budget/timeline → keyPoints, never a committed field.
+- Relationship/role/profile changes are **suggestions**; the partner approves each (overwrites show before → after).
+- **Firm/internal addresses** excluded from client stakeholder proposals (can be added manually as a `team_member`).
+- **email is never overwritten** (it's the match key).
+
+## 5. Context builder must show the model
+`lib/ingest/context.ts` prints, for the targets: current contacts/links (so the skill doesn't re-propose an existing link), the current values of the new overwritable fields (for diff stamping), and — for email ingests — the participant list with names + known/unknown flags.
+
+## 6. v1 auto-ingest paths (gmail-poll `ingest-email`, fireflies `ingest-meeting`)
+These still emit the v1 ExtractedProposal (no records/links). To capture committee + intro paths + Shift signals from auto-ingested email/meetings, **migrate the polls onto the v2 unified shape** — recommended as a follow-on once the v2 composer path proves the model. (Decision: do the v2 composer first, then the polls.)
+
+## 7. Enrich-web skills widen in lockstep (separate from ingest, same fields)
+Ingest is source-only; the citation-backed fill for the new firmographics is the existing web-enrich flow. Its field sets must grow to match or the model never proposes the new fields:
+- **`skills/enrich-company-web/SKILL.md`** + the client/deal `*_ENRICH_*_FIELDS` sets in the apply actions: add linkedinUrl, instagramUrl (+ whichever socials survive the redline), revenueEstimate, employeeCount, subIndustry, locations, currentSystems, painPoints, keyServices, competitors. Same skill serves Deal enrich (Q11's "reuse" call stands — the deal action passes its own current-values block).
+- **`skills/enrich-contact-web/SKILL.md`** + contact `ENRICH_SCALAR_FIELDS`: add linkedinUrl, website/domain, location (Q11 already flagged `domain`; this widens it).
+- Both keep the proven propose → review → set-if-empty/append-only apply — no rule changes, just wider allowlists + label maps (`ENRICH_FIELD_LABELS`).
+
+## 8. Convert is now part of the ingest story
+Buying-committee links gathered at deal stage only pay off if Convert carries them: `convertDeal` re-points `ContactLink.dealId → clientId`, upserting on the `@@unique([contactId, clientId])` so a contact already linked to the client merges instead of erroring; `introducedBy` becomes an `introduced_us` link; the deal's primary contact becomes `works_there` + `isPrimary`; the gathered profile fields copy onto the new Client; Project seeds `description` (and `clientLead` = the deal's primary contact, if that field survives the redline). All inside the existing convert transaction + one audit row.
+
+---
+
 Confirmed the load-bearing facts:
 - `company` is free text on `Contact:377`, `Deal:438`, `Client:474` — 750 occurrences across 118 files. The Company-entity refactor blast radius is real (#2 cited ~595; it's larger now).
 - The shared ingest entry points (`detectTargets:99`, `extractUnified:253`, `approveUnified:413`) all live in one file — `composer-actions.ts` — confirming #3 and #4 collide there.
@@ -17,6 +146,8 @@ I have everything I need to reconcile. Writing the master plan now.
 ---
 
 # MASTER PLAN — Four shiftai-ops upgrades, consolidated
+
+> **⚠️ Partially superseded (2026-06-09) — read with the section above.** Since this was written: **#4 and #3 shipped** (Qs 4–10, 15 settled by what shipped); **OpsEvent/M0 is migrated** (the bundling worry in §3 is moot); **Q1–Q3 are answered** (M0 done; lightweight model confirmed — still no Company entity); **M1/M2's contents and Qs 12–14 are superseded** by the agreed model — one `ContactLink` table (relationship + role, Deal-or-Client) replaces `ClientStakeholder`/`ProjectStakeholder`, and the field additions span Contact/Client/Deal/Project, not just Deal. **Q11 (reuse `enrich-company-web`, widen `enrich-contact-web`) is still live.** The build mechanics in §2 and the appendix plans (file lists, apply patterns, blast radius) remain the reference for *how* to build.
 
 **Plan-only. No files edited, nothing migrated.** This reconciles four independently-written plans into one build order, makes the one cross-cutting model decision both #1 and #2 hinge on, sequences every migration (including the in-flight OpsEvent one), and gives you a single decision checklist.
 

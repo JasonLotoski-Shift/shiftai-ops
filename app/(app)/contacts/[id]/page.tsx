@@ -17,6 +17,10 @@ import {
   Calendar,
   Send,
   Inbox,
+  Globe,
+  Linkedin,
+  MapPin,
+  Smartphone,
 } from "lucide-react";
 
 // Keys use Prisma enum identifiers (underscored), matching @map'd DB values.
@@ -28,6 +32,45 @@ const interactionIcon: Record<string, typeof Mail> = {
   other: Calendar,
 };
 
+// D40 link/reach label maps — local until these grow more call sites.
+const stakeholderRoleLabels: Record<string, string> = {
+  decision_maker: "Decision maker",
+  champion: "Champion",
+  influencer: "Influencer",
+  budget_holder: "Budget holder",
+  technical: "Technical",
+  gatekeeper: "Gatekeeper",
+  blocker: "Blocker",
+  other: "Other",
+};
+
+const preferredChannelLabels: Record<string, string> = {
+  email: "email",
+  call: "call",
+  text: "text",
+  linkedin: "LinkedIn",
+};
+
+const strengthBadge: Record<string, { label: string; tone: "steel" | "bone" | "gold" }> = {
+  cold: { label: "Cold", tone: "steel" },
+  warm: { label: "Warm", tone: "bone" },
+  strong: { label: "Strong", tone: "gold" },
+};
+
+// How the person connects to the company — one line per ContactLink.
+function linkPhrase(relationship: string, company: string): string {
+  switch (relationship) {
+    case "works_there":
+      return `Works at ${company}`;
+    case "introduced_us":
+      return `Introduced us — ${company}`;
+    case "advisor":
+      return `Advises ${company}`;
+    default:
+      return `Connected — ${company}`;
+  }
+}
+
 export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
@@ -37,6 +80,15 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       partnerLead: true,
       deals: { orderBy: { closeTargetDate: "asc" } },
       interactions: { orderBy: { date: "desc" } },
+      // Companies this person connects to — works-there / introduced-us /
+      // advises, against deals and clients (the connector-value view).
+      links: {
+        include: {
+          deal: { select: { id: true, company: true } },
+          client: { select: { id: true, company: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
   if (!contact) notFound();
@@ -90,6 +142,45 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
               </div>
             </div>
           </Card>
+
+          {contact.links.length > 0 && (
+            <Card>
+              <CardBody className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <h2 className="title-md text-bone">Companies</h2>
+                  <span className="label">{contact.links.length} linked</span>
+                </div>
+                <div className="flex flex-col">
+                  {contact.links.map((link) => {
+                    const target = link.deal
+                      ? { href: `/pipeline/${link.deal.id}`, company: link.deal.company, kind: "Deal" }
+                      : link.client
+                        ? { href: `/clients/${link.client.id}`, company: link.client.company, kind: "Client" }
+                        : null;
+                    if (!target) return null;
+                    return (
+                      <Link
+                        key={link.id}
+                        href={target.href}
+                        className="flex items-center gap-3 px-2 py-3 -mx-2 rounded-[var(--radius-sm)] hover:bg-[var(--color-row-hover)] transition-colors"
+                      >
+                        <div className="w-7 h-7 bg-graphite/40 flex items-center justify-center shrink-0 text-bone-mute rounded-[var(--radius-sm)]">
+                          <Building2 size={13} strokeWidth={1.5} />
+                        </div>
+                        <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                          <span className="text-[14px] text-bone">{linkPhrase(link.relationship, target.company)}</span>
+                          {link.roleLabel && <span className="text-[11px] text-bone-mute">{link.roleLabel}</span>}
+                        </div>
+                        {link.isPrimary && <Badge tone="gold">Primary</Badge>}
+                        {link.role && <Badge tone="bone">{stakeholderRoleLabels[link.role] ?? link.role}</Badge>}
+                        <Badge tone="neutral">{target.kind}</Badge>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </CardBody>
+            </Card>
+          )}
 
           {!enriched && (
             <Card className="border-track-gold/40 bg-track-gold-dim/5">
@@ -231,6 +322,54 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                     {contact.phone}
                   </a>
                 )}
+                {contact.mobilePhone && (
+                  <a href={`tel:${contact.mobilePhone}`} className="flex items-center gap-2 text-bone-dim hover:text-bone">
+                    <Smartphone size={12} strokeWidth={1.5} />
+                    {contact.mobilePhone}
+                  </a>
+                )}
+                {contact.domain && (
+                  <a
+                    href={`https://${contact.domain}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 text-bone-dim hover:text-bone"
+                  >
+                    <Globe size={12} strokeWidth={1.5} />
+                    {contact.domain}
+                  </a>
+                )}
+                {contact.linkedinUrl && (
+                  <a
+                    href={contact.linkedinUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 text-bone-dim hover:text-bone"
+                  >
+                    <Linkedin size={12} strokeWidth={1.5} />
+                    LinkedIn
+                  </a>
+                )}
+                {(contact.location || contact.timezone) && (
+                  <div className="flex items-center gap-2 text-bone-dim">
+                    <MapPin size={12} strokeWidth={1.5} />
+                    {[contact.location, contact.timezone].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+                {(contact.relationshipStrength || contact.preferredChannel) && (
+                  <div className="flex items-center gap-2 pt-1">
+                    {contact.relationshipStrength && strengthBadge[contact.relationshipStrength] && (
+                      <Badge tone={strengthBadge[contact.relationshipStrength].tone}>
+                        {strengthBadge[contact.relationshipStrength].label}
+                      </Badge>
+                    )}
+                    {contact.preferredChannel && (
+                      <Badge tone="neutral">
+                        Prefers {preferredChannelLabels[contact.preferredChannel] ?? contact.preferredChannel}
+                      </Badge>
+                    )}
+                  </div>
+                )}
               </div>
             </CardBody>
           </Card>
@@ -247,6 +386,22 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
               </div>
             </CardBody>
           </Card>
+
+          {contact.importantDates.length > 0 && (
+            <Card>
+              <CardBody className="flex flex-col gap-3">
+                <h2 className="title-md text-bone">Important dates</h2>
+                <div className="flex flex-col gap-2">
+                  {contact.importantDates.map((d) => (
+                    <div key={d} className="flex items-start gap-2 text-[13px] text-bone-dim">
+                      <Calendar size={12} strokeWidth={1.5} className="mt-0.5 shrink-0 text-bone-mute" />
+                      <span>{d}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
 
           {contact.hobbies.length > 0 && (
             <Card>

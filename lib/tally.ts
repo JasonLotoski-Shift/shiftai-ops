@@ -1,0 +1,324 @@
+// Tally.so integration — shared by the deal action (create a discovery form) and
+// the webhook (save a submission). Server-only. Mirrors lib/fireflies.ts: one
+// place for the API calls, the question→block mapping, signature verification,
+// and the idempotent persist, so the action and webhook never diverge.
+//
+// Wire-format verified against developers.tally.so (2026-06-09):
+//   - POST /forms { status, blocks[] }; each block { uuid, type, groupUuid, groupType, payload }
+//   - FORM_TITLE payload {html}; INPUT_TEXT/TEXTAREA/… payload {html, isRequired}
+//   - choice = a parent (MULTIPLE_CHOICE/CHECKBOXES/DROPDOWN) + child option blocks
+//     whose groupUuid = the PARENT's uuid (that's the link); child payload {text,index,isFirst,isLast}
+//   - RATING payload {stars}; LINEAR_SCALE payload {start,end}
+//   - webhook: header "Tally-Signature" = base64( HMAC-SHA256(rawBody, signingSecret) );
+//     payload { eventId, eventType, data:{ formId, responseId, fields[] } };
+//     choice fields carry options:[{id,text}] and value holds option ids → resolve to text.
+// Some exact keys (share-url field, RANKING parent type, FILE_UPLOAD on free tier)
+// are best-effort — validate on the first real form and adjust the tables here.
+
+import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
+import { prisma } from "@/lib/prisma";
+import { uploadFile, folderIdFromUrl } from "@/lib/drive";
+import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
+import { notifyPartner } from "@/lib/messaging";
+import { logOps } from "@/lib/ops";
+
+const TALLY_API = "https://api.tally.so";
+
+// ── The structured question shape the discovery-questionnaire skill emits ──
+export type SurveyQuestionType =
+  | "short_text" | "long_text" | "number" | "email"
+  | "single_select" | "multi_select" | "dropdown"
+  | "rating" | "linear_scale" | "ranking" | "file_upload";
+
+export type SurveyQuestion = {
+  type: SurveyQuestionType;
+  label: string;
+  options?: string[];
+  required?: boolean;
+  section?: string;
+};
+
+const Q_TYPES: SurveyQuestionType[] = [
+  "short_text", "long_text", "number", "email", "single_select",
+  "multi_select", "dropdown", "rating", "linear_scale", "ranking", "file_upload",
+];
+const NEEDS_OPTIONS = new Set<SurveyQuestionType>(["single_select", "multi_select", "dropdown", "ranking"]);
+
+/** Parse + validate the skill's JSON array. Drops malformed items; never throws. */
+export function parseQuestions(raw: string): SurveyQuestion[] {
+  let text = raw.trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  if (!text.startsWith("[")) {
+    const s = text.indexOf("[");
+    const e = text.lastIndexOf("]");
+    if (s !== -1 && e !== -1) text = text.slice(s, e + 1);
+  }
+  let arr: unknown;
+  try {
+    arr = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(arr)) return [];
+  const out: SurveyQuestion[] = [];
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const type = o.type as SurveyQuestionType;
+    const label = typeof o.label === "string" ? o.label.trim() : "";
+    if (!Q_TYPES.includes(type) || !label) continue;
+    const options = Array.isArray(o.options)
+      ? o.options.filter((x): x is string => typeof x === "string" && !!x.trim()).map((s) => s.trim())
+      : undefined;
+    if (NEEDS_OPTIONS.has(type) && (!options || options.length < 2)) continue; // a choice needs ≥2 real options
+    out.push({
+      type,
+      label,
+      options: options && options.length ? options : undefined,
+      required: !!o.required,
+      section: typeof o.section === "string" ? o.section.trim() : undefined,
+    });
+  }
+  return out;
+}
+
+// ── Question → Tally blocks ──
+type TallyBlock = { uuid: string; type: string; groupUuid: string; groupType: string; payload: Record<string, unknown> };
+
+// Table-driven so a wire-format fix is one line per type. file_upload is
+// downgraded to a "paste a link" text field (free-tier FILE_UPLOAD is uncertain).
+const BLOCK_MAP: Record<SurveyQuestionType, { type: string; child?: { type: string; group: string }; extra?: Record<string, unknown> }> = {
+  short_text: { type: "INPUT_TEXT" },
+  long_text: { type: "TEXTAREA" },
+  number: { type: "INPUT_NUMBER" },
+  email: { type: "INPUT_EMAIL" },
+  single_select: { type: "MULTIPLE_CHOICE", child: { type: "MULTIPLE_CHOICE_OPTION", group: "MULTIPLE_CHOICE" } },
+  multi_select: { type: "CHECKBOXES", child: { type: "CHECKBOX", group: "CHECKBOXES" } },
+  dropdown: { type: "DROPDOWN", child: { type: "DROPDOWN_OPTION", group: "DROPDOWN" } },
+  rating: { type: "RATING", extra: { stars: 5 } },
+  linear_scale: { type: "LINEAR_SCALE", extra: { start: 1, end: 10 } },
+  ranking: { type: "RANKING", child: { type: "RANKING_OPTION", group: "RANKING" } },
+  file_upload: { type: "TEXTAREA" },
+};
+
+export function mapQuestionsToBlocks(title: string, questions: SurveyQuestion[]): TallyBlock[] {
+  const blocks: TallyBlock[] = [];
+  const titleUuid = randomUUID();
+  blocks.push({ uuid: titleUuid, type: "FORM_TITLE", groupUuid: titleUuid, groupType: "FORM_TITLE", payload: { html: title } });
+
+  for (const q of questions) {
+    const map = BLOCK_MAP[q.type] ?? BLOCK_MAP.long_text;
+    const parentUuid = randomUUID();
+    const label = q.type === "file_upload" ? `${q.label} (paste a link)` : q.label;
+    const payload: Record<string, unknown> = { html: label, isRequired: !!q.required, isHidden: false, ...(map.extra ?? {}) };
+    blocks.push({ uuid: parentUuid, type: map.type, groupUuid: parentUuid, groupType: "QUESTION", payload });
+
+    if (map.child && q.options?.length) {
+      q.options.forEach((opt, i) => {
+        blocks.push({
+          uuid: randomUUID(),
+          type: map.child!.type,
+          groupUuid: parentUuid, // links the option to its parent question
+          groupType: map.child!.group,
+          payload: { text: opt, index: i, isFirst: i === 0, isLast: i === q.options!.length - 1 },
+        });
+      });
+    }
+  }
+  return blocks;
+}
+
+/** Create a Tally form. Returns the form id + public URL. Logs an ops event. */
+export async function createTallyForm(input: { title: string; questions: SurveyQuestion[] }): Promise<{ formId: string; formUrl: string }> {
+  const apiKey = process.env.TALLY_API_KEY;
+  if (!apiKey) throw new Error("TALLY_API_KEY is not set — add it to .env (dev) and Vercel (prod).");
+  const t0 = Date.now();
+  try {
+    const body = {
+      status: "PUBLISHED",
+      blocks: mapQuestionsToBlocks(input.title, input.questions),
+      ...(process.env.TALLY_WORKSPACE_ID ? { workspaceId: process.env.TALLY_WORKSPACE_ID } : {}),
+    };
+    const res = await fetch(`${TALLY_API}/forms`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Tally API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const json = (await res.json()) as { id?: string; formId?: string; shareUrl?: string; url?: string };
+    const formId = json.id ?? json.formId;
+    if (!formId) throw new Error("Tally create returned no form id");
+    const formUrl = json.shareUrl ?? json.url ?? `https://tally.so/r/${formId}`;
+    void logOps({ kind: "integration", name: "tally", status: "ok", actor: "AGENT · CLAUDE", actorLabel: "AGENT · CLAUDE", durationMs: Date.now() - t0, detail: `Created form ${formId}` });
+    return { formId, formUrl };
+  } catch (e) {
+    void logOps({ kind: "integration", name: "tally", status: "error", actor: "AGENT · CLAUDE", actorLabel: "AGENT · CLAUDE", durationMs: Date.now() - t0, error: e instanceof Error ? e.message : "tally create failed" });
+    throw e;
+  }
+}
+
+// ── Webhook side ──
+export function verifyTallySignature(rawBody: string, signature: string | null): boolean {
+  const secret = process.env.TALLY_WEBHOOK_SIGNING_SECRET;
+  if (!secret || !signature) return false;
+  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest("base64");
+  try {
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signature);
+    return a.length === b.length && timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+export type TallyAnswer = { label: string; type: string; value: string };
+
+function normalizeValue(f: Record<string, unknown>): string {
+  const v = f.value;
+  const options = Array.isArray(f.options) ? (f.options as { id?: string; text?: string }[]) : [];
+  const resolve = (id: unknown) => options.find((o) => o.id === id)?.text ?? String(id);
+  if (Array.isArray(v)) return v.map(resolve).join(", ");
+  if (options.length && typeof v === "string") return resolve(v);
+  if (v == null) return "";
+  return String(v);
+}
+
+export function parseTallySubmission(payload: unknown): {
+  formId: string | null;
+  submissionId: string | null;
+  respondentName: string | null;
+  respondentEmail: string | null;
+  answers: TallyAnswer[];
+} {
+  const data = ((payload as Record<string, unknown>)?.data ?? {}) as Record<string, unknown>;
+  const fields = Array.isArray(data.fields) ? (data.fields as Record<string, unknown>[]) : [];
+  const answers: TallyAnswer[] = [];
+  let respondentEmail: string | null = null;
+  let respondentName: string | null = null;
+  for (const f of fields) {
+    const label = typeof f.label === "string" ? f.label : typeof f.key === "string" ? f.key : "";
+    const type = typeof f.type === "string" ? f.type : "";
+    const value = normalizeValue(f);
+    if (type.toUpperCase().includes("EMAIL") && !respondentEmail && value) respondentEmail = value;
+    if (/name/i.test(label) && !respondentName && value) respondentName = value;
+    answers.push({ label, type, value });
+  }
+  return {
+    formId: typeof data.formId === "string" ? data.formId : null,
+    submissionId: typeof data.responseId === "string" ? data.responseId : typeof data.submissionId === "string" ? data.submissionId : null,
+    respondentName,
+    respondentEmail,
+    answers,
+  };
+}
+
+function renderAnswersMarkdown(title: string, parsed: ReturnType<typeof parseTallySubmission>): string {
+  const lines = [`# ${title} — responses`, ""];
+  const who = [parsed.respondentName, parsed.respondentEmail].filter(Boolean).join(" · ");
+  if (who) lines.push(`**Respondent:** ${who}`, "");
+  for (const a of parsed.answers) {
+    lines.push(`**${a.label}**`, "", a.value || "_(blank)_", "");
+  }
+  return lines.join("\n");
+}
+
+export type TallySaveResult = { status: "deduped" | "no_match" | "saved"; surveyId?: string };
+
+/** The shared webhook worker: idempotent, matches the form, saves answers +
+ *  a Drive copy + an Artifact, notifies the partner. Never the review queue. */
+export async function saveTallySubmission(payload: unknown): Promise<TallySaveResult> {
+  const parsed = parseTallySubmission(payload);
+  if (!parsed.formId || !parsed.submissionId) return { status: "no_match" };
+
+  const dupe = await prisma.discoverySurvey.findUnique({ where: { externalSubmissionId: parsed.submissionId }, select: { id: true } });
+  if (dupe) return { status: "deduped", surveyId: dupe.id };
+
+  const survey = await prisma.discoverySurvey.findUnique({
+    where: { tallyFormId: parsed.formId },
+    select: {
+      id: true,
+      title: true,
+      dealId: true,
+      clientId: true,
+      deal: { select: { company: true, partnerLeadId: true } },
+      client: { select: { company: true, partnerLeadId: true, driveFolderUrl: true } },
+    },
+  });
+  if (!survey) return { status: "no_match" };
+
+  // Drive copy (best-effort) — client folder if we have one, else the shared root.
+  let driveUrl: string | null = null;
+  try {
+    let folder: string | null = null;
+    if (survey.client?.driveFolderUrl) {
+      try {
+        folder = folderIdFromUrl(survey.client.driveFolderUrl);
+      } catch {
+        folder = null;
+      }
+    }
+    if (!folder) folder = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID ?? null;
+    if (folder) {
+      const md = renderAnswersMarkdown(survey.title, parsed);
+      const fileName = `${new Date().toISOString().slice(0, 10)}-${survey.title.replace(/\s+/g, "-").slice(0, 50)}-responses.md`;
+      const up = await uploadFile(md, fileName, folder, "text/markdown");
+      driveUrl = up.webViewLink;
+    }
+  } catch {
+    /* Drive is best-effort; the DB answers are authoritative */
+  }
+
+  const company = survey.client?.company ?? survey.deal?.company ?? "the client";
+  const partnerId = survey.client?.partnerLeadId ?? survey.deal?.partnerLeadId ?? null;
+  const link = survey.dealId ? `/pipeline/${survey.dealId}` : survey.clientId ? `/clients/${survey.clientId}` : "/ingest";
+
+  await prisma.$transaction(async (tx) => {
+    await tx.discoverySurvey.update({
+      where: { id: survey.id },
+      data: {
+        status: "responded",
+        answers: parsed.answers as object,
+        respondentName: parsed.respondentName,
+        respondentEmail: parsed.respondentEmail,
+        submittedAt: new Date(),
+        externalSubmissionId: parsed.submissionId,
+        driveUrl,
+      },
+    });
+    if (driveUrl) {
+      await tx.artifact.create({
+        data: {
+          type: "report",
+          title: `Discovery questionnaire · ${company}`,
+          driveUrl,
+          createdBy: "AGENT · CLAUDE",
+          generatedFromSkill: "discovery-questionnaire",
+          reviewStatus: "approved",
+          clientId: survey.clientId ?? null,
+          dealId: survey.clientId ? null : survey.dealId ?? null,
+        },
+      });
+    }
+    await writeAudit(tx, {
+      actor: agentActor("tally"),
+      action: "responded.discoverySurvey",
+      targetType: "DiscoverySurvey",
+      targetId: survey.id,
+      changes: { submissionId: parsed.submissionId, answers: parsed.answers.length },
+    });
+    await writeActivity(tx, {
+      actor: agentActor("tally"),
+      type: "doc",
+      target: company,
+      detail: `Discovery questionnaire returned — ${parsed.answers.length} answers`,
+      link,
+    });
+    if (partnerId) {
+      await notifyPartner(tx, partnerId, "deliverable_added", `${company} returned the discovery questionnaire — ${parsed.answers.length} answers ready for the report.`, { link });
+    }
+  });
+
+  void logOps({ kind: "ingest", name: "tally", status: "ok", actor: "AGENT · CLAUDE", actorLabel: "AGENT · CLAUDE", detail: `${company} responded`, clientId: survey.clientId ?? undefined });
+  return { status: "saved", surveyId: survey.id };
+}

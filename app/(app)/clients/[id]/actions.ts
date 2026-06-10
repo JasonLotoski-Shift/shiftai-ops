@@ -19,6 +19,7 @@ import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { formatDate } from "@/lib/format";
+import { normalizeDomain } from "@/lib/apollo";
 import type { ArtifactType, InteractionType } from "@/lib/generated/prisma/enums";
 
 // Which generative client docs exist, and how each is labelled / filed.
@@ -568,8 +569,16 @@ export async function uploadClientFile(
 // ──────────────────────────────────────────────────────────────────────
 
 // Fields the enrich-company-web skill is allowed to touch, split by shape so
-// the merge knows append (list) vs set-if-empty (scalar).
-const COMPANY_ENRICH_LIST_FIELDS = ["companyKeyFacts", "brandColors"] as const;
+// the merge knows append (list) vs set-if-empty (scalar). The D40 set —
+// must match the field lists in skills/enrich-company-web/SKILL.md.
+const COMPANY_ENRICH_LIST_FIELDS = [
+  "companyKeyFacts",
+  "brandColors",
+  "currentSystems",
+  "painPoints",
+  "keyServices",
+  "competitors",
+] as const;
 const COMPANY_ENRICH_SCALAR_FIELDS = [
   "companySize",
   "headquarters",
@@ -577,10 +586,40 @@ const COMPANY_ENRICH_SCALAR_FIELDS = [
   "website",
   "ownership",
   "description",
+  "linkedinUrl",
+  "instagramUrl",
+  "revenueEstimate",
+  "employeeCount",
+  "subIndustry",
+  "locations",
 ] as const;
+// Int columns inside the scalar set — proposals arrive as strings and get
+// coerced (or skipped) before the merge.
+const COMPANY_ENRICH_INT_FIELDS = ["revenueEstimate", "employeeCount"] as const;
 type CompanyEnrichListField = (typeof COMPANY_ENRICH_LIST_FIELDS)[number];
 type CompanyEnrichScalarField = (typeof COMPANY_ENRICH_SCALAR_FIELDS)[number];
+type CompanyEnrichIntField = (typeof COMPANY_ENRICH_INT_FIELDS)[number];
 type CompanyEnrichField = CompanyEnrichListField | CompanyEnrichScalarField;
+
+// "~$12.5M", "1,200 employees", "1.2B" → a whole number (CAD for revenue).
+// The skill appends a "(source: …)" tag to every value — stripped first so
+// "220 (source: trade-press profile)" parses. Conservative on purpose:
+// anything ambiguous returns null and the addition is skipped, never guessed.
+function coerceEnrichInt(raw: string): number | null {
+  const cleaned = raw
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[$,~]/g, "")
+    .replace(/\bCAD\b/gi, "")
+    .replace(/\b(employees|people|staff)\b/gi, "")
+    .trim();
+  const m = cleaned.match(/^(\d+(?:\.\d+)?)\s*([kKmMbB])?$/);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return null;
+  const mult = m[2] ? { k: 1e3, m: 1e6, b: 1e9 }[m[2].toLowerCase() as "k" | "m" | "b"] : 1;
+  const value = Math.round(n * mult);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
 
 export type CompanyEnrichAddition = { field: CompanyEnrichField; value: string };
 export type CompanyEnrichConflict = {
@@ -677,8 +716,18 @@ export async function generateCompanyEnrichment(
       website: true,
       ownership: true,
       description: true,
+      linkedinUrl: true,
+      instagramUrl: true,
+      revenueEstimate: true,
+      employeeCount: true,
+      subIndustry: true,
+      locations: true,
       companyKeyFacts: true,
       brandColors: true,
+      currentSystems: true,
+      painPoints: true,
+      keyServices: true,
+      competitors: true,
     },
   });
   if (!client) throw new Error("Client not found");
@@ -693,8 +742,18 @@ export async function generateCompanyEnrichment(
     `Founded: ${client.founded || "(empty)"}`,
     `Ownership: ${client.ownership || "(empty)"}`,
     `Description: ${client.description || "(empty)"}`,
+    `LinkedIn: ${client.linkedinUrl || "(empty)"}`,
+    `Instagram: ${client.instagramUrl || "(empty)"}`,
+    `Revenue estimate (whole CAD): ${client.revenueEstimate ?? "(empty)"}`,
+    `Employee count: ${client.employeeCount ?? "(empty)"}`,
+    `Sub-industry: ${client.subIndustry || "(empty)"}`,
+    `Locations: ${client.locations || "(empty)"}`,
     `Key facts: ${client.companyKeyFacts.length ? client.companyKeyFacts.join("; ") : "(none)"}`,
     `Brand colors: ${client.brandColors.length ? client.brandColors.join(", ") : "(none)"}`,
+    `Current systems: ${client.currentSystems.length ? client.currentSystems.join("; ") : "(none)"}`,
+    `Pain points: ${client.painPoints.length ? client.painPoints.join("; ") : "(none)"}`,
+    `Key services: ${client.keyServices.length ? client.keyServices.join("; ") : "(none)"}`,
+    `Competitors: ${client.competitors.length ? client.competitors.join("; ") : "(none)"}`,
   ];
 
   const raw = await generate({
@@ -730,10 +789,21 @@ export async function applyCompanyEnrichment(
       headquarters: true,
       founded: true,
       website: true,
+      domain: true,
       ownership: true,
       description: true,
+      linkedinUrl: true,
+      instagramUrl: true,
+      revenueEstimate: true,
+      employeeCount: true,
+      subIndustry: true,
+      locations: true,
       companyKeyFacts: true,
       brandColors: true,
+      currentSystems: true,
+      painPoints: true,
+      keyServices: true,
+      competitors: true,
     },
   });
   if (!client) throw new Error("Client not found");
@@ -747,6 +817,10 @@ export async function applyCompanyEnrichment(
   const lists: Record<CompanyEnrichListField, string[]> = {
     companyKeyFacts: [...client.companyKeyFacts],
     brandColors: [...client.brandColors],
+    currentSystems: [...client.currentSystems],
+    painPoints: [...client.painPoints],
+    keyServices: [...client.keyServices],
+    competitors: [...client.competitors],
   };
   const applied: CompanyEnrichAddition[] = [];
   const skipped: CompanyEnrichAddition[] = [];
@@ -761,12 +835,35 @@ export async function applyCompanyEnrichment(
       } else {
         skipped.push(a);
       }
+    } else if ((COMPANY_ENRICH_INT_FIELDS as readonly string[]).includes(a.field)) {
+      // Int columns — coerce the proposed string; skip if it doesn't parse
+      // cleanly rather than guess.
+      const f = a.field as CompanyEnrichIntField;
+      const parsed = coerceEnrichInt(a.value);
+      if (parsed !== null && client[f] == null) {
+        data[f] = parsed;
+        applied.push(a);
+      } else {
+        skipped.push(a);
+      }
     } else {
-      const f = a.field as CompanyEnrichScalarField;
+      const f = a.field as Exclude<CompanyEnrichScalarField, CompanyEnrichIntField>;
       const current = client[f];
       if (!current || !current.trim()) {
-        data[f] = a.value;
+        // URL fields land as the bare value — drop the trailing source tag so
+        // click-outs work and the domain derives clean (mirrors the deal path).
+        const isUrlField = f === "website" || f === "linkedinUrl" || f === "instagramUrl";
+        const value = isUrlField ? a.value.replace(/\s*\(.*$/, "").trim() : a.value;
+        if (!value) {
+          skipped.push(a);
+          continue;
+        }
+        data[f] = value;
         applied.push(a);
+        if (f === "website" && !client.domain) {
+          const domain = normalizeDomain(value);
+          if (domain) data.domain = domain;
+        }
       } else {
         // Already set — don't overwrite. Partner resolves conflicts manually.
         skipped.push(a);

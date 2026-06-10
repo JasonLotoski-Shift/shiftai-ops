@@ -4,6 +4,9 @@ import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Hairline, Avatar, EmptyState } from "@/components/ui";
 import { DealActions, DealActionsPanel } from "@/components/deal-actions";
 import { MarkRepliedButton } from "@/components/mark-replied-button";
+import { DiscoverySurveyCard } from "@/components/discovery-survey-card";
+import { DealCommitteeCard } from "@/components/deal-committee-card";
+import { DealEnrichPanel } from "@/components/deal-enrich-panel";
 import { EstimateEditor } from "@/components/billing/estimate-editor";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
@@ -26,7 +29,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   // Latest open/accepted estimate for this deal (Phase 5 scoping) + whether a
   // prototype already exists (gates the proposal-deck action).
-  const [estimateRaw, tiers, prototype] = await Promise.all([
+  const [estimateRaw, tiers, prototype, surveyRaw, contactLinksRaw, allContacts] = await Promise.all([
     prisma.estimate.findFirst({
       where: { dealId: id, status: { not: "superseded" } },
       orderBy: { version: "desc" },
@@ -41,8 +44,38 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       where: { dealId: id, generatedFromSkill: "html-prototype" },
       select: { id: true },
     }),
+    prisma.discoverySurvey.findFirst({
+      where: { dealId: id },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, title: true, tallyFormUrl: true, respondentName: true, respondentEmail: true, submittedAt: true, driveUrl: true, answers: true },
+    }),
+    // Buying committee — the deal's Contact↔Deal links, primary first.
+    prisma.contactLink.findMany({
+      where: { dealId: id },
+      include: { contact: { select: { id: true, name: true, title: true, company: true } } },
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    }),
+    // Picker list for the add-person flow on the committee card.
+    prisma.contact.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, title: true, company: true },
+    }),
   ]);
   const hasPrototype = !!prototype;
+  const surveyUrl =
+    surveyRaw && (surveyRaw.status === "sent" || surveyRaw.status === "responded") ? surveyRaw.tallyFormUrl ?? undefined : undefined;
+  const surveyCard = surveyRaw
+    ? {
+        status: surveyRaw.status as "draft" | "sent" | "responded",
+        title: surveyRaw.title,
+        tallyFormUrl: surveyRaw.tallyFormUrl,
+        respondentName: surveyRaw.respondentName,
+        respondentEmail: surveyRaw.respondentEmail,
+        submittedAt: surveyRaw.submittedAt ? surveyRaw.submittedAt.toISOString() : null,
+        driveUrl: surveyRaw.driveUrl,
+        answers: Array.isArray(surveyRaw.answers) ? (surveyRaw.answers as { label: string; value: string }[]) : null,
+      }
+    : null;
   const estimate = estimateRaw
     ? {
         id: estimateRaw.id,
@@ -65,6 +98,23 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   const partner = deal.partnerLead;
   const stale = daysSince(deal.lastTouchAt) > 30;
 
+  const committeeLinks = contactLinksRaw.map((l) => ({
+    id: l.id,
+    relationship: l.relationship,
+    role: l.role,
+    roleLabel: l.roleLabel,
+    isPrimary: l.isPrimary,
+    addedBy: l.addedBy,
+    contact: l.contact,
+  }));
+
+  // Sales-intel facts — only the ones the partner has filled in.
+  const intelFacts: { label: string; value: string }[] = [];
+  if (deal.nextStep) intelFacts.push({ label: "Next step", value: deal.nextStep });
+  if (deal.probability != null) intelFacts.push({ label: "Probability", value: `${deal.probability}%` });
+  if (deal.budget) intelFacts.push({ label: "Budget (as stated)", value: deal.budget });
+  if (deal.competitor) intelFacts.push({ label: "Competitor", value: deal.competitor });
+
   return (
     <>
       <Header
@@ -74,7 +124,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       />
 
       <div className="px-8 py-8 flex flex-col gap-8">
-        <DealActionsPanel deal={deal} partner={partner} contact={contact} hasPrototype={hasPrototype} />
+        <DealActionsPanel deal={deal} partner={partner} contact={contact} hasPrototype={hasPrototype} surveyUrl={surveyUrl} />
 
         <Link href="/pipeline" className="label hover:text-bone flex items-center gap-2">
           <ArrowLeft size={12} strokeWidth={1.5} />
@@ -106,6 +156,16 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                 </span>
               </div>
             </div>
+            {intelFacts.length > 0 && (
+              <div className="px-6 pb-6 grid grid-cols-4 gap-6">
+                {intelFacts.map((f) => (
+                  <div key={f.label} className="flex flex-col gap-2">
+                    <Label>{f.label}</Label>
+                    <span className="text-[14px] text-bone">{f.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {deal.coldOutreachAt && (
               <div className="mx-6 mb-6 px-4 py-4 bg-track-gold-dim/5 border border-track-gold/30 rounded-[var(--radius)] flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -140,6 +200,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               </div>
             )}
           </Card>
+
+          <DealEnrichPanel deal={deal} />
 
           <EstimateEditor dealId={deal.id} estimate={estimate} tiers={tiers} />
 
@@ -229,6 +291,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
             </CardBody>
           </Card>
 
+          <DealCommitteeCard dealId={deal.id} links={committeeLinks} contacts={allContacts} />
+
           <Card>
             <div className="px-5 pt-5 pb-3">
               <span className="title-md">Partner lead</span>
@@ -253,6 +317,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               <p className="text-[13px] text-bone-dim">{contact.source ?? "Unknown"}</p>
             </CardBody>
           </Card>
+
+          {surveyCard && <DiscoverySurveyCard survey={surveyCard} dealId={deal.id} company={deal.company} />}
         </div>
         </div>
       </div>

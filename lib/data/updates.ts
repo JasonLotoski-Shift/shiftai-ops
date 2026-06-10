@@ -24,6 +24,20 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-10",
+    tag: "new",
+    title: "Send a discovery questionnaire after a call — it builds the report",
+    detail:
+      "On a deal you can now generate a deep, business-specific questionnaire from the discovery call — 30–45 questions about their actual operation, tools, and bottlenecks — review and edit it, and create a real form with one click. The link drops into the follow-up email. When the prospect fills it out, the answers save straight to the deal (and carry to the client on convert), land a copy in their Drive folder, and notify you. “Build discovery report” then turns those answers into the client-facing report. (Needs the form-tool keys set before it goes live.)",
+  },
+  {
+    date: "2026-06-10",
+    tag: "new",
+    title: "People on deals and clients — who's connected, and their role",
+    detail:
+      "A contact can now be linked to any deal or client with how they're connected (works there, introduced us, advisor) and — where it matters — their pull in the buying decision (decision-maker, champion, budget holder, and so on), with one person marked as the main contact. Deals also carry the same company profile a client gets (website, socials, size, the systems they run, their pain points) with the same enrich-from-web. And Ingest can now propose new people and links straight from an email or meeting — all behind the same review-and-approve gate, nothing written until you say so. On convert, a deal's people and profile carry over to the new client.",
+  },
+  {
+    date: "2026-06-10",
     tag: "improved",
     title: "AI drafts now follow a tighter writing rule",
     detail:

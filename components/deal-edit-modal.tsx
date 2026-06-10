@@ -1,6 +1,8 @@
 "use client";
 
-// Edit-deal modal — value, stage, industry, close-target date, company, notes.
+// Edit-deal modal — value, stage, industry, close-target date, company, notes,
+// plus the D40 sales-intel fields (website, next step, competitor,
+// probability, budget, lost reason — there's no "lost" stage, just the note).
 // Mirrors the modal shell of DraftProposalModal; saves via updateDeal then
 // refreshes. Stage excludes "signed" (signing runs Convert → Client). Opened
 // from the deal header's Edit button (deal-actions.tsx).
@@ -30,6 +32,12 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
   const [industry, setIndustry] = useState<string>(deal.industry);
   const [closeDate, setCloseDate] = useState(toISODate(deal.closeTargetDate));
   const [notes, setNotes] = useState(deal.notes ?? "");
+  const [website, setWebsite] = useState(deal.website ?? "");
+  const [nextStep, setNextStep] = useState(deal.nextStep ?? "");
+  const [competitor, setCompetitor] = useState(deal.competitor ?? "");
+  const [probability, setProbability] = useState(deal.probability != null ? String(deal.probability) : "");
+  const [budget, setBudget] = useState(deal.budget ?? "");
+  const [lostReason, setLostReason] = useState(deal.lostReason ?? "");
 
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -46,6 +54,12 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
           industry,
           closeTargetDate: closeDate,
           notes,
+          website,
+          nextStep,
+          competitor,
+          probability: probability.trim() === "" ? null : Number(probability),
+          budget,
+          lostReason,
         });
         router.refresh();
         onClose();
@@ -123,6 +137,62 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
           </div>
 
           <div className="flex flex-col gap-2">
+            <Label>Website</Label>
+            <Input
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="acme-fleet.com"
+              disabled={isPending}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Next step</Label>
+              <Input
+                value={nextStep}
+                onChange={(e) => setNextStep(e.target.value)}
+                placeholder="e.g. Send proposal by Friday"
+                disabled={isPending}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Competitor</Label>
+              <Input
+                value={competitor}
+                onChange={(e) => setCompetitor(e.target.value)}
+                placeholder="Who else they're talking to"
+                disabled={isPending}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Probability (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={probability}
+                onChange={(e) => setProbability(e.target.value)}
+                placeholder="Your call, 0–100"
+                disabled={isPending}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Budget (as stated)</Label>
+              <Input
+                value={budget}
+                onChange={(e) => setBudget(e.target.value)}
+                placeholder='e.g. "$50k floated on the call"'
+                disabled={isPending}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
             <Label>Notes</Label>
             <Textarea
               rows={4}
@@ -132,6 +202,23 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
               disabled={isPending}
             />
           </div>
+
+          <details className="flex flex-col gap-2">
+            <summary className="label cursor-pointer hover:text-bone list-none select-none">
+              Lost reason ▸
+            </summary>
+            <div className="flex flex-col gap-2 pt-2">
+              <Input
+                value={lostReason}
+                onChange={(e) => setLostReason(e.target.value)}
+                placeholder="Only if this deal died — why, in plain words"
+                disabled={isPending}
+              />
+              <span className="text-[11px] text-bone-mute">
+                There&apos;s no lost stage — this note just keeps the record honest.
+              </span>
+            </div>
+          </details>
 
           <div className="flex items-start gap-2 px-3 py-2 bg-bitumen rounded-[var(--radius)] shadow-[var(--shadow-sm)]">
             <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />

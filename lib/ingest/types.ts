@@ -7,6 +7,8 @@
 // diffs against the live record to set `op`/`existing` (never trust the model
 // for current state). See lib/ingest/apply.ts for how approved changes persist.
 
+import type { RelationshipType, StakeholderRole } from "@/lib/types";
+
 export type IngestType = "interaction" | "meeting" | "email" | "document";
 
 export const INGEST_TYPES: IngestType[] = ["interaction", "meeting", "email", "document"];
@@ -39,6 +41,53 @@ export type ProposedMilestone = {
 export type ProposedDeliverable = {
   type: string; // ArtifactType
   title: string;
+};
+
+// ── People & links (D40 relationship model) ──
+// Two independent dimensions: `relationship` = how the person connects to the
+// company; `role` = their pull in the buying decision (meaningful mainly for
+// works_there). Values are plain underscored (brand-new enums, no @map).
+
+export const RELATIONSHIP_TYPES: readonly RelationshipType[] = [
+  "works_there",
+  "introduced_us",
+  "advisor",
+  "other",
+] as const;
+
+export const STAKEHOLDER_ROLES: readonly StakeholderRole[] = [
+  "decision_maker",
+  "champion",
+  "influencer",
+  "budget_holder",
+  "technical",
+  "gatekeeper",
+  "blocker",
+  "other",
+] as const;
+
+/** A person named in the source who isn't on file yet. Email-validated and
+ *  firm-internal-excluded at parse; deduped against existing contacts on
+ *  approve (link to the match instead of creating). */
+export type ProposedContact = {
+  name: string;
+  email: string;
+  title: string | null;
+  company: string | null;
+  suggestedRelationship: RelationshipType;
+  suggestedRole: StakeholderRole | null;
+};
+
+/** A Contact ↔ Deal/Client link proposal — the buying committee + intro paths.
+ *  `contactEmail` is an existing contact's email OR a proposedContacts email;
+ *  `targetId` must be a record id from the context block (validated at extract). */
+export type ContactLinkProposal = {
+  contactEmail: string;
+  targetKind: "deal" | "client";
+  targetId: string;
+  relationship: RelationshipType;
+  role: StakeholderRole | null;
+  isPrimary: boolean;
 };
 
 /** One record's proposed changes, grouped for the review UI. */
@@ -75,6 +124,9 @@ export type UnifiedProposal = {
   keyPoints: string[];
   records: RecordProposal[];
   tasks: TaskProposal[];
+  // Optional (so pending proposals from before the D40 upgrade still parse).
+  proposedContacts?: ProposedContact[];
+  contactLinks?: ContactLinkProposal[];
 };
 
 /** Narrow an unknown IngestProposal.proposal JSON to the unified (v2) shape. */
@@ -111,9 +163,33 @@ export type ApprovedTask = {
   reassignTaskId: string | null;
 };
 
+/** An approved new person — relationship/role are the partner-edited values
+ *  (they survive the review screen, not the model's suggestions). */
+export type ApprovedProposedContact = {
+  name: string;
+  email: string;
+  title: string | null;
+  company: string | null;
+  relationship: RelationshipType;
+  role: StakeholderRole | null;
+};
+
+/** An approved Contact ↔ Deal/Client link — partner-edited values. */
+export type ApprovedContactLink = {
+  contactEmail: string;
+  targetKind: "deal" | "client";
+  targetId: string;
+  relationship: RelationshipType;
+  role: StakeholderRole | null;
+  isPrimary: boolean;
+};
+
 export type ApproveUnifiedSelections = {
   records: ApprovedRecord[];
   tasks: ApprovedTask[];
+  // Only the approved people/links (optional — absent on pre-D40 proposals).
+  proposedContacts?: ApprovedProposedContact[];
+  contactLinks?: ApprovedContactLink[];
   // Partner-selected pipeline deal to log the summary against (its primary
   // contact). Optional — null/absent means no deal link. Interactions are
   // contact-scoped, so the deal's primary contact carries the logged summary.

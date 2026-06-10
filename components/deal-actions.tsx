@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, FileText, Pencil, ClipboardList, ListChecks, CalendarPlus, FlaskConical, Presentation, type LucideIcon } from "lucide-react";
+import { Mail, FileText, Pencil, ClipboardList, ListChecks, CalendarPlus, FlaskConical, Presentation, FileQuestion, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
@@ -11,6 +11,7 @@ import { DealEditModal } from "@/components/deal-edit-modal";
 import { DealDocModal, type DealDocSkill } from "@/components/deal-doc-modal";
 import { DraftEmailModal } from "@/components/draft-email-modal";
 import { ProposalEngineModal } from "@/components/proposal-engine-modal";
+import { DiscoveryQuestionnaireModal } from "@/components/discovery-questionnaire-modal";
 import type {
   DealModel as Deal,
   PartnerModel as Partner,
@@ -20,8 +21,11 @@ import type {
 // Pre-filled follow-up email brief for the post-discovery step — seeds the
 // shared DraftEmailModal (draft-email skill). Plain string helper; the existing
 // email save/send path persists the result (Artifact + Interaction).
-function followupEmailPurpose(company: string): string {
-  return `Follow up after our discovery call with ${company}. Thank them for their time, recap the one or two things we heard (their pain, where they are with AI), restate the value of working with Shift, and propose the next step — a discussion call or a scoped proposal. Keep it short; use only real points from the logged interactions; invent nothing.`;
+function followupEmailPurpose(company: string, surveyUrl?: string): string {
+  const base = `Follow up after our discovery call with ${company}. Thank them for their time, recap the one or two things we heard (their pain, where they are with AI), restate the value of working with Shift, and propose the next step — a discussion call or a scoped proposal. Keep it short; use only real points from the logged interactions; invent nothing.`;
+  return surveyUrl
+    ? `${base} Include this short questionnaire link near the end and ask them to fill it in so we can tailor the next step to their business: ${surveyUrl}`
+    : base;
 }
 
 // Per-skill copy for the generic deal-doc modal.
@@ -102,26 +106,32 @@ export function DealActionsPanel({
   partner,
   contact,
   hasPrototype = false,
+  surveyUrl,
 }: {
   deal: Deal;
   partner: Partner | null;
   contact: Contact | null;
   /** Whether a prototype Artifact already exists — gates the deck action. */
   hasPrototype?: boolean;
+  /** Latest sent discovery-questionnaire URL — injected into the follow-up email. */
+  surveyUrl?: string;
 }) {
   const [proposalOpen, setProposalOpen] = useState(false);
   const [docSkill, setDocSkill] = useState<DealDocSkill | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
   const [engineMode, setEngineMode] = useState<"prototype" | "deck" | null>(null);
+  const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
 
   const signed = deal.stage === "signed";
 
-  // Auto-open from the dashboard Quick Action (routes here with ?qa=proposal).
+  // Auto-open from a deep link (?qa=proposal | ?qa=questionnaire).
   const searchParams = useSearchParams();
-  const qaProposal = searchParams.get("qa") === "proposal";
+  const qa = searchParams.get("qa");
+  const qaProposal = qa === "proposal";
   useEffect(() => {
     if (qaProposal) setProposalOpen(true);
-  }, [qaProposal]);
+    if (qa === "questionnaire") setQuestionnaireOpen(true);
+  }, [qaProposal, qa]);
 
   if (signed) return null;
 
@@ -132,6 +142,13 @@ export function DealActionsPanel({
       title: "Discovery prep",
       description: "Brief for the discovery call — goals and questions to ask.",
       onClick: () => setDocSkill("discovery-prep"),
+    },
+    {
+      key: "questionnaire",
+      icon: FileQuestion,
+      title: "Discovery questionnaire",
+      description: "Generate a client-specific Tally form to send after the call.",
+      onClick: () => setQuestionnaireOpen(true),
     },
     ...(contact
       ? [
@@ -185,7 +202,7 @@ export function DealActionsPanel({
 
   return (
     <>
-      <ActionsPanel actions={actions} forceOpen={qaProposal} />
+      <ActionsPanel actions={actions} forceOpen={qaProposal || qa === "questionnaire"} />
 
       {proposalOpen && (
         <DraftProposalModal
@@ -213,7 +230,7 @@ export function DealActionsPanel({
           contactId={contact.id}
           contactName={contact.name}
           partnerName={partner?.name}
-          defaultPurpose={followupEmailPurpose(deal.company)}
+          defaultPurpose={followupEmailPurpose(deal.company, surveyUrl)}
           onClose={() => setEmailOpen(false)}
         />
       )}
@@ -224,6 +241,14 @@ export function DealActionsPanel({
           company={deal.company}
           mode={engineMode}
           onClose={() => setEngineMode(null)}
+        />
+      )}
+
+      {questionnaireOpen && (
+        <DiscoveryQuestionnaireModal
+          dealId={deal.id}
+          company={deal.company}
+          onClose={() => setQuestionnaireOpen(false)}
         />
       )}
     </>

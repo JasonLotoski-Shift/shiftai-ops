@@ -25,19 +25,28 @@ import { drive, folderIdFromUrl } from "@/lib/drive";
 import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
 import { notifyPartner } from "@/lib/messaging";
 import { generate } from "@/lib/ai";
-import { applyContactChanges, applyClientChanges, applyProjectChanges, applyDealStage } from "@/lib/ingest/apply";
+import {
+  applyContactChanges,
+  applyClientChanges,
+  applyProjectChanges,
+  applyDealChanges,
+  applyDealStage,
+} from "@/lib/ingest/apply";
 import { fetchTargetData, buildIngestContext, formatPartnerRoster, type TargetRef } from "@/lib/ingest/context";
 import { parseUnified } from "@/lib/ingest/parse";
 import { findDuplicateOpenTask, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
 import { resolveTargetsFromText, computeCrossReference, type DetectedTarget } from "@/lib/ingest/cross-reference";
 import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract-file";
 import { createContact } from "@/app/(app)/contacts/actions";
+import { createContactTx } from "@/lib/contacts";
+import { linkContact } from "@/lib/contact-links";
 import type {
   IngestType,
   IngestTargetKind,
   FieldChange,
   RecordProposal,
   TaskProposal,
+  ContactLinkProposal,
   UnifiedProposal,
   ApproveUnifiedSelections,
   CrossReferenceResult,
@@ -275,11 +284,14 @@ export async function extractUnified(input: {
 
   const records: RecordProposal[] = [];
   for (const r of parsed.records) {
-    // Resolve which loaded target this maps to. recordId null = inline-new contact.
-    const loadedTarget = r.recordId ? loadedByKey.get(`${r.kind}:${r.recordId}`) : null;
-    if (r.recordId && !loadedTarget) continue; // proposal for a record we didn't supply — drop
+    // New people go through proposedContacts — a record with no id from the
+    // context block can't be applied on approve, so it never reaches the card.
+    if (!r.recordId) continue;
+    // Resolve which loaded target this maps to.
+    const loadedTarget = loadedByKey.get(`${r.kind}:${r.recordId}`);
+    if (!loadedTarget) continue; // proposal for a record we didn't supply — drop
 
-    const current = (loadedTarget?.data ?? {}) as Record<string, unknown>;
+    const current = (loadedTarget.data ?? {}) as Record<string, unknown>;
 
     const fieldChanges: FieldChange[] = [];
     for (const fc of r.fieldChanges) {
@@ -329,6 +341,30 @@ export async function extractUnified(input: {
     reassignTaskId: t.reassignTaskId && openTaskIds.has(t.reassignTaskId) ? t.reassignTaskId : null,
   }));
 
+  // ── People & links: a link's targetId must be a loaded deal/client target
+  // (mirrors the reassignTaskId validation). An unknown target demotes to the
+  // focus record when the focus is a deal/client; otherwise the link drops. ──
+  const focusIsCompany =
+    input.focus &&
+    (input.focus.kind === "deal" || input.focus.kind === "client") &&
+    loadedByKey.has(`${input.focus.kind}:${input.focus.id}`);
+  const seenLinks = new Set<string>();
+  const contactLinks: ContactLinkProposal[] = [];
+  for (const cl of parsed.contactLinks) {
+    let targetKind = cl.targetKind;
+    let targetId = cl.targetId;
+    if (!loadedByKey.has(`${targetKind}:${targetId}`)) {
+      if (!focusIsCompany) continue; // invented/stale target, nowhere to demote — drop
+      targetKind = input.focus!.kind as "deal" | "client";
+      targetId = input.focus!.id;
+    }
+    const key = `${cl.contactEmail}|${targetKind}:${targetId}`;
+    if (seenLinks.has(key)) continue; // one link per person per company
+    seenLinks.add(key);
+    contactLinks.push({ ...cl, targetKind, targetId });
+  }
+  const proposedContacts = parsed.proposedContacts;
+
   const unified: UnifiedProposal = {
     schemaVersion: 2,
     ingestType: input.ingestType,
@@ -336,6 +372,8 @@ export async function extractUnified(input: {
     keyPoints: parsed.keyPoints,
     records,
     tasks,
+    ...(proposedContacts.length ? { proposedContacts } : {}),
+    ...(contactLinks.length ? { contactLinks } : {}),
   };
 
   // Focus record drives the matched* FKs (the review surface scopes off these).
@@ -366,6 +404,10 @@ export async function extractUnified(input: {
   revalidatePath("/messages");
   return { id: created.id };
 }
+
+// MilestoneStatus is @map'd (in_progress @map("in-progress")) — the create
+// must receive the underscored identifier or Prisma aborts the whole tx.
+const VALID_MILESTONE_STATUSES = new Set(["pending", "in_progress", "complete", "at_risk"]);
 
 // ── 5. approveUnified — the partner-approval gate. One transaction; applies
 // every approved record change + task, files the content to Drive, marks the
@@ -434,6 +476,11 @@ export async function approveUnified(
   let tasksCreated = 0;
   let tasksReassigned = 0;
   let stageMoves = 0;
+  let contactsCreated = 0;
+  let contactsMatchedExisting = 0;
+  let linksCreated = 0;
+  let linksUpdated = 0;
+  const linksSkipped: { contactEmail: string; reason: string }[] = [];
   // Skips surfaced in audit + activity so a dedup drop is never silent.
   const tasksSkipped: { title: string; existingId: string }[] = [];
   const milestonesSkipped: { title: string; existingId: string }[] = [];
@@ -501,10 +548,12 @@ export async function approveUnified(
         affected.projects.add(r.recordId);
         const res = await applyProjectChanges(tx, r.recordId, {
           fieldChanges: r.fieldChanges ?? [],
+          listAdditions: r.listAdditions ?? [],
           projectNotes: r.projectNotes ?? null,
         });
         totalAdds += res.adds.length;
         totalReplaces += res.replaces.length;
+        totalListAdds += res.listAdds.length;
         replaceDetail.push(...res.replaces);
 
         // Approved milestones. Undated stays null (off the timeline). Skip any
@@ -517,11 +566,15 @@ export async function approveUnified(
             continue;
           }
           const d = m.dueDate ? new Date(m.dueDate) : null;
+          // Normalize + validate the status (never trust the client): a
+          // hyphenated form becomes the underscored identifier; anything
+          // off-list falls back to pending instead of aborting the tx.
+          const mStatus = (m.status || "pending").replace(/-/g, "_");
           await tx.milestone.create({
             data: {
               title: m.title.trim(),
               dueDate: d && !Number.isNaN(d.getTime()) ? d : null,
-              status: (m.status as MilestoneStatus) ?? ("pending" as MilestoneStatus),
+              status: (VALID_MILESTONE_STATUSES.has(mStatus) ? mStatus : "pending") as MilestoneStatus,
               projectId: r.recordId,
               category: "project",
             },
@@ -551,6 +604,17 @@ export async function approveUnified(
       } else if (r.kind === "deal") {
         if (!r.recordId) continue;
         affected.deals.add(r.recordId);
+        // Company profile + sales intel — the deal's first field allowlist.
+        // Stage is NOT a fieldChange; the signal toggle below stays the only path.
+        const res = await applyDealChanges(tx, r.recordId, {
+          fieldChanges: r.fieldChanges ?? [],
+          listAdditions: r.listAdditions ?? [],
+        });
+        totalAdds += res.adds.length;
+        totalReplaces += res.replaces.length;
+        totalListAdds += res.listAdds.length;
+        replaceDetail.push(...res.replaces);
+
         if (r.applyStage && r.stageSuggestion) {
           const moved = await applyDealStage(tx, r.recordId, r.stageSuggestion);
           if (moved.moved) {
@@ -559,6 +623,88 @@ export async function approveUnified(
           }
         }
       }
+    }
+
+    // ── People & links (D40 relationship model) ──
+    // Approved new contacts first (deduped against the book — link to the
+    // existing person instead of creating a twin), then the approved
+    // Contact ↔ Deal/Client links via lib/contact-links (the single write path).
+    const emailToContactId = new Map<string, string>();
+
+    for (const pc of selections.proposedContacts ?? []) {
+      const name = pc.name?.trim();
+      const email = pc.email?.trim().toLowerCase();
+      if (!name || !email) continue;
+      // Dedupe by EMAIL only (parse guarantees a validated address on every
+      // proposedContact). A name match alone is a guess — a different
+      // "John Smith" at another company — and never merges silently; the
+      // manual flow surfaces name matches to the partner instead.
+      const existing = await tx.contact.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (existing) {
+        emailToContactId.set(email, existing.id);
+        contactsMatchedExisting++;
+        continue;
+      }
+      const created = await createContactTx(
+        tx,
+        {
+          name,
+          email,
+          title: pc.title ?? undefined,
+          company: pc.company ?? undefined,
+          source: `Ingest · ${proposal.title}`,
+          partnerLeadId: partnerId,
+        },
+        "AGENT · CLAUDE",
+      );
+      emailToContactId.set(email, created.id);
+      affected.contacts.add(created.id);
+      contactsCreated++;
+    }
+
+    for (const cl of selections.contactLinks ?? []) {
+      const email = cl.contactEmail?.trim().toLowerCase();
+      if (!email || (cl.targetKind !== "deal" && cl.targetKind !== "client") || !cl.targetId) continue;
+      // Resolve the person: just-created above, else an existing contact.
+      let contactId = emailToContactId.get(email) ?? null;
+      if (!contactId) {
+        const found = await tx.contact.findFirst({
+          where: { email: { equals: email, mode: "insensitive" } },
+          select: { id: true },
+        });
+        contactId = found?.id ?? null;
+        if (contactId) emailToContactId.set(email, contactId);
+      }
+      if (!contactId) {
+        linksSkipped.push({ contactEmail: email, reason: "no matching contact on file" });
+        continue;
+      }
+      // Confirm the target still exists — a stale id would abort the whole tx.
+      const targetExists =
+        cl.targetKind === "deal"
+          ? await tx.deal.findUnique({ where: { id: cl.targetId }, select: { id: true } })
+          : await tx.client.findUnique({ where: { id: cl.targetId }, select: { id: true } });
+      if (!targetExists) {
+        linksSkipped.push({ contactEmail: email, reason: `${cl.targetKind} no longer exists` });
+        continue;
+      }
+      const linked = await linkContact(tx, {
+        contactId,
+        dealId: cl.targetKind === "deal" ? cl.targetId : null,
+        clientId: cl.targetKind === "client" ? cl.targetId : null,
+        relationship: cl.relationship,
+        role: cl.role,
+        isPrimary: cl.isPrimary,
+        addedBy: "AGENT · CLAUDE",
+      });
+      if (linked.created) linksCreated++;
+      else linksUpdated++;
+      affected.contacts.add(contactId);
+      if (cl.targetKind === "deal") affected.deals.add(cl.targetId);
+      else affected.clients.add(cl.targetId);
     }
 
     // ── Link a partner-selected pipeline deal ──
@@ -691,6 +837,11 @@ export async function approveUnified(
         tasksSkippedAsDuplicate: tasksSkipped.length,
         tasksSkipped,
         stageMoves,
+        contactsCreated,
+        contactsMatchedExisting,
+        linksCreated,
+        linksUpdated,
+        linksSkipped,
         artifact: !!driveUrl,
         driveFileId,
       },
@@ -700,7 +851,7 @@ export async function approveUnified(
       actor,
       type: "ai",
       target: proposal.title,
-      detail: `Ingest approved — ${totalAdds} add(s), ${totalReplaces} overwrite(s), ${tasksCreated + tasksReassigned} task(s)${tasksSkipped.length || milestonesSkipped.length ? `, ${tasksSkipped.length + milestonesSkipped.length} skipped as already-open duplicate(s)` : ""}${summary.length > 60 ? "" : ` · ${summary}`}`,
+      detail: `Ingest approved — ${totalAdds} add(s), ${totalReplaces} overwrite(s), ${tasksCreated + tasksReassigned} task(s)${contactsCreated ? `, ${contactsCreated} new contact(s)` : ""}${linksCreated + linksUpdated ? `, ${linksCreated + linksUpdated} people link(s)` : ""}${tasksSkipped.length || milestonesSkipped.length ? `, ${tasksSkipped.length + milestonesSkipped.length} skipped as already-open duplicate(s)` : ""}${summary.length > 60 ? "" : ` · ${summary}`}`,
       link: "/ingest",
     });
   });

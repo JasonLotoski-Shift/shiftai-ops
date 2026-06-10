@@ -320,6 +320,42 @@ enum ProspectLeadOrigin {
   imported
 }
 
+// Contact ↔ Deal/Client link dimensions (D40 records upgrade).
+// `relationship` = how the person connects to the company; `role` = their
+// pull in the buying decision (meaningful mainly for works_there). Brand-new
+// enums → plain underscored values, no @map (Import-Contacts precedent).
+
+enum RelationshipType {
+  works_there
+  introduced_us
+  advisor
+  other
+}
+
+enum StakeholderRole {
+  decision_maker
+  champion
+  influencer
+  budget_holder
+  technical
+  gatekeeper
+  blocker
+  other
+}
+
+enum PreferredChannel {
+  email
+  call
+  text
+  linkedin
+}
+
+enum RelationshipStrength {
+  cold
+  warm
+  strong
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Partner — firm members. Doubles as the actor reference for owner /
 // lead fields. NextAuth tables will be added when SSO is wired —
@@ -398,10 +434,22 @@ model Contact {
   networkAffiliations String[]
   enrichedAt          DateTime?
 
+  // Reach & personal (D40 records upgrade) — all optional.
+  // relationshipStrength is partner judgment: manual UI only, never AI-proposed.
+  linkedinUrl          String?
+  location             String? // city/region, free text
+  timezone             String? // e.g. "America/Vancouver" or "PT" — scheduling aid
+  mobilePhone          String? // separate from main phone
+  preferredChannel     PreferredChannel?
+  relationshipStrength RelationshipStrength?
+  importantDates       String[] // free text, e.g. "Birthday — March 12"
+
   interactions      Interaction[]
   deals             Deal[]
   primaryForClients Client[]      @relation("ClientPrimaryContact")
   billingForClients Client[]      @relation("ClientBillingContact")
+  links             ContactLink[]
+  clientLeadProjects Project[]    @relation("ProjectClientLead")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -430,6 +478,41 @@ model Interaction {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// ContactLink — many-to-many Contact ↔ Deal/Client (D40). The company side
+// is polymorphic: exactly ONE of dealId/clientId is set (enforced in
+// lib/contact-links.ts, the single write path — mirrors Task's scope FKs).
+// On Convert, a deal's links re-point dealId → clientId so the buying
+// committee + intro path carry into the new client.
+// ──────────────────────────────────────────────────────────────────────
+
+model ContactLink {
+  id        String  @id @default(cuid())
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId String
+  deal      Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealId    String?
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String?
+
+  relationship RelationshipType @default(works_there)
+  role         StakeholderRole? // buying influence — mainly for works_there people
+  roleLabel    String? // free text — "VP Ops", "met at SEMA"
+  isPrimary    Boolean          @default(false)
+  notes        String?
+  // Free-text actor — partner name OR "AGENT · CLAUDE" (matches Interaction.loggedBy)
+  addedBy      String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contactId, dealId])
+  @@unique([contactId, clientId])
+  @@index([dealId])
+  @@index([clientId])
+  @@index([contactId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Deal — pipeline. valueEstimate is whole CAD (matches existing seed).
 // ──────────────────────────────────────────────────────────────────────
 
@@ -451,6 +534,33 @@ model Deal {
   outreachRepliedAt DateTime?
   notes             String?
 
+  // Company profile (D40) — gathered at deal stage, mirrors Client's block,
+  // copied forward to the new Client on Convert. Append-only via enrich.
+  website         String?
+  domain          String? // normalized bare host (normalizeDomain). NOT unique.
+  linkedinUrl     String?
+  instagramUrl    String?
+  revenueEstimate Int? // whole CAD — filterable against the $25–200M ICP
+  employeeCount   Int?
+  companySize     String?
+  headquarters    String?
+  founded         String?
+  ownership       String?
+  description     String?
+  subIndustry     String? // finer than Industry — "heavy-civil", "motorsport fab"
+  currentSystems  String[] // what they run today — the build signal
+  painPoints      String[] // where it hurts — the build signal
+  companyKeyFacts String[]
+  enrichedAt      DateTime?
+
+  // Sales intelligence (D40). probability is partner judgment — manual only.
+  nextStep    String?
+  competitor  String?
+  probability Int? // 0–100, weighted-pipeline input
+  budget      String? // as stated/floated — free text, soft until contracted
+  lostReason  String?
+  lostAt      DateTime?
+
   contact   Contact @relation(fields: [contactId], references: [id])
   contactId String
 
@@ -460,9 +570,52 @@ model Deal {
   artifacts  Artifact[]
   milestones Milestone[]
   estimates  Estimate[]
+  discoverySurveys DiscoverySurvey[]
+  contactLinks ContactLink[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Discovery questionnaire (Tally). Generated per-prospect after a discovery call,
+// created as a Tally form via API, the link sent in the follow-up email. The
+// client's submission lands via webhook and feeds the discovery report. Anchored
+// on the Deal; on conversion the same row is repointed to the Client (both FKs
+// nullable, like Artifact). See lib/tally.ts + app/api/ingest/tally.
+enum DiscoverySurveyStatus {
+  draft
+  sent
+  responded
+}
+
+model DiscoverySurvey {
+  id        String                @id @default(cuid())
+  status    DiscoverySurveyStatus @default(draft)
+  title     String
+  questions Json // [{ type, label, options?, required?, section? }] — the generated questionnaire
+
+  tallyFormId  String? @unique // webhook join key
+  tallyFormUrl String?
+
+  answers              Json? // normalized [{ label, type, value }] from the submission
+  respondentName       String?
+  respondentEmail      String?
+  submittedAt          DateTime?
+  driveUrl             String?
+  externalSubmissionId String? @unique // Tally responseId — idempotency
+
+  dealId   String? // set at deal stage; retained for provenance after conversion
+  clientId String? // added when the deal converts to a client
+  deal     Deal?   @relation(fields: [dealId], references: [id])
+  client   Client? @relation(fields: [clientId], references: [id])
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([status])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -499,7 +652,24 @@ model Client {
   companyKeyFacts String[]
   enrichedAt      DateTime?
 
+  // Presence & firmographics (D40)
+  linkedinUrl     String?
+  instagramUrl    String?
+  domain          String? // normalized bare host (normalizeDomain). NOT unique.
+  revenueEstimate Int? // whole CAD — filterable, alongside free-text `revenue`
+  employeeCount   Int?
+  subIndustry     String?
+  locations       String? // sites/regions, free text
+
+  // Shift-specific signal (D40) — what they run, where it hurts, who they sell to
+  currentSystems String[]
+  painPoints     String[]
+  keyServices    String[]
+  competitors    String[]
+
   // Engagement / billing
+  statusNote       String? // partner's health note — manual only, never AI-proposed
+  renewalDate      DateTime?
   paymentTerms     String?
   contractEndAt    DateTime?
   billingContact   Contact?  @relation("ClientBillingContact", fields: [billingContactId], references: [id])
@@ -510,6 +680,8 @@ model Client {
   tasks      Task[]
   artifacts  Artifact[]
   milestones Milestone[]
+  discoverySurveys DiscoverySurvey[]
+  contactLinks ContactLink[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -537,6 +709,17 @@ model Project {
 
   partnerLead   Partner @relation("PartnerProjectLead", fields: [partnerLeadId], references: [id])
   partnerLeadId String
+
+  // Client-side lead for this project (D40) — who on their side owns it
+  clientLead   Contact? @relation("ProjectClientLead", fields: [clientLeadId], references: [id])
+  clientLeadId String?
+
+  // Scope & outcomes (D40) — how we prove value, what we're delivering
+  objectives     String?
+  successMetrics String[]
+  systemsBuilt   String[]
+  risks          String[]
+  statusNote     String?
 
   consultants Partner[] @relation("ProjectConsultants")
 

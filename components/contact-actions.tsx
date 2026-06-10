@@ -11,6 +11,7 @@ import {
   ShieldAlert,
   Check,
   FileInput,
+  Pencil,
 } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
@@ -26,8 +27,9 @@ import {
   type EnrichAddition,
   type EnrichConflict,
 } from "@/app/(app)/contacts/[id]/actions";
+import { updateContact } from "@/app/(app)/contacts/actions";
 
-type ActionKey = "email" | "log" | "search" | "enrich";
+type ActionKey = "email" | "log" | "edit" | "search" | "enrich";
 
 const TODAY = "2026-05-19";
 
@@ -66,6 +68,13 @@ export function ContactActions({
       onClick: () => setOpen("log"),
     },
     {
+      key: "edit",
+      icon: Pencil,
+      title: "Edit details",
+      description: "Update reach info and personal details.",
+      onClick: () => setOpen("edit"),
+    },
+    {
       key: "search",
       icon: Globe,
       title: "Enrich from web",
@@ -94,6 +103,7 @@ export function ContactActions({
 
       {open === "email" && <DraftEmailModal contactId={contact.id} contactName={contact.name} partnerName={partnerName} onClose={() => setOpen(null)} />}
       {open === "log" && <LogInteractionModal contact={contact} onClose={() => setOpen(null)} />}
+      {open === "edit" && <EditContactModal contact={contact} onClose={() => setOpen(null)} />}
       {open === "search" && <EnrichModal contact={contact} mode="web" onClose={() => setOpen(null)} />}
       {open === "enrich" && <EnrichModal contact={contact} mode="ai" onClose={() => setOpen(null)} />}
     </>
@@ -213,6 +223,172 @@ function LogInteractionModal({ contact, onClose }: { contact: Contact; onClose: 
 }
 
 /* ──────────────────────────────────────────────────────────────────────
+   Edit details — reach info + personal details (D40). Only the fields the
+   partner touches are written; clearing a field clears it on the record.
+   relationshipStrength is partner judgment — this modal is the only way
+   it gets set (never AI-proposed).
+   ────────────────────────────────────────────────────────────────────── */
+
+const PREFERRED_CHANNEL_OPTIONS: [string, string][] = [
+  ["", "—"],
+  ["email", "Email"],
+  ["call", "Call"],
+  ["text", "Text"],
+  ["linkedin", "LinkedIn"],
+];
+
+const RELATIONSHIP_STRENGTH_OPTIONS: [string, string][] = [
+  ["", "—"],
+  ["cold", "Cold"],
+  ["warm", "Warm"],
+  ["strong", "Strong"],
+];
+
+function EditContactModal({ contact, onClose }: { contact: Contact; onClose: () => void }) {
+  const [title, setTitle] = useState(contact.title === "—" ? "" : contact.title);
+  const [company, setCompany] = useState(contact.company);
+  const [email, setEmail] = useState(contact.email);
+  const [phone, setPhone] = useState(contact.phone ?? "");
+  const [mobilePhone, setMobilePhone] = useState(contact.mobilePhone ?? "");
+  const [linkedinUrl, setLinkedinUrl] = useState(contact.linkedinUrl ?? "");
+  const [location, setLocation] = useState(contact.location ?? "");
+  const [timezone, setTimezone] = useState(contact.timezone ?? "");
+  const [preferredChannel, setPreferredChannel] = useState(contact.preferredChannel ?? "");
+  const [relationshipStrength, setRelationshipStrength] = useState(
+    contact.relationshipStrength ?? "",
+  );
+  const [importantDates, setImportantDates] = useState(
+    (contact.importantDates ?? []).join("\n"),
+  );
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      try {
+        await updateContact(contact.id, {
+          title,
+          company,
+          email,
+          phone,
+          mobilePhone,
+          linkedinUrl,
+          location,
+          timezone,
+          preferredChannel,
+          relationshipStrength,
+          // One date per line (commas work too) — e.g. "Birthday — March 12".
+          importantDates: importantDates
+            .split(/\r?\n|,/)
+            .map((d) => d.trim())
+            .filter(Boolean),
+        });
+        setDone(true);
+        setTimeout(onClose, 900);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save changes");
+      }
+    });
+  }
+
+  return (
+    <Modal icon={<Pencil size={14} strokeWidth={1.5} className="text-track-gold" />} title={`Edit details · ${contact.name}`} onClose={onClose} wide>
+      {done ? (
+        <div className="px-5 py-12 flex flex-col items-center text-center gap-3">
+          <Check size={28} strokeWidth={1.5} className="text-track-gold" />
+          <p className="text-[15px] text-bone leading-relaxed">Details saved.</p>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="px-5 py-5 flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Title</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="VP Operations" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Company</Label>
+              <Input value={company} onChange={(e) => setCompany(e.target.value)} required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Email</Label>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>LinkedIn</Label>
+              <Input value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder="https://linkedin.com/in/…" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Phone</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Mobile phone</Label>
+              <Input value={mobilePhone} onChange={(e) => setMobilePhone(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Location</Label>
+              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Vancouver, BC" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Timezone</Label>
+              <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="PT" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label>Preferred channel</Label>
+              <Select value={preferredChannel} onChange={(e) => setPreferredChannel(e.target.value)}>
+                {PREFERRED_CHANNEL_OPTIONS.map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Relationship strength</Label>
+              <Select value={relationshipStrength} onChange={(e) => setRelationshipStrength(e.target.value)}>
+                {RELATIONSHIP_STRENGTH_OPTIONS.map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>Important dates</Label>
+            <Textarea
+              rows={3}
+              placeholder={"One per line — e.g. Birthday — March 12"}
+              value={importantDates}
+              onChange={(e) => setImportantDates(e.target.value)}
+            />
+          </div>
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius-sm)]">
+              <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+              <span className="text-[12px] text-bone-dim">{error}</span>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button variant="primary" size="sm" type="submit" disabled={!company.trim() || !email.trim() || isPending}>
+              {isPending ? "Saving…" : "Save changes"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
    Enrich — non-destructive MERGE review. Two modes, one flow:
 
    - "ai":  reads ONLY the record + logged interactions (no web).
@@ -231,6 +407,10 @@ const ENRICH_FIELD_LABELS: Record<string, string> = {
   keyFacts: "Key facts",
   hobbies: "Hobbies",
   networkAffiliations: "Network affiliations",
+  domain: "Website",
+  linkedinUrl: "LinkedIn",
+  location: "Location",
+  timezone: "Timezone",
 };
 
 function EnrichModal({ contact, mode, onClose }: { contact: Contact; mode: "web" | "ai"; onClose: () => void }) {

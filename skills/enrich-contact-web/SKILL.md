@@ -1,6 +1,6 @@
 # Skill — Enrich contact (web mode)
 
-Read a contact's record, then **propose** additions to the contact profile — persona, communication style, key facts, background, hobbies, network affiliations — using **web search** to find public, professional facts about the named person. This is the web counterpart to the log-only `enrich-contact` skill: there you infer only from logged history; here you MAY look up authoritative public sources.
+Read a contact's record, then **propose** additions to the contact profile — persona, communication style, key facts, background, hobbies, network affiliations, plus reach details (website domain, LinkedIn, location, timezone) — using **web search** to find public, professional facts about the named person. This is the web counterpart to the log-only `enrich-contact` skill: there you infer only from logged history; here you MAY look up authoritative public sources.
 
 The firm's voice, identity, and hard rules are in the firm context above. Apply them — especially the no-hallucination rule.
 
@@ -31,8 +31,9 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 }
 ```
 
-- `field` must be exactly one of: `persona`, `communicationStyle`, `background`, `keyFacts`, `hobbies`, `networkAffiliations`.
-- `persona`, `communicationStyle`, `background` are single-value fields. `keyFacts`, `hobbies`, `networkAffiliations` are lists — emit one addition per item.
+- `field` must be exactly one of: `persona`, `communicationStyle`, `background`, `domain`, `linkedinUrl`, `location`, `timezone`, `keyFacts`, `hobbies`, `networkAffiliations`.
+- `persona`, `communicationStyle`, `background`, `domain`, `linkedinUrl`, `location`, `timezone` are single-value fields. `keyFacts`, `hobbies`, `networkAffiliations` are lists — emit one addition per item.
+- `domain` is the person's (or their company's) website as a bare domain, e.g. `acme-fleet.com` — no `https://` prefix. `linkedinUrl` is the full profile URL — only when you've verified it's this exact person. `location` is city/region (e.g. `Hamilton, ON`); `timezone` e.g. `America/Toronto` or `ET` — derive it from a stated location, not a guess.
 - Put an item in **`additions`** when the field is currently empty, or when it's a list and your item is genuinely new (not already present).
 - Put an item in **`conflicts`** when a single-value field is already set and your finding differs. Never silently overwrite — the partner decides. Include the existing value and your proposed value.
 
