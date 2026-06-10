@@ -29,7 +29,7 @@ import {
 const TEXT_EXTS = [".txt", ".md", ".markdown", ".vtt", ".srt", ".text", ".log", ".csv", ".rtf"];
 // Binary formats now read server-side (lib/ingest/extract-file.ts) — the browser
 // base64-uploads the bytes and the extract action parses them.
-const BINARY_EXTS = [".pdf", ".docx", ".xlsx", ".xls", ".html", ".htm"];
+const BINARY_EXTS = [".pdf", ".docx", ".xlsx", ".xls", ".html", ".htm", ".png", ".jpg", ".jpeg", ".gif", ".webp"];
 const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB client-side cap
 
 type Opt = { id: string; name: string; company: string };
@@ -435,12 +435,12 @@ export function IngestComposer({
                 {fileName ? (
                   <span className="text-[12px] text-bone">Loaded <span className="text-track-gold">{fileName}</span> · appended below</span>
                 ) : (
-                  <span className="text-[12px] text-bone-dim">Drop a file or <span className="text-track-gold">click to browse</span> · PDF, Word, Excel, HTML, Markdown, text</span>
+                  <span className="text-[12px] text-bone-dim">Drop a file or <span className="text-track-gold">click to browse</span> · PDF, Word, Excel, image, HTML, Markdown, text</span>
                 )}
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt,.md,.markdown,.vtt,.srt,.text,.log,.rtf,.csv,.pdf,.docx,.xlsx,.xls,.html,.htm,text/*,application/pdf"
+                  accept=".txt,.md,.markdown,.vtt,.srt,.text,.log,.rtf,.csv,.pdf,.docx,.xlsx,.xls,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,text/*,application/pdf,image/*"
                   className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ""; }}
                 />

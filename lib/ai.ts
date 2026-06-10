@@ -117,6 +117,25 @@ async function buildMessageParams(input: GenerateInput) {
     ? `${input.context}\n\n---\n\n${input.intake}`
     : input.intake;
 
+  // Images (read via Claude vision) become image blocks ahead of the text, in
+  // the USER message — after the cached system prefix, so prompt caching is
+  // untouched. No images → the content stays a plain string (byte-identical to
+  // before), so every existing caller is unaffected.
+  const userContent =
+    input.images && input.images.length
+      ? [
+          ...input.images.map((img) => ({
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: img.mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+              data: img.base64,
+            },
+          })),
+          { type: "text" as const, text: userText },
+        ]
+      : userText;
+
   return {
     model: input.model ?? DEFAULT_MODEL,
     max_tokens: input.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -126,7 +145,7 @@ async function buildMessageParams(input: GenerateInput) {
       { type: "text" as const, text: firmContext, cache_control: { type: "ephemeral" as const } },
       { type: "text" as const, text: skillContent, cache_control: { type: "ephemeral" as const } },
     ],
-    messages: [{ role: "user" as const, content: userText }],
+    messages: [{ role: "user" as const, content: userContent }],
     ...(input.webSearch
       ? { tools: [{ ...WEB_SEARCH_TOOL, max_uses: input.webSearchMaxUses ?? DEFAULT_WEB_SEARCH_MAX_USES }] }
       : {}),
@@ -147,6 +166,9 @@ export type GenerateInput = {
   webSearch?: boolean;
   /** Cap web searches per call when webSearch is on (default 5). */
   webSearchMaxUses?: number;
+  /** Images to read via Claude vision (base64 + media type). Prepended to the
+   *  user message as image blocks; omit for a plain-text call. */
+  images?: { base64: string; mediaType: string }[];
 };
 
 /** One-shot generation. Returns the full text. Logs one OpsEvent per call

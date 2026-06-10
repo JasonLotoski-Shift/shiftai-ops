@@ -30,7 +30,7 @@ import { fetchTargetData, buildIngestContext, formatPartnerRoster, type TargetRe
 import { parseUnified } from "@/lib/ingest/parse";
 import { findDuplicateOpenTask, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
 import { resolveTargetsFromText, computeCrossReference, type DetectedTarget } from "@/lib/ingest/cross-reference";
-import { extractFile, isExtractable } from "@/lib/ingest/extract-file";
+import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract-file";
 import { createContact } from "@/app/(app)/contacts/actions";
 import type {
   IngestType,
@@ -190,10 +190,23 @@ export async function extractUnified(input: {
   }
   let content = input.content.trim();
 
-  // Append extracted text from any uploaded files (PDF / Word / Excel / HTML / MD).
-  // Each file is best-effort: a parse failure adds a note, never throws.
+  // Split uploaded files: images go to Claude vision; everything else is parsed
+  // to text. Each is best-effort — a failure adds a note, never throws.
   const fileNotes: string[] = [];
+  const images: { base64: string; mediaType: string }[] = [];
   for (const f of input.files ?? []) {
+    const imgType = imageMediaType(f.fileName);
+    if (imgType) {
+      if (images.length >= 5) {
+        fileNotes.push(`Skipped extra image (max 5): ${f.fileName}`);
+      } else if (f.base64.length > 7_000_000) {
+        fileNotes.push(`Image too large (max ~5MB): ${f.fileName}`);
+      } else {
+        images.push({ base64: f.base64, mediaType: imgType });
+        content += `\n\n## Attached image: ${f.fileName}`;
+      }
+      continue;
+    }
     if (!isExtractable(f.fileName)) {
       fileNotes.push(`Unsupported file — skipped: ${f.fileName}`);
       continue;
@@ -209,7 +222,7 @@ export async function extractUnified(input: {
   }
   if (fileNotes.length) content += `\n\n## Attachment notes\n${fileNotes.join("\n")}`;
 
-  if (content.length < 40) {
+  if (content.length < 40 && images.length === 0) {
     throw new Error(
       input.files?.length
         ? "Couldn't extract enough text from the file(s) — paste the notes, or check the file."
@@ -241,7 +254,7 @@ export async function extractUnified(input: {
     ? `## Content\n${content}\n\n## Email block\n${input.emailBlock.trim()}`
     : `## Content\n${content}`;
 
-  const raw = await generate({ skill: "ingest", context, intake, maxTokens: 3500 });
+  const raw = await generate({ skill: "ingest", context, intake, maxTokens: 3500, images: images.length ? images : undefined });
   const parsed = parseUnified(raw);
 
   // Build the set of valid open-task ids (project targets only) for reassign validation.

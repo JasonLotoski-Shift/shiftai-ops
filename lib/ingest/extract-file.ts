@@ -43,6 +43,20 @@ export function isExtractable(fileName: string): boolean {
   return SUPPORTED_EXTS.has(ext(fileName));
 }
 
+// Image types Claude reads via vision (sent as image blocks, NOT text-extracted).
+const IMAGE_MEDIA_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
+/** The Anthropic image media-type for an image file, else null (not an image). */
+export function imageMediaType(fileName: string): string | null {
+  return IMAGE_MEDIA_TYPES[ext(fileName)] ?? null;
+}
+
 function cap(raw: string): { text: string; truncated: boolean } {
   const text = raw.trim();
   if (text.length <= MAX_CHARS) return { text, truncated: false };

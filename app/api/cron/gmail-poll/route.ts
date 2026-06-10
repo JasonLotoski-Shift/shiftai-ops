@@ -22,7 +22,7 @@ import {
   getEmail,
   fetchAttachment,
 } from "@/lib/gmail";
-import { extractFile, isExtractable } from "@/lib/ingest/extract-file";
+import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract-file";
 import type { ExtractedProposal } from "@/app/(app)/ingest/actions";
 
 export const dynamic = "force-dynamic";
@@ -173,12 +173,15 @@ export async function GET(req: Request) {
         const direction = isInternal(email.from) ? "sent" : "received";
         const match = await matchByEmails(external);
 
-        // Read supported attachments into the body (capped: <=5 files, ~15MB total).
-        // Per-attachment try/catch so one bad file never fails the message.
+        // Read supported attachments (capped: <=5 files, ~15MB total). Text files
+        // are parsed into the body; images are read by Claude vision. Per-attachment
+        // try/catch so one bad file never fails the message.
         let fullBody = email.body;
         const attachNotes: string[] = [];
+        const emailImages: { base64: string; mediaType: string }[] = [];
         let attachBytes = 0;
-        for (const att of email.attachments.filter((a) => isExtractable(a.fileName)).slice(0, 5)) {
+        const relevant = email.attachments.filter((a) => isExtractable(a.fileName) || imageMediaType(a.fileName));
+        for (const att of relevant.slice(0, 5)) {
           if (attachBytes + att.size > 15_000_000) {
             attachNotes.push(`Skipped large attachment: ${att.fileName}`);
             continue;
@@ -186,6 +189,16 @@ export async function GET(req: Request) {
           try {
             const buf = await fetchAttachment(gmail, id, att.attachmentId);
             attachBytes += buf.length;
+            const imgType = imageMediaType(att.fileName);
+            if (imgType) {
+              if (buf.length > 5_000_000) {
+                attachNotes.push(`Image too large (max ~5MB): ${att.fileName}`);
+                continue;
+              }
+              emailImages.push({ base64: buf.toString("base64"), mediaType: imgType });
+              fullBody += `\n\n## Attached image: ${att.fileName}`;
+              continue;
+            }
             const ex = await extractFile({ bytes: buf, fileName: att.fileName, mimeType: att.mimeType });
             if (ex.text) fullBody += `\n\n## Attachment: ${att.fileName}\n${ex.text}${ex.truncated ? "\n…(truncated)" : ""}`;
             if (ex.note) attachNotes.push(ex.note);
@@ -214,6 +227,7 @@ export async function GET(req: Request) {
             context: ctx,
             intake: `## Email body\n${fullBody}`,
             maxTokens: 2000,
+            images: emailImages.length ? emailImages : undefined,
           });
           proposal = parseProposal(rawOut);
         } catch {
