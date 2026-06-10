@@ -240,6 +240,26 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+   Deal-process map — the live detail panel swaps content on hover; this is
+   the only place content replaces in-place without navigation, so it gets a
+   small rise-in so the swap reads as intentional.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-rise {
+  animation: fade-rise 0.22s ease-out both;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
    Scrollbar — discreet, dark, matches the brand
    ───────────────────────────────────────────────────────────────────────── */
 

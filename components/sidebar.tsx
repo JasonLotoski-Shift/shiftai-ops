@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Import,
   Target,
+  Waypoints,
   BrainCircuit,
   Sparkles,
   ChevronDown,
@@ -64,6 +65,7 @@ const firm: NavItem[] = [
 const other: NavItem[] = [
   { href: "/whats-new", label: "What's new", icon: Sparkles },
   { href: "/how-it-works", label: "How it works", icon: BookOpen },
+  { href: "/deal-process", label: "Deal Process", icon: Waypoints },
   { href: "/agents", label: "Agents & MCPs", icon: Bot },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

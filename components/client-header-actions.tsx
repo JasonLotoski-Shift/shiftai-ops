@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FolderOpen, Terminal, Check, ClipboardList, NotebookPen, Presentation, FileSignature, Upload, FileInput } from "lucide-react";
+import { FolderOpen, Terminal, Check, ClipboardList, Presentation, FileSignature, Upload, FileInput } from "lucide-react";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ClientDocModal } from "@/components/client-doc-modal";
 import { DiscoveryReportModal } from "@/components/discovery-report-modal";
@@ -24,13 +24,13 @@ export function ClientActionsPanel({
   workspacePath: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState<"survey" | "discussion" | "discovery-report" | "sow" | "upload" | null>(null);
+  const [open, setOpen] = useState<"survey" | "discovery-report" | "sow" | "upload" | null>(null);
 
-  // Auto-open from the dashboard Quick Action (routes here with ?qa=survey|discussion|upload).
+  // Auto-open from the dashboard Quick Action (routes here with ?qa=survey|upload).
   const searchParams = useSearchParams();
   const qa = searchParams.get("qa");
   useEffect(() => {
-    if (qa === "survey" || qa === "discussion" || qa === "discovery-report" || qa === "sow" || qa === "upload") setOpen(qa);
+    if (qa === "survey" || qa === "discovery-report" || qa === "sow" || qa === "upload") setOpen(qa);
   }, [qa]);
 
   async function copyWorkspacePath() {
@@ -68,13 +68,6 @@ export function ClientActionsPanel({
       onClick: () => setOpen("survey"),
     },
     {
-      key: "discussion",
-      icon: NotebookPen,
-      title: "Discussion doc",
-      description: "Draft a discussion doc for the next conversation.",
-      onClick: () => setOpen("discussion"),
-    },
-    {
       key: "discovery-report",
       icon: Presentation,
       title: "Discovery report",
@@ -108,7 +101,7 @@ export function ClientActionsPanel({
     <>
       <ActionsPanel
         actions={actions}
-        forceOpen={qa === "survey" || qa === "discussion" || qa === "discovery-report" || qa === "sow" || qa === "upload"}
+        forceOpen={qa === "survey" || qa === "discovery-report" || qa === "sow" || qa === "upload"}
       />
 
       {open === "survey" && (
@@ -120,18 +113,6 @@ export function ClientActionsPanel({
           icon={ClipboardList}
           focusLabel="What should this survey find out?"
           focusPlaceholder="e.g. How the dispatch pilot is landing with the crew, and whether to expand to the second yard"
-          onClose={() => setOpen(null)}
-        />
-      )}
-      {open === "discussion" && (
-        <ClientDocModal
-          clientId={clientId}
-          company={company}
-          skill="discussion-doc"
-          title="Discussion doc"
-          icon={NotebookPen}
-          focusLabel="What's this conversation for?"
-          focusPlaceholder="e.g. Mid-Build check-in — confirm scope for the work-order module and surface blockers"
           onClose={() => setOpen(null)}
         />
       )}

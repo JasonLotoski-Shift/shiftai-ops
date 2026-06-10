@@ -44,7 +44,7 @@
 |---|---|---|---|---|---|
 | | **- Proposals & client docs -** | | | | |
 | 1 | scope-ops | ops | md | First-draft proposal from a deal | PN |
-| 2 | discussion-doc | ops | md | One-page meeting agenda/prep | P |
+| 2 | discussion-doc | ops | md | REMOVED 2026-06-09 — overlapped with discovery-prep (internal meeting prep); skill folder + Quick Action deleted | — |
 | 3 | client-survey | ops | md | Tailored client/prospect survey | P |
 | 4 | proposal-deck | ops | html | Slide-style HTML proposal deck | PN |
 | 31 | discovery-report | ops | html | Client-facing Discovery build-plan deck (light mode + client brand) | P |
@@ -98,7 +98,7 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 | Skill | T·B·A·G·F·H | Status | Note / open fix |
 |---|---|---|---|
 | scope-ops | 5·n·5·5·5·5 | PN | "Run" vocab + IP-ownership framing pending the 3-of-3 vote (flag, not fail) |
-| discussion-doc | 5·n·4·5·5·5 | P | clean (reviewing-partner audience implicit) |
+| discussion-doc | — | REMOVED | Deleted 2026-06-09 — duplicated discovery-prep's internal-meeting-prep role |
 | client-survey | 5·n·5·5·5·5 | P | clean |
 | proposal-deck | 5·5·5·5·5·5 | PN | ✓ Edition-06 brand block added (was B 3/5: "serif display" + no tokens) |
 | discovery-report | 5·5·5·5·5·5 | P | NEW 2026-06-05: light mode + fuller client-brand match; born-audited via the pipeline |
@@ -148,12 +148,8 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 - **Baseline refs:** voice · brand · audience · bmv2-vocab. **Audit:** not-audited · - · -.
 - **Notes:** Uses old Discovery/Build/**Run** vocab - intentionally pending the 3-of-3 vote. Two scope skills exist; this is the lighter ops-runtime one (the firm-cc `scope` is the full branded HTML version).
 
-#### 2. discussion-doc · ops-runtime · markdown-draft
-- **Goal:** Draft a one-page discussion doc that anchors an upcoming client meeting (status recap + agenda + questions + desired outcome).
-- **Audience:** the partner walking into the meeting. **Produces:** 5-section Markdown (title/purpose, status, agenda, key questions, desired outcome).
-- **Where it works:** ops Quick Action on a Client/Project page. **How it works:** takes a client context block + partner intake (focus, attendees, stakes) → skimmable one-pager; `[NEEDS INPUT]` for anything missing.
-- **Inputs:** client status + active projects + interactions; intake. **Dependencies:** `_firm/context.md`, Prisma client/project/interaction, save gate.
-- **Baseline refs:** voice · audience · bmv2-vocab. **Audit:** not-audited · - · -.
+#### 2. discussion-doc · REMOVED 2026-06-09
+- Deleted: it duplicated `discovery-prep`'s role (internal prep for a client meeting) under a name that collided with the "discussion call" pipeline stage. The skill folder and its client-page Quick Action / dashboard tile were removed; existing Artifact rows keep `generatedFromSkill: "discussion-doc"` as a historical label. Internal meeting prep lives in `discovery-prep` (to be broadened with real call transcripts).
 
 #### 3. client-survey · ops-runtime · markdown-draft
 - **Goal:** Draft a short, engagement-anchored survey to measure how the work is landing and surface what to adjust.

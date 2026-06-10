@@ -5,9 +5,9 @@ import { X, Sparkles, ShieldAlert, type LucideIcon } from "lucide-react";
 import { Button, Label, Textarea } from "@/components/ui";
 import { generateClientDoc, saveClientDoc } from "@/app/(app)/clients/[id]/actions";
 
-// Generic generative client-doc modal — drives both Draft client survey and
-// Draft discussion doc. Same shape as the proposal modal: intake → generate
-// (skill) → editable draft → save. The [NEEDS INPUT] gate blocks saving.
+// Generic generative client-doc modal — drives Draft client survey (and any
+// future doc skill in CLIENT_DOCS). Same shape as the proposal modal: intake →
+// generate (skill) → editable draft → save. The [NEEDS INPUT] gate blocks saving.
 export function ClientDocModal({
   clientId,
   company,
@@ -20,7 +20,7 @@ export function ClientDocModal({
 }: {
   clientId: string;
   company: string;
-  skill: "client-survey" | "discussion-doc";
+  skill: "client-survey";
   title: string;
   icon: LucideIcon;
   focusLabel: string;

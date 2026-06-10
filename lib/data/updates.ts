@@ -24,6 +24,20 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-09",
+    tag: "new",
+    title: "A visual map of the deal process",
+    detail:
+      "Under Other there's a new Deal Process page: the whole road from finding a lead to a signed engagement, drawn as one track — the three client meetings (Discovery, Discussion, Proposal) and the work that happens between them. Hover any step and the panel beside it expands with what that step is for, what you walk in and out with, and which part of this tool does the work.",
+  },
+  {
+    date: "2026-06-09",
+    tag: "improved",
+    title: "Quick Actions tidied: discussion doc retired",
+    detail:
+      "The “Draft discussion doc” action (dashboard and client pages) is gone — it overlapped with Discovery prep, which is the one internal meeting-prep brief going forward. Existing saved discussion docs in Drive are untouched.",
+  },
+  {
+    date: "2026-06-09",
     tag: "improved",
     title: "Ingest reads your attachments, files, and images",
     detail:

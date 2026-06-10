@@ -7,9 +7,9 @@
 //   save*      — Drive upload + Artifact (+ Interaction) + AuditLog + Activity,
 //                one transaction
 //
-// Two generative docs (Draft client survey, Draft discussion doc) share one
-// context loader + generate/save pair, keyed by skill. Upload client files is
-// an ingest round-trip (no generation).
+// Generative client docs (Draft client survey) share one context loader +
+// generate/save pair, keyed by skill. Upload client files is an ingest
+// round-trip (no generation).
 
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
@@ -24,7 +24,6 @@ import type { ArtifactType, InteractionType } from "@/lib/generated/prisma/enums
 // Which generative client docs exist, and how each is labelled / filed.
 const CLIENT_DOCS = {
   "client-survey": { kind: "survey", title: "Client survey", fileSuffix: "survey" },
-  "discussion-doc": { kind: "discussion", title: "Discussion doc", fileSuffix: "discussion-doc" },
 } as const;
 type ClientDocSkill = keyof typeof CLIENT_DOCS;
 
@@ -54,7 +53,7 @@ function uploadHtml(body: string, fileName: string, parentFolderId: string) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Generative client docs — survey + discussion doc
+// Generative client docs — survey
 // ──────────────────────────────────────────────────────────────────────
 
 export async function generateClientDoc(
