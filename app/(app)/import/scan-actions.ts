@@ -18,7 +18,9 @@ import {
   runInlineScan,
   submitBatchScan,
   ingestScanResults,
+  claimExpired,
   INLINE_SCAN_THRESHOLD,
+  INGEST_CLAIM_TTL_MS,
   SCAN_CHUNK_SIZE,
   type ScanRow,
 } from "@/lib/contact-scan";
@@ -115,6 +117,7 @@ export async function getScanRunStatus(scanRunId: string): Promise<ScanStatus | 
     select: {
       id: true, status: true, batchApiId: true, totalCount: true,
       scoredCount: true, errorCount: true, contactIds: true, startedAt: true,
+      ingestClaimedAt: true,
     },
   });
   if (!run) return null;
@@ -124,6 +127,40 @@ export async function getScanRunStatus(scanRunId: string): Promise<ScanStatus | 
     const stale = !terminal && Date.now() - run.startedAt.getTime() > SCAN_STALE_MS;
     return { id: run.id, status, total: run.totalCount, done: Math.min(run.totalCount, done), stale };
   };
+
+  // Self-heal: a run stuck in "scoring" with an expired (or never-stamped)
+  // claim means the prior ingest invocation died mid-write. Re-claim it
+  // atomically and re-run the idempotent ingest. On failure we log and leave
+  // it in "scoring" — a later poll retries after the TTL; the stale banner
+  // (1h) remains the user-facing escape hatch.
+  if (run.status === "scoring" && run.batchApiId && claimExpired(run.ingestClaimedAt)) {
+    const cutoff = new Date(Date.now() - INGEST_CLAIM_TTL_MS);
+    const reclaim = await prisma.scanRun.updateMany({
+      where: {
+        id: run.id,
+        status: "scoring",
+        OR: [{ ingestClaimedAt: null }, { ingestClaimedAt: { lt: cutoff } }],
+      },
+      data: { ingestClaimedAt: new Date() },
+    });
+    if (reclaim.count === 1) {
+      try {
+        await ingestScanResults({
+          scanRunId: run.id,
+          partnerId,
+          batchApiId: run.batchApiId,
+          contactIds: run.contactIds,
+        });
+      } catch (err) {
+        console.error("[scan-actions] re-claimed ingest failed:", err);
+      }
+    }
+    const fresh = await prisma.scanRun.findFirst({
+      where: { id: run.id, partnerLeadId: partnerId },
+      select: { status: true, scoredCount: true, errorCount: true },
+    });
+    return payload(fresh?.status ?? "scoring", (fresh?.scoredCount ?? 0) + (fresh?.errorCount ?? 0));
+  }
 
   if (run.status !== "submitted" || !run.batchApiId) {
     return payload(run.status, run.scoredCount + run.errorCount);
@@ -146,7 +183,7 @@ export async function getScanRunStatus(scanRunId: string): Promise<ScanStatus | 
 
   const claim = await prisma.scanRun.updateMany({
     where: { id: run.id, status: "submitted" },
-    data: { status: "scoring" },
+    data: { status: "scoring", ingestClaimedAt: new Date() },
   });
   if (claim.count === 1) {
     try {
@@ -157,10 +194,10 @@ export async function getScanRunStatus(scanRunId: string): Promise<ScanStatus | 
         contactIds: run.contactIds,
       });
     } catch (err) {
+      // Leave the run in "scoring" — the claim expires after the TTL and a
+      // later poll re-claims and resumes (the writes are idempotent). The
+      // stale banner is the user-facing escape hatch for persistent failure.
       console.error("[scan-actions] ingest failed:", err);
-      await prisma.scanRun
-        .update({ where: { id: run.id }, data: { status: "error", finishedAt: new Date() } })
-        .catch(() => {});
     }
   }
 
