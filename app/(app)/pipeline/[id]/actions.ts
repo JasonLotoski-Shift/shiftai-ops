@@ -205,12 +205,13 @@ export async function convertDeal(
       }
     }
 
-    // Carry any discovery questionnaire + its responses/report over to the new
-    // client — repoint (don't copy) so the one row stays reachable from the deal
-    // too (both FKs nullable, like Artifact).
+    // Carry the discovery questionnaire(s) and EVERY deal doc over to the new
+    // client — repoint (don't copy): clientId is added so they show on the
+    // client's Deliverables tab, dealId stays for provenance (both FKs
+    // nullable by design).
     const surveyCarry = await tx.discoverySurvey.updateMany({ where: { dealId }, data: { clientId: client.id } });
-    await tx.artifact.updateMany({
-      where: { dealId, generatedFromSkill: { in: ["discovery-questionnaire", "discovery-report"] } },
+    const artifactCarry = await tx.artifact.updateMany({
+      where: { dealId, clientId: null },
       data: { clientId: client.id },
     });
 
@@ -267,6 +268,7 @@ export async function convertDeal(
         driveFolderId: folderId,
         dealFolderMoved,
         discoverySurveysRepointed: surveyCarry.count,
+        artifactsRepointed: artifactCarry.count,
         contactLinksMoved: linkCarry.moved,
         contactLinksMerged: linkCarry.merged,
       },

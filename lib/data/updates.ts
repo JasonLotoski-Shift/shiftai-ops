@@ -41,7 +41,7 @@ export const updates: Update[] = [
     tag: "new",
     title: "Deal documents now file into a proper Drive folder — with links on the deal",
     detail:
-      "Docs generated at the deal stage (discovery prep, proposals, discovery reports, prototypes, questionnaire responses) used to land loose in the Shared Drive root. Each deal now gets its own folder under 00-Pipeline, created the first time you save a doc, and the deal page has a Documents card listing every file with its date and a click-through to Drive. When a deal converts, the whole folder moves into the new client's folder automatically.",
+      "Docs generated at the deal stage (discovery prep, proposals, discovery reports, prototypes, questionnaire responses) used to land loose in the Shared Drive root. Each deal now gets its own folder under 00-Pipeline, created the first time you save a doc, and the deal page has a Documents card listing every file with its date and a click-through to Drive. When a deal converts, the whole folder moves into the new client's folder automatically and the docs join the client's Deliverables tab. Existing pipeline deals have been backfilled — folders created, loose files moved in, links unchanged.",
   },
   {
     date: "2026-06-11",
