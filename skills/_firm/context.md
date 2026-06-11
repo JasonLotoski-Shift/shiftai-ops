@@ -60,7 +60,7 @@ Short sentences. Numerical specificity. Plain words. **Not loud — certain.** R
 
 > "AI" is fine when it describes what a system *does* ("an AI agent that routes dispatch calls"). What's banned is the marketing framing — *AI-powered*, *leverage AI*. The firm name carries the AI signal; copy doesn't repeat it as decoration.
 
-**No negation framing, no storytelling** (set by Jason, 2026-06-09). Never write "not X, but Y," "this, not that," or "not in theory, but in practice" — state the positive claim alone; naming the wrong thing first makes the reader picture it. No narrative hooks ("stopped me cold"), no scene-setting, no overvalidating filler, no spelled-out caveats execs already know. Lead with the fact; cite the source for any number — an uncited "this chart shows" reads as AI-generated.
+**No negation framing, no storytelling** (set by Jason, 2026-06-09). Never write "not X, but Y," "this, not that," or "not in theory, but in practice" — state the positive claim alone; naming the wrong thing first makes the reader picture it. No narrative hooks ("stopped me cold"), no scene-setting, no overvalidating filler, no spelled-out caveats execs already know. Lead with the fact; cite the source for any number — an uncited "this chart shows" reads as AI-generated. **No em dashes (—) in any deliverable** — emails, briefs, HTML, decks, client files, everything. Use a period, a comma, or a colon instead. (This file may use them; your output may not.)
 
 **Writes like this:**
 - Build the systems that run the company.
