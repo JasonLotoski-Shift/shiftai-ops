@@ -484,6 +484,10 @@ export type ProspectLead = {
   convertedDealId?: string;
   reviewedBy?: string;
   reviewedAt?: string; // ISO date
+  // Claim/assign — the partner working this lead (loose strings, no FK).
+  claimedById?: string;
+  claimedBy?: string;
+  claimedAt?: string; // ISO date
   // Cold-outreach draft (Phase B.1) — lives on the lead (no Artifact scope).
   outreachSubject?: string;
   outreachDraft?: string;

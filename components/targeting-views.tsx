@@ -18,6 +18,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { Card, Label, Button, Input, Textarea, EmptyState } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import { formatCAD } from "@/lib/format";
 import {
@@ -759,10 +760,7 @@ function SegmentPanel({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex justify-end bg-bitumen/85 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} positionClassName="justify-end" scroll={false}>
       <div
         className={cn(
           "h-full w-full max-w-[560px] bg-asphalt shadow-[var(--shadow-lg)] overflow-y-auto flex flex-col transition-transform duration-200 ease-out",
@@ -1240,6 +1238,6 @@ function SegmentPanel({
           </div>
         </form>
       </div>
-    </div>
+    </ModalShell>
   );
 }

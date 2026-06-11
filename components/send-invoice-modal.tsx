@@ -13,6 +13,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Receipt, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Select } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { formatCAD } from "@/lib/format";
 import { createInvoiceFromProject, markInvoiceManual } from "@/app/(app)/projects/[id]/billing-actions";
 
@@ -111,10 +112,7 @@ export function SendInvoiceModal({
       </Button>
 
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-          onClick={close}
-        >
+        <ModalShell onClose={close}>
           <div
             className="w-full max-w-[520px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-16"
             onClick={(e) => e.stopPropagation()}
@@ -230,7 +228,7 @@ export function SendInvoiceModal({
               </Button>
             </div>
           </div>
-        </div>
+        </ModalShell>
       )}
     </>
   );

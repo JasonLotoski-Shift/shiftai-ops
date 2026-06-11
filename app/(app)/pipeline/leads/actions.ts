@@ -43,9 +43,8 @@ export async function addToFunnel(
 
   const lead = await prisma.prospectLead.findUnique({ where: { id: leadId } });
   if (!lead) throw new Error("Lead not found");
-  // Promotable only from "pending" (D36). ProspectLeadStatus.contacted is now
-  // vestigial — the cold-email path goes through sendColdEmail, which converts
-  // directly to "added". (Not promotable from added/ghost.)
+  // Promotable only from "pending". A cold-emailed lead (status "contacted")
+  // exits via markContactedLeadReplied / setAsideContactedLead instead.
   if (lead.status !== "pending")
     throw new Error("This lead has already been reviewed");
   const priorStatus = lead.status;
@@ -402,11 +401,15 @@ export async function revealLeadPersonEmail(
 // draftLeadEmail calls the cold-outreach skill for a chosen person on a lead
 // and SAVES the {subject, body} draft onto the lead itself — there is no
 // Artifact scope for a ProspectLead, so the draft lives on the row. The
-// partner can then edit (saveLeadEmail) and send it (sendColdEmail) — which
-// (D36) converts the lead straight into a Contact + Deal at stage "lead" with
-// coldOutreachAt stamped, exactly like addToFunnel plus an email_sent
-// Interaction. The deal then sits "awaiting reply" on the board until the
-// partner marks it replied (markDealReplied → lead promotes to qualified).
+// partner edits (saveLeadEmail), sends from their own inbox, then files it
+// one of two ways:
+//   sendColdEmail            — straight onto the board: Contact + Deal at
+//     stage "lead" with coldOutreachAt stamped (awaiting reply there;
+//     markDealReplied promotes it to qualified).
+//   sendColdEmailToColdFunnel — no deal yet: the lead moves to the pipeline's
+//     "Cold email sent" tab (status contacted) until it replies
+//     (markContactedLeadReplied → deal at "qualified") or is set aside
+//     (setAsideContactedLead → ghost).
 // ──────────────────────────────────────────────────────────────────────
 
 // Fence-strip + JSON parse, mirroring app/(app)/ingest/actions.ts.
@@ -504,6 +507,321 @@ export async function draftLeadEmail(
 
   revalidatePath(`/pipeline/leads/${leadId}`);
   return { subject, body };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// sendColdEmailToColdFunnel — the partner sent the cold email but does NOT
+// want the lead on the board yet (it would overfill). The lead moves to the
+// pipeline's "Cold email sent" tab (status → contacted) and stays a
+// ProspectLead — no Contact/Deal until the prospect replies
+// (markContactedLeadReplied) or is set aside (setAsideContactedLead).
+// ──────────────────────────────────────────────────────────────────────
+export async function sendColdEmailToColdFunnel(leadId: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const lead = await prisma.prospectLead.findUnique({ where: { id: leadId } });
+  if (!lead) throw new Error("Lead not found");
+  if (lead.status !== "pending") throw new Error("This lead has already been reviewed");
+  if (!lead.outreachDraft?.trim()) throw new Error("Draft the email before sending");
+  if (lead.outreachPersonIndex == null) throw new Error("Pick a person before sending");
+
+  const people = (lead.people as unknown as ProspectPerson[]) ?? [];
+  const person = people[lead.outreachPersonIndex];
+  if (!person) throw new Error("Pick a person before sending");
+
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.prospectLead.update({
+      where: { id: leadId },
+      data: {
+        status: "contacted",
+        outreachSentAt: now,
+        // Sending the email claims the lead for the sender unless someone
+        // already owns it.
+        ...(lead.claimedById
+          ? {}
+          : { claimedById: session.user!.partnerId, claimedBy: partnerLabel, claimedAt: now }),
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "update.prospectLead.contacted",
+      targetType: "ProspectLead",
+      targetId: leadId,
+      changes: { status: { before: "pending", after: "contacted" }, person: person.name },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "touch",
+      target: lead.companyName,
+      detail: `Sent cold outreach to ${person.name} — watching for a reply`,
+      link: `/pipeline/leads/${leadId}`,
+    });
+  });
+
+  revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// markContactedLeadReplied — a cold-emailed lead (status "contacted") wrote
+// back. NOW it earns a board spot: same conversion as sendColdEmail but the
+// deal opens at stage "qualified" (the reply IS the qualification), with
+// coldOutreachAt back-dated to when the email went out and outreachRepliedAt
+// stamped now. Logs both sides of the exchange on the new Contact.
+// ──────────────────────────────────────────────────────────────────────
+export async function markContactedLeadReplied(leadId: string): Promise<{ dealId: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const lead = await prisma.prospectLead.findUnique({ where: { id: leadId } });
+  if (!lead) throw new Error("Lead not found");
+  if (lead.status !== "contacted") throw new Error("This lead isn’t awaiting a cold-outreach reply");
+  if (lead.outreachPersonIndex == null) throw new Error("This lead has no outreach person on record");
+
+  const people = (lead.people as unknown as ProspectPerson[]) ?? [];
+  const person = people[lead.outreachPersonIndex];
+  if (!person) throw new Error("This lead has no outreach person on record");
+  const email = person.email?.trim();
+  if (!email) throw new Error("That person has no email on record");
+
+  const matchedTag = lead.industryTags.find((t) => VALID_INDUSTRIES.includes(t.toLowerCase() as Industry));
+  const industry: Industry = (matchedTag?.toLowerCase() as Industry) ?? "other";
+
+  // The claimer owns the deal; fall back to whoever marks it replied. A stale
+  // claimedById (e.g. after a reseed) falls back too.
+  let partnerLeadId = session.user.partnerId;
+  if (lead.claimedById) {
+    const claimer = await prisma.partner.findUnique({ where: { id: lead.claimedById }, select: { id: true } });
+    if (claimer) partnerLeadId = claimer.id;
+  }
+
+  const now = new Date();
+  const sentAt = lead.outreachSentAt ?? now;
+  const closeTargetDate = new Date(now);
+  closeTargetDate.setDate(closeTargetDate.getDate() + 90);
+  const subject = lead.outreachSubject?.trim() || "Cold outreach email";
+
+  let dealId: string;
+  try {
+    dealId = await prisma.$transaction(async (tx) => {
+      const contact = await tx.contact.create({
+        data: {
+          name: person.name,
+          title: person.title || "—",
+          company: lead.companyName,
+          email,
+          industry,
+          source: lead.origin === "imported" ? "Imported" : "AI Found Lead",
+          sourceCategory: lead.origin === "imported" ? "imported" : "ai_found",
+          domain: lead.domain,
+          lastTouchAt: now,
+          partnerLeadId,
+        },
+      });
+
+      const deal = await tx.deal.create({
+        data: {
+          company: lead.companyName,
+          stage: "qualified",
+          valueEstimate: 0,
+          industry,
+          closeTargetDate,
+          lastTouchAt: now,
+          stageEnteredAt: now,
+          coldOutreachAt: sentAt,
+          outreachRepliedAt: now,
+          contactId: contact.id,
+          partnerLeadId,
+        },
+      });
+
+      await tx.interaction.create({
+        data: {
+          contactId: contact.id,
+          type: "email_sent",
+          date: sentAt,
+          summary: subject,
+          loggedBy: lead.claimedBy ?? partnerLabel,
+          channel: "email",
+        },
+      });
+      await tx.interaction.create({
+        data: {
+          contactId: contact.id,
+          type: "email_received",
+          date: now,
+          summary: "Prospect replied to cold outreach",
+          loggedBy: partnerLabel,
+          channel: "email",
+        },
+      });
+
+      await tx.prospectLead.update({
+        where: { id: leadId },
+        data: {
+          status: "added",
+          convertedContactId: contact.id,
+          convertedDealId: deal.id,
+          reviewedBy: partnerLabel,
+          reviewedAt: now,
+        },
+      });
+
+      await writeAudit(tx, {
+        actor,
+        action: "create.contact",
+        targetType: "Contact",
+        targetId: contact.id,
+        changes: { name: contact.name, company: contact.company, fromProspectLead: leadId },
+      });
+      await writeAudit(tx, {
+        actor,
+        action: "create.deal",
+        targetType: "Deal",
+        targetId: deal.id,
+        changes: { company: deal.company, stage: deal.stage, coldOutreach: true, replied: true, fromProspectLead: leadId },
+      });
+      await writeAudit(tx, {
+        actor,
+        action: "update.prospectLead.added",
+        targetType: "ProspectLead",
+        targetId: leadId,
+        changes: { status: { before: "contacted", after: "added" }, contactId: contact.id, dealId: deal.id },
+      });
+      await writeActivity(tx, {
+        actor,
+        type: "status",
+        target: lead.companyName,
+        detail: `${person.name} replied to cold outreach — added to the pipeline as Qualified`,
+        link: `/pipeline/${deal.id}`,
+      });
+
+      return deal.id;
+    });
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "P2002") {
+      throw new Error(`${person.name} is already in the pipeline (duplicate email)`);
+    }
+    throw err;
+  }
+
+  revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  revalidatePath("/contacts");
+  revalidatePath("/dashboard");
+  return { dealId };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// setAsideContactedLead — a cold-emailed lead never wrote back. Move it off
+// the Cold email sent tab into Filtered (status → ghost). Restorable via the
+// usual restoreLead, which puts it back in the New lane.
+// ──────────────────────────────────────────────────────────────────────
+export async function setAsideContactedLead(leadId: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const lead = await prisma.prospectLead.findUnique({
+    where: { id: leadId },
+    select: { status: true, companyName: true },
+  });
+  if (!lead) throw new Error("Lead not found");
+  if (lead.status !== "contacted") throw new Error("Only cold-emailed leads can be set aside here");
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.prospectLead.update({
+      where: { id: leadId },
+      data: { status: "ghost", reviewedBy: partnerLabel, reviewedAt: now },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "update.prospectLead.ghost",
+      targetType: "ProspectLead",
+      targetId: leadId,
+      changes: { status: { before: "contacted", after: "ghost" }, reason: "no reply to cold outreach" },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: lead.companyName,
+      detail: "No reply to cold outreach — set aside",
+    });
+  });
+
+  revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  return { ok: true };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// claimLead — claim a lead for yourself or assign it to another partner.
+// partnerId undefined = claim for the signed-in partner (the card's one-click
+// Claim); null = release the claim. Works on pending/contacted leads —
+// added/ghost ones are already resolved.
+// ──────────────────────────────────────────────────────────────────────
+export async function claimLead(leadId: string, partnerId?: string | null): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+  if (partnerId === undefined) partnerId = session.user.partnerId;
+
+  const lead = await prisma.prospectLead.findUnique({
+    where: { id: leadId },
+    select: { status: true, companyName: true, claimedBy: true },
+  });
+  if (!lead) throw new Error("Lead not found");
+  if (lead.status === "added" || lead.status === "ghost")
+    throw new Error("This lead has already been reviewed");
+
+  let claim: { claimedById: string | null; claimedBy: string | null; claimedAt: Date | null };
+  let detail: string;
+  if (partnerId) {
+    const partner = await prisma.partner.findUnique({ where: { id: partnerId }, select: { id: true, name: true } });
+    if (!partner) throw new Error("Partner not found");
+    claim = { claimedById: partner.id, claimedBy: partner.name, claimedAt: new Date() };
+    detail =
+      partner.id === session.user.partnerId
+        ? `Claimed the lead`
+        : `Assigned the lead to ${partner.name}`;
+  } else {
+    claim = { claimedById: null, claimedBy: null, claimedAt: null };
+    detail = "Released the lead claim";
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.prospectLead.update({ where: { id: leadId }, data: claim });
+    await writeAudit(tx, {
+      actor,
+      action: "update.prospectLead.claim",
+      targetType: "ProspectLead",
+      targetId: leadId,
+      changes: { claimedBy: { before: lead.claimedBy ?? null, after: claim.claimedBy } },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: lead.companyName,
+      detail,
+      link: `/pipeline/leads/${leadId}`,
+    });
+  });
+
+  revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  return { ok: true };
 }
 
 // saveLeadEmail — persist partner edits to the draft (no status change).

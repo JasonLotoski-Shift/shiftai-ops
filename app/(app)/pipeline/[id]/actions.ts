@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, seedClientSubfolders } from "@/lib/drive";
+import { ensureDealDriveFolder, moveDealFolderToClient } from "@/lib/deal-drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
@@ -98,6 +99,19 @@ export async function convertDeal(
   // Seed the standard subfolder structure (best-effort — never blocks the
   // Client/Project create if a subfolder hiccups).
   await seedClientSubfolders(folderId);
+
+  // If the deal accumulated working files in 00-Pipeline, move that folder into
+  // the new client folder as "00-Pipeline-files" (best-effort — never blocks
+  // the conversion; the files stay reachable via their Artifact links either way).
+  let dealFolderMoved = false;
+  if (deal.driveFolderId) {
+    try {
+      await moveDealFolderToClient({ dealFolderId: deal.driveFolderId, clientFolderId: folderId });
+      dealFolderMoved = true;
+    } catch (e) {
+      console.warn(`convertDeal: couldn't move deal working folder ${deal.driveFolderId}:`, e);
+    }
+  }
 
   // Sensible defaults for fields not collected by the modal — partners
   // can edit on the Client / Project pages after convert.
@@ -251,6 +265,7 @@ export async function convertDeal(
         createdProjectId: project.id,
         installmentsCreated: scheduleCreated,
         driveFolderId: folderId,
+        dealFolderMoved,
         discoverySurveysRepointed: surveyCarry.count,
         contactLinksMoved: linkCarry.moved,
         contactLinksMerged: linkCarry.merged,
@@ -676,14 +691,13 @@ export async function saveDealDoc(dealId: string, input: { skill: string; body: 
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, company: true } });
   if (!deal) throw new Error("Deal not found");
 
-  // Deals have no Drive folder of their own — file into the Shared Drive root.
-  const sharedDriveFolderId = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
-  if (!sharedDriveFolderId) throw new Error("DRIVE_SHARED_DRIVE_FOLDER_ID is not configured");
+  // File into the deal's own 00-Pipeline working folder (created on first use).
+  const { folderId } = await ensureDealDriveFolder(dealId);
 
   const today = new Date().toISOString().slice(0, 10);
   const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-${cfg.fileSuffix}.md`;
   const res = await drive.files.create({
-    requestBody: { name: fileName, parents: [sharedDriveFolderId], mimeType: "text/markdown" },
+    requestBody: { name: fileName, parents: [folderId], mimeType: "text/markdown" },
     media: { mimeType: "text/markdown", body: Readable.from(body) },
     fields: "id, webViewLink",
     supportsAllDrives: true,
@@ -1083,13 +1097,13 @@ export async function saveProposal(dealId: string, input: { body: string }) {
   });
   if (!deal) throw new Error("Deal not found");
 
-  const sharedDriveFolderId = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
-  if (!sharedDriveFolderId) throw new Error("DRIVE_SHARED_DRIVE_FOLDER_ID is not configured");
+  // File into the deal's own 00-Pipeline working folder (created on first use).
+  const { folderId } = await ensureDealDriveFolder(dealId);
 
   const today = new Date().toISOString().slice(0, 10);
   const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-proposal.md`;
   const res = await drive.files.create({
-    requestBody: { name: fileName, parents: [sharedDriveFolderId], mimeType: "text/markdown" },
+    requestBody: { name: fileName, parents: [folderId], mimeType: "text/markdown" },
     media: { mimeType: "text/markdown", body: Readable.from(body) },
     fields: "id, webViewLink",
     supportsAllDrives: true,

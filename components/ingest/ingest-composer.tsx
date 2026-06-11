@@ -15,6 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import { industryLabels } from "@/lib/data/seed";
 import { INGEST_TYPES, type IngestType, type IngestTargetKind } from "@/lib/ingest/types";
@@ -216,10 +217,7 @@ export function IngestComposer({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} guard={!submitted} positionClassName="items-start justify-center pt-12 px-4">
       <div
         className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
@@ -515,7 +513,7 @@ export function IngestComposer({
           </form>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

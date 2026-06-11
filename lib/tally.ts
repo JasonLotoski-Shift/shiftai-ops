@@ -23,6 +23,7 @@
 import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { uploadFile, folderIdFromUrl } from "@/lib/drive";
+import { ensureDealDriveFolder } from "@/lib/deal-drive";
 import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
 import { notifyPartner } from "@/lib/messaging";
 import { logOps } from "@/lib/ops";
@@ -325,13 +326,21 @@ export async function saveTallySubmission(payload: unknown): Promise<TallySaveRe
   });
   if (!survey) return { status: "no_match" };
 
-  // Drive copy (best-effort) — client folder if we have one, else the shared root.
+  // Drive copy (best-effort) — client folder if we have one, else the deal's
+  // 00-Pipeline working folder, else the shared root.
   let driveUrl: string | null = null;
   try {
     let folder: string | null = null;
     if (survey.client?.driveFolderUrl) {
       try {
         folder = folderIdFromUrl(survey.client.driveFolderUrl);
+      } catch {
+        folder = null;
+      }
+    }
+    if (!folder && survey.dealId) {
+      try {
+        folder = (await ensureDealDriveFolder(survey.dealId)).folderId;
       } catch {
         folder = null;
       }

@@ -11,6 +11,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X, Pencil, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { stageLabels, industryLabels } from "@/lib/data/seed";
 import { updateDeal } from "@/app/(app)/pipeline/[id]/actions";
 import type { DealModel as Deal } from "@/lib/generated/prisma/models";
@@ -70,10 +71,7 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose}>
       <div
         className="w-full max-w-[560px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
@@ -243,6 +241,6 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
           </div>
         </form>
       </div>
-    </div>
+    </ModalShell>
   );
 }

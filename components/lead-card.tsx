@@ -1,13 +1,16 @@
 "use client";
 
-// LeadCard — one ranked AI Found Lead. Pure presentational; all data via props.
-// Score is a 1–10 integer; color tiers: 8–10 track-gold, 6–7 amber
-// (signal-warming), <6 muted. The `muted` variant dims set-aside leads.
+// LeadCard — one ranked AI Found Lead. Score is a 1–10 integer; color tiers:
+// 8–10 track-gold, 6–7 amber (signal-warming), <6 muted. The `muted` variant
+// dims set-aside leads. Shows who surfaced the lead right under the title, and
+// who's claimed it (one-click Claim for unclaimed, active leads).
 
 import Link from "next/link";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Badge } from "@/components/ui";
-import { Users, Mail } from "lucide-react";
+import { Card, Badge, Avatar } from "@/components/ui";
+import { claimLead } from "@/app/(app)/pipeline/leads/actions";
+import { Users, Mail, Sparkles, UserCheck } from "lucide-react";
 import type { ProspectLead } from "@/lib/types";
 
 function scoreChip(score: number, muted: boolean) {
@@ -19,18 +22,46 @@ function scoreChip(score: number, muted: boolean) {
   return "bg-graphite text-bone-mute border-graphite-2";
 }
 
+function initialsOf(name?: string): string {
+  if (!name) return "";
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
 export function LeadCard({ lead, muted = false }: { lead: ProspectLead; muted?: boolean }) {
   const router = useRouter();
+  const [claiming, startClaim] = useTransition();
+  const [claimErr, setClaimErr] = useState(false);
   const amber = !muted && lead.score >= 6 && lead.score < 8;
   // Fast-outreach affordance on pending cards only — deep-links to the detail
   // page with the composer auto-opened. The card itself is a Link, so this is a
   // button with router.push + stopPropagation (a nested anchor would be invalid).
   const canCompose = !muted && lead.status === "pending";
+  const canClaim = !muted && (lead.status === "pending" || lead.status === "contacted");
 
   function compose(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     router.push(`/pipeline/leads/${lead.id}?compose=1`);
+  }
+
+  function claim(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setClaimErr(false);
+    startClaim(async () => {
+      try {
+        await claimLead(lead.id);
+        router.refresh();
+      } catch {
+        setClaimErr(true);
+      }
+    });
   }
 
   return (
@@ -71,6 +102,15 @@ export function LeadCard({ lead, muted = false }: { lead: ProspectLead; muted?: 
           </div>
         </div>
 
+        {/* Who surfaced this — prominent, right under the title. */}
+        <div className={`mt-1.5 flex items-center gap-1.5 text-[11px] ${muted ? "text-bone-mute" : "text-track-gold"}`}>
+          <Sparkles size={11} strokeWidth={1.5} className="shrink-0" />
+          <span className="truncate">
+            Surfaced by {lead.createdBy}
+            {lead.generatedFromSkill ? <span className="text-bone-mute"> · {lead.generatedFromSkill}</span> : null}
+          </span>
+        </div>
+
         <div className="mt-2">
           {lead.segmentName ? (
             <Badge tone="bone">{lead.segmentName}</Badge>
@@ -97,6 +137,32 @@ export function LeadCard({ lead, muted = false }: { lead: ProspectLead; muted?: 
             ))}
           </span>
         </div>
+
+        {/* Claim row — owner chip once claimed; one-click Claim while open. */}
+        {(lead.claimedBy || canClaim) && (
+          <div className="mt-3 pt-2.5 border-t border-graphite flex items-center justify-between gap-2">
+            {lead.claimedBy ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-bone-dim" title={`Claimed by ${lead.claimedBy}`}>
+                <Avatar initials={initialsOf(lead.claimedBy)} size="sm" />
+                {lead.claimedBy.split(/\s+/)[0]} has this
+              </span>
+            ) : (
+              <button
+                onClick={claim}
+                disabled={claiming}
+                title={claimErr ? "Couldn't claim — try again" : "Claim this lead"}
+                className={`inline-flex items-center gap-1.5 px-2 py-1 border font-mono text-[9px] uppercase tracking-wide rounded-[var(--radius-pill)] transition-colors disabled:opacity-50 ${
+                  claimErr
+                    ? "border-flag-red/40 text-flag-red"
+                    : "border-graphite-2 text-bone-mute hover:text-track-gold hover:border-track-gold/40"
+                }`}
+              >
+                <UserCheck size={11} strokeWidth={1.5} />
+                {claiming ? "Claiming…" : claimErr ? "Retry claim" : "Claim"}
+              </button>
+            )}
+          </div>
+        )}
       </Card>
     </Link>
   );

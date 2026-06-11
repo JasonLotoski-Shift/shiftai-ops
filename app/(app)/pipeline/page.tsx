@@ -48,6 +48,9 @@ function toLead(row: LeadRow): ProspectLead {
     convertedDealId: row.convertedDealId ?? undefined,
     reviewedBy: row.reviewedBy ?? undefined,
     reviewedAt: row.reviewedAt?.toISOString(),
+    claimedById: row.claimedById ?? undefined,
+    claimedBy: row.claimedBy ?? undefined,
+    claimedAt: row.claimedAt?.toISOString(),
     outreachSubject: row.outreachSubject ?? undefined,
     outreachDraft: row.outreachDraft ?? undefined,
     outreachPersonIndex: row.outreachPersonIndex ?? undefined,
@@ -83,11 +86,13 @@ export default async function PipelinePage({
 
   const allLeads = leadRows.map(toLead);
   // AI Found Leads = discovery-origin; Promoted Leads = imported-origin. The two
-  // sub-tabs never overlap.
+  // sub-tabs never overlap. Cold email sent = status "contacted" from EITHER
+  // origin — a cold-emailed lead lives there (and only there) until it replies.
   const discoveryLeads = allLeads.filter((l) => l.origin !== "imported");
   const promotedLeads = allLeads.filter((l) => l.origin === "imported");
   const foundLeads = discoveryLeads.filter((l) => l.status === "pending" && !l.disqualified);
   const filteredLeads = discoveryLeads.filter((l) => l.status === "ghost" || l.disqualified);
+  const coldLeads = allLeads.filter((l) => l.status === "contacted");
 
   return (
     <>
@@ -111,7 +116,10 @@ export default async function PipelinePage({
         foundLeads={foundLeads}
         filteredLeads={filteredLeads}
         promotedLeads={promotedLeads}
-        initialTab={tab === "found" ? "leads" : tab === "promoted" ? "promoted" : "board"}
+        coldLeads={coldLeads}
+        initialTab={
+          tab === "found" ? "leads" : tab === "promoted" ? "promoted" : tab === "cold" ? "cold" : "board"
+        }
         segment={segment}
       />
     </>

@@ -317,8 +317,13 @@ function CompanyProfile({ client }: { client: Client }) {
 
       {client.companyKeyFacts && client.companyKeyFacts.length > 0 && (
         <Card>
-          <div className="px-5 pt-4 pb-2"><span className="title-md">Key facts</span></div>
-          <div className="flex flex-col pb-2">
+          <div className="px-5 pt-4 pb-2 flex items-center gap-2">
+            <span className="title-md">Key facts</span>
+            <span className="mono text-[10px] text-bone-mute tabular-nums">{client.companyKeyFacts.length}</span>
+          </div>
+          {/* Every fact stays in the list — the window caps and scrolls so a
+              long record can't swallow the page. */}
+          <div className="flex flex-col pb-2 max-h-[300px] overflow-y-auto">
             {client.companyKeyFacts.map((f, i) => (
               <div key={i} className="flex items-start gap-3 px-5 py-3">
                 <span className="mono text-[11px] text-track-gold mt-0.5 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
@@ -460,8 +465,11 @@ function ProfileListCard({ title, items }: { title: string; items: string[] }) {
   if (!items || items.length === 0) return null;
   return (
     <Card>
-      <div className="px-5 pt-4 pb-2"><span className="title-md">{title}</span></div>
-      <div className="flex flex-col pb-3">
+      <div className="px-5 pt-4 pb-2 flex items-center gap-2">
+        <span className="title-md">{title}</span>
+        <span className="mono text-[10px] text-bone-mute tabular-nums">{items.length}</span>
+      </div>
+      <div className="flex flex-col pb-3 max-h-[260px] overflow-y-auto">
         {items.map((v, i) => (
           <div key={i} className="flex items-start gap-3 px-5 py-2">
             <span className="mono text-[11px] text-track-gold mt-0.5">—</span>

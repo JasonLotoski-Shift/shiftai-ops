@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { X, Sparkles, ShieldAlert, FileSignature } from "lucide-react";
 import { Button, Label, Textarea } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { generateSow, saveSow } from "@/app/(app)/clients/[id]/actions";
 
 // Statement of Work modal — intake (agreed terms + scope notes) → generate the
@@ -44,10 +45,7 @@ export function SowModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} guard={step !== "saved"}>
       <div className="w-full max-w-[860px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
@@ -167,6 +165,6 @@ export function SowModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }

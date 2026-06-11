@@ -5,10 +5,9 @@
 //   Filtered   — ghosted or disqualified leads, muted, with a Restore action
 // Both lanes honor an optional ?segment=<id> filter threaded from the URL.
 //
-// The old "Contacted" lane was dropped (D36): cold-emailing a lead now converts
-// it straight into a pipeline Deal (status "added"), so there's no in-between
-// "contacted" surface. ProspectLeadStatus.contacted remains in the enum but is
-// vestigial — do not reintroduce a Contacted lane.
+// Cold-emailed leads (status "contacted") don't live here — they sit on the
+// pipeline's top-level "Cold email sent" tab (components/cold-leads.tsx) until
+// they reply (→ deal at Qualified) or get set aside (→ Filtered).
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";

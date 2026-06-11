@@ -7,6 +7,7 @@
 import { useState, useTransition } from "react";
 import { X, Sparkles, ShieldAlert, FileText, Check } from "lucide-react";
 import { Button, Label, Input, Textarea } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { generateDiscoveryReportForDeal, saveDiscoveryReportForDeal } from "@/app/(app)/pipeline/[id]/tally-actions";
 
 export function DiscoveryReportDealModal({
@@ -51,7 +52,7 @@ export function DiscoveryReportDealModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+    <ModalShell onClose={onClose} guard={step !== "done"} positionClassName="items-start justify-center pt-12 px-4">
       <div className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
@@ -106,6 +107,6 @@ export function DiscoveryReportDealModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }

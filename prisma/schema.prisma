@@ -534,6 +534,12 @@ model Deal {
   outreachRepliedAt DateTime?
   notes             String?
 
+  // Pipeline working-files folder in Drive — created lazily under the shared
+  // "00-Pipeline" folder on the first doc save for this deal; moved into the
+  // client's folder on convert. Null until a doc is filed.
+  driveFolderId  String?
+  driveFolderUrl String?
+
   // Company profile (D40) — gathered at deal stage, mirrors Client's block,
   // copied forward to the new Client on Convert. Append-only via enrich.
   website         String?
@@ -1268,6 +1274,13 @@ model ProspectLead {
 
   reviewedBy String?
   reviewedAt DateTime?
+
+  // Claim/assign — the partner working this lead. claimedById is a loose
+  // partner-id string (no FK — matches promotedBy/reviewedBy convention);
+  // claimedBy is the display label. Null = unclaimed.
+  claimedById String?
+  claimedBy   String?
+  claimedAt   DateTime?
 
   // Cold-outreach draft (Phase B.1). The draft lives on the lead itself — there
   // is no Artifact scope for a ProspectLead. outreachPersonIndex points into the

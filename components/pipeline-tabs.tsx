@@ -12,6 +12,7 @@ import { Card, Stat, Tabs } from "@/components/ui";
 import { PipelineBoard } from "@/components/pipeline-board";
 import { FoundLeads } from "@/components/found-leads";
 import { PromotedLeads } from "@/components/promoted-leads";
+import { ColdLeads } from "@/components/cold-leads";
 import { formatCAD } from "@/lib/format";
 import type {
   DealModel as Deal,
@@ -22,7 +23,7 @@ import type { ProspectLead } from "@/lib/types";
 
 type DealWithRel = Deal & { contact: Contact; partnerLead: Partner };
 
-type PipelineTab = "board" | "leads" | "promoted";
+type PipelineTab = "board" | "leads" | "promoted" | "cold";
 
 export function PipelineTabs({
   deals,
@@ -30,6 +31,7 @@ export function PipelineTabs({
   foundLeads,
   filteredLeads,
   promotedLeads,
+  coldLeads,
   initialTab = "board",
   segment,
 }: {
@@ -38,6 +40,7 @@ export function PipelineTabs({
   foundLeads: ProspectLead[];
   filteredLeads: ProspectLead[];
   promotedLeads: ProspectLead[];
+  coldLeads: ProspectLead[];
   initialTab?: PipelineTab;
   segment?: string;
 }) {
@@ -51,6 +54,7 @@ export function PipelineTabs({
             { key: "board", label: "Board" },
             { key: "leads", label: "AI Found Leads", count: foundLeads.length },
             { key: "promoted", label: "Promoted Leads", count: promotedLeads.length },
+            { key: "cold", label: "Cold email sent", count: coldLeads.length },
           ]}
           active={tab}
           onChange={(k) => setTab(k as PipelineTab)}
@@ -80,6 +84,8 @@ export function PipelineTabs({
       )}
 
       {tab === "promoted" && <PromotedLeads leads={promotedLeads} />}
+
+      {tab === "cold" && <ColdLeads leads={coldLeads} />}
     </div>
   );
 }

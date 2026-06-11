@@ -12,6 +12,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FolderPlus, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Select, Textarea } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { TYPE_LABELS } from "@/components/project-type-edit";
 import { createProject } from "@/app/(app)/clients/[id]/project-actions";
 
@@ -95,10 +96,7 @@ export function NewProjectButton({ clientId }: { clientId: string }) {
       </Button>
 
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-          onClick={close}
-        >
+        <ModalShell onClose={close}>
           <div
             className="w-full max-w-[560px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-16"
             onClick={(e) => e.stopPropagation()}
@@ -182,7 +180,7 @@ export function NewProjectButton({ clientId }: { clientId: string }) {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalShell>
       )}
     </>
   );

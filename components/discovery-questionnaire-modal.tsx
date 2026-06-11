@@ -9,6 +9,7 @@
 import { useState, useTransition } from "react";
 import { X, Sparkles, Plus, Trash2, Check, Copy, ShieldAlert, ClipboardList } from "lucide-react";
 import { Button, Label, Input, Textarea, Select, Badge } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { generateQuestionnaire, createDiscoveryQuestionnaireForm } from "@/app/(app)/pipeline/[id]/tally-actions";
 import type { SurveyQuestion, SurveyQuestionType } from "@/lib/tally";
 
@@ -83,7 +84,7 @@ export function DiscoveryQuestionnaireModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+    <ModalShell onClose={onClose} guard={step !== "done"} positionClassName="items-start justify-center pt-12 px-4">
       <div className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
@@ -195,6 +196,6 @@ export function DiscoveryQuestionnaireModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }

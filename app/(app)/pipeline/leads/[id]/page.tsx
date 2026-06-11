@@ -5,12 +5,13 @@ import { Card, Label, Badge, Button } from "@/components/ui";
 import { AddToFunnelPanel } from "@/components/add-to-funnel-panel";
 import { LeadEmailPanel } from "@/components/lead-email-panel";
 import { LeadPeopleList } from "@/components/lead-people-list";
+import { LeadClaimCard } from "@/components/lead-claim-card";
 import { RestoreLeadButton } from "@/components/restore-lead-button";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
 import type { ProspectLead, ProspectPerson } from "@/lib/types";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Sparkles } from "lucide-react";
 
 function scoreTone(score: number): { cls: string; style?: React.CSSProperties } {
   if (score >= 8) return { cls: "bg-track-gold-dim/20 text-track-gold border-track-gold/40" };
@@ -69,6 +70,9 @@ export default async function LeadDetailPage({
     convertedDealId: row.convertedDealId ?? undefined,
     reviewedBy: row.reviewedBy ?? undefined,
     reviewedAt: row.reviewedAt?.toISOString(),
+    claimedById: row.claimedById ?? undefined,
+    claimedBy: row.claimedBy ?? undefined,
+    claimedAt: row.claimedAt?.toISOString(),
     outreachSubject: row.outreachSubject ?? undefined,
     outreachDraft: row.outreachDraft ?? undefined,
     outreachPersonIndex: row.outreachPersonIndex ?? undefined,
@@ -82,8 +86,19 @@ export default async function LeadDetailPage({
   return (
     <>
       <Header
-        eyebrow="Pipeline · AI Found Lead"
-        title={lead.companyName}
+        eyebrow={lead.origin === "imported" ? "Pipeline · Promoted Lead" : "Pipeline · AI Found Lead"}
+        title={
+          <span className="flex flex-col gap-2">
+            <span>{lead.companyName}</span>
+            <span className="flex items-center gap-2 text-[13px] font-normal tracking-normal text-track-gold">
+              <Sparkles size={13} strokeWidth={1.5} />
+              Surfaced by {lead.createdBy}
+              {lead.generatedFromSkill ? (
+                <span className="text-bone-mute">· skill: {lead.generatedFromSkill}</span>
+              ) : null}
+            </span>
+          </span>
+        }
         actions={
           <Link href="/pipeline">
             <Button variant="ghost" size="sm">
@@ -101,7 +116,9 @@ export default async function LeadDetailPage({
               <span className="text-[13px] text-bone-dim">
                 {lead.status === "added"
                   ? "This lead is in the pipeline."
-                  : "This lead was set aside."}
+                  : lead.status === "contacted"
+                    ? "Cold email sent — this lead is in the cold funnel awaiting a reply."
+                    : "This lead was set aside."}
                 {lead.reviewedBy ? ` Reviewed by ${lead.reviewedBy}.` : ""}
               </span>
             </Card>
@@ -196,15 +213,25 @@ export default async function LeadDetailPage({
         </div>
 
         <div className="flex flex-col gap-6">
-          {/* The email panel self-routes: composer for pending leads, read-only
-              "added to funnel" state (with a link to the deal) once converted. */}
-          {(lead.status === "pending" || lead.status === "added") && (
+          <LeadClaimCard
+            leadId={lead.id}
+            claimedById={lead.claimedById}
+            claimedBy={lead.claimedBy}
+            partners={partners}
+            currentPartnerId={session?.user?.partnerId}
+            readOnly={lead.status === "added" || lead.status === "ghost"}
+          />
+
+          {/* The email panel self-routes: composer for pending leads, the
+              awaiting-reply state (with the two exits) while contacted, and the
+              read-only "added to funnel" state once converted. */}
+          {(lead.status === "pending" || lead.status === "contacted" || lead.status === "added") && (
             <LeadEmailPanel lead={lead} autoOpen={autoCompose} />
           )}
 
           {lead.status === "ghost" ? (
             <RestoreLeadButton leadId={lead.id} />
-          ) : (
+          ) : lead.status === "contacted" ? null : (
             <AddToFunnelPanel
               lead={lead}
               partners={partners}

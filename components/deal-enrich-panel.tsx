@@ -162,8 +162,13 @@ export function DealEnrichPanel({ deal }: { deal: Deal }) {
 
             {lists.filter((l) => l.items.length > 0).map((l) => (
               <div key={l.title} className="flex flex-col gap-1.5">
-                <Label>{l.title}</Label>
-                <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Label>{l.title}</Label>
+                  <span className="mono text-[10px] text-bone-mute tabular-nums">{l.items.length}</span>
+                </div>
+                {/* Every fact stays visible — the window caps and scrolls so a
+                    long list can't swallow the page. */}
+                <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto pr-2">
                   {l.items.map((item, i) => (
                     <div key={i} className="flex items-start gap-3">
                       <span className="mono text-[11px] text-track-gold mt-0.5 tabular-nums">{String(i + 1).padStart(2, "0")}</span>

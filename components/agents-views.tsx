@@ -14,6 +14,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea, Tabs, Select, EmptyState } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import {
   createAgentPlan,
@@ -393,7 +394,7 @@ function PlanModal({ plan, kind, onClose }: { plan?: PlanProp; kind: PlanKind; o
     : kind === "mcp" ? "New MCP plan" : "New agent plan";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+    <ModalShell onClose={onClose} positionClassName="items-start justify-center pt-20 px-4">
       <div className="w-full max-w-[600px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
@@ -462,7 +463,7 @@ function PlanModal({ plan, kind, onClose }: { plan?: PlanProp; kind: PlanKind; o
           </div>
         </form>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

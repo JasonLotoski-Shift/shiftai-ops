@@ -17,6 +17,7 @@ import {
   Link2,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import {
   extractAndQueue,
@@ -220,7 +221,7 @@ function PasteModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+    <ModalShell onClose={onClose}>
       <div className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
@@ -301,7 +302,7 @@ function PasteModal({ onClose }: { onClose: () => void }) {
           </div>
         </form>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

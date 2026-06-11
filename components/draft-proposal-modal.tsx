@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { X, FileText, Sparkles, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Textarea } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { generateProposal, saveProposal } from "@/app/(app)/pipeline/[id]/actions";
 
 // Draft proposal Quick Action. Same shape as DraftEmailModal:
@@ -44,10 +45,7 @@ export function DraftProposalModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} guard={step !== "saved"}>
       <div
         className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
@@ -187,6 +185,6 @@ export function DraftProposalModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }

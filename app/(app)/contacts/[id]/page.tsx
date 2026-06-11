@@ -222,8 +222,13 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
           {contact.keyFacts.length > 0 && (
             <Card>
               <CardBody className="flex flex-col gap-3">
-                <h2 className="title-md text-bone">Key facts</h2>
-                <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <h2 className="title-md text-bone">Key facts</h2>
+                  <span className="mono text-[10px] text-bone-mute tabular-nums">{contact.keyFacts.length}</span>
+                </div>
+                {/* Every fact stays in the list — the window caps and scrolls
+                    so a long record can't swallow the page. */}
+                <div className="flex flex-col max-h-[300px] overflow-y-auto pr-2">
                   {contact.keyFacts.map((f, i) => (
                     <div key={i} className="flex items-start gap-3 py-2">
                       <span className="mono text-[11px] text-track-gold mt-0.5 tabular-nums">{String(i + 1).padStart(2, "0")}</span>

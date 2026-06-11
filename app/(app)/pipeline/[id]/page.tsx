@@ -11,7 +11,7 @@ import { EstimateEditor } from "@/components/billing/estimate-editor";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { stageLabels, industryLabels, leadSourceLabels } from "@/lib/data/seed";
-import { ArrowLeft, Mail, Phone, Sparkles, Activity } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Sparkles, Activity, FileText, ExternalLink, FolderOpen } from "lucide-react";
 
 // The proposal engine's Opus build chain (server actions on this route) can run
 // 60–120s. Extend the function timeout to the max (honored on hosts that allow
@@ -29,7 +29,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   // Latest open/accepted estimate for this deal (Phase 5 scoping) + whether a
   // prototype already exists (gates the proposal-deck action).
-  const [estimateRaw, tiers, prototype, surveyRaw, contactLinksRaw, allContacts] = await Promise.all([
+  const [estimateRaw, tiers, prototype, artifacts, surveyRaw, contactLinksRaw, allContacts] = await Promise.all([
     prisma.estimate.findFirst({
       where: { dealId: id, status: { not: "superseded" } },
       orderBy: { version: "desc" },
@@ -43,6 +43,20 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     prisma.artifact.findFirst({
       where: { dealId: id, generatedFromSkill: "html-prototype" },
       select: { id: true },
+    }),
+    // Documents card — every doc generated/filed for this deal, newest first.
+    prisma.artifact.findMany({
+      where: { dealId: id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        driveUrl: true,
+        createdAt: true,
+        createdBy: true,
+        generatedFromSkill: true,
+        type: true,
+      },
     }),
     prisma.discoverySurvey.findFirst({
       where: { dealId: id },
@@ -319,6 +333,57 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           </Card>
 
           {surveyCard && <DiscoverySurveyCard survey={surveyCard} dealId={deal.id} company={deal.company} />}
+
+          {/* Documents — every doc generated for this deal, with its Drive link
+              and creation date. Files live in the deal's 00-Pipeline folder. */}
+          <Card>
+            <div className="px-5 pt-5 pb-3 flex items-center justify-between gap-3">
+              <span className="title-md">Documents</span>
+              {deal.driveFolderUrl && (
+                <a
+                  href={deal.driveFolderUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="label-gold hover:underline flex items-center gap-1.5"
+                >
+                  <FolderOpen size={12} strokeWidth={1.5} />
+                  Drive folder
+                </a>
+              )}
+            </div>
+            {artifacts.length === 0 ? (
+              <CardBody className="pt-0">
+                <p className="text-[12px] text-bone-mute">
+                  Nothing filed yet. Discovery prep, proposals, and reports save here (and to Drive)
+                  as you generate them.
+                </p>
+              </CardBody>
+            ) : (
+              <div className="flex flex-col pb-2">
+                {artifacts.map((a) => (
+                  <a
+                    key={a.id}
+                    href={a.driveUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-5 py-2.5 flex items-start gap-3 hover:bg-[var(--color-row-hover)] transition-colors group"
+                  >
+                    <FileText size={14} strokeWidth={1.5} className="text-bone-mute mt-0.5 shrink-0" />
+                    <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                      <span className="text-[13px] text-bone leading-snug truncate group-hover:text-track-gold">
+                        {a.title}
+                      </span>
+                      <span className="text-[11px] text-bone-mute">
+                        {formatDate(a.createdAt)}
+                        {a.generatedFromSkill ? ` · ${a.generatedFromSkill}` : ""}
+                      </span>
+                    </span>
+                    <ExternalLink size={12} strokeWidth={1.5} className="text-bone-mute mt-1 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            )}
+          </Card>
         </div>
         </div>
       </div>

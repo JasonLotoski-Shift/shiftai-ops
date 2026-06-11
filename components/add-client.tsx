@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Select, SearchInput } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { createClient } from "@/app/(app)/clients/actions";
 import { industryLabels } from "@/lib/data/seed";
 
@@ -123,10 +124,7 @@ function AddClientModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose}>
       <div
         className="w-full max-w-[620px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
@@ -273,6 +271,6 @@ function AddClientModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalShell>
   );
 }

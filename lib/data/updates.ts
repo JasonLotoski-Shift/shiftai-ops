@@ -23,6 +23,41 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-11",
+    tag: "new",
+    title: "Cold email sent — a holding tab so outreach doesn't flood the board",
+    detail:
+      "After Claude drafts a cold email on a lead, you now pick where it files: straight onto the pipeline board (as before), or into the new Cold email sent tab — plus Copy and Save draft. Leads in the cold tab wait there with the send date and days-waiting; when one replies, “Replied → add to funnel” creates the contact and a deal at Qualified, and “No reply” sets it aside. The board only carries real conversations.",
+  },
+  {
+    date: "2026-06-11",
+    tag: "new",
+    title: "Claim a lead, or hand it to a partner",
+    detail:
+      "AI Found and Promoted leads now show who surfaced them right under the company name, and any partner can claim a lead in one click from the card — or assign it to someone else from the lead page. The owner shows on the card, the lead page, and the cold-email tab, so two partners don't chase the same company.",
+  },
+  {
+    date: "2026-06-11",
+    tag: "new",
+    title: "Deal documents now file into a proper Drive folder — with links on the deal",
+    detail:
+      "Docs generated at the deal stage (discovery prep, proposals, discovery reports, prototypes, questionnaire responses) used to land loose in the Shared Drive root. Each deal now gets its own folder under 00-Pipeline, created the first time you save a doc, and the deal page has a Documents card listing every file with its date and a click-through to Drive. When a deal converts, the whole folder moves into the new client's folder automatically.",
+  },
+  {
+    date: "2026-06-11",
+    tag: "improved",
+    title: "Pop-up forms warn before they throw away your work",
+    detail:
+      "Clicking outside a form pop-up (new deal, new contact, ingest, drafts, and the rest) used to silently close it and lose everything you'd typed. Now a confirm steps in first — Keep editing (green) or Close — discard (red).",
+  },
+  {
+    date: "2026-06-11",
+    tag: "improved",
+    title: "Key facts show in full, in a scrollable window",
+    detail:
+      "Key facts (and the other profile lists) on deals, clients, and contacts now show every item with a count, inside a capped window you scroll — long records no longer stretch the whole page.",
+  },
+  {
     date: "2026-06-10",
     tag: "new",
     title: "Send a discovery questionnaire after a call — it builds the report",

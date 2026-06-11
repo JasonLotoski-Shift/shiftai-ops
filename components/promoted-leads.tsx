@@ -22,7 +22,9 @@ const isEnriched = (l: ProspectLead) =>
   l.foundBy.includes("apollo") || l.foundBy.includes("firecrawl");
 
 export function PromotedLeads({ leads }: { leads: ProspectLead[] }) {
-  const visible = [...leads].filter((l) => l.status !== "ghost");
+  // Ghosted leads are filtered out entirely; cold-emailed ones (contacted)
+  // live on the "Cold email sent" tab instead — never shown twice.
+  const visible = [...leads].filter((l) => l.status !== "ghost" && l.status !== "contacted");
   // Active (still to work) on top by score; in-pipeline (added) greyed at the bottom.
   const activeLeads = visible.filter((l) => l.status === "pending").sort(byScoreDesc);
   const inPipeline = visible.filter((l) => l.status !== "pending").sort(byScoreDesc);

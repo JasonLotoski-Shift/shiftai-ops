@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { X, Mail, Sparkles, ShieldAlert, Check } from "lucide-react";
 import { Button, Label, Input, Textarea } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import { generateEmailDraft, saveEmailDraft, sendEmail } from "@/app/(app)/contacts/[id]/actions";
 
@@ -66,10 +67,7 @@ export function DraftEmailModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} guard={step !== "saved"} positionClassName="items-start justify-center pt-20 px-4">
       <div
         className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
@@ -231,6 +229,6 @@ export function DraftEmailModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }

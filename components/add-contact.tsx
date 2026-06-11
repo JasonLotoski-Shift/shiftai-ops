@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { UserPlus, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { createContact } from "@/app/(app)/contacts/actions";
 import { industryLabels, leadSourceLabels } from "@/lib/data/seed";
 
@@ -93,10 +94,7 @@ function AddContactModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} positionClassName="items-start justify-center pt-20 px-4">
       <div
         className="w-full max-w-[600px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
@@ -190,6 +188,6 @@ function AddContactModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalShell>
   );
 }

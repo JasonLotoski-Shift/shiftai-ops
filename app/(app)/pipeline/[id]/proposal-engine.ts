@@ -24,6 +24,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadFile } from "@/lib/drive";
+import { ensureDealDriveFolder } from "@/lib/deal-drive";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
@@ -141,12 +142,12 @@ async function saveHtml(skill: HtmlArtifactSkill, dealId: string, htmlRaw: strin
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, company: true } });
   if (!deal) throw new Error("Deal not found");
 
-  const sharedDriveFolderId = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
-  if (!sharedDriveFolderId) throw new Error("DRIVE_SHARED_DRIVE_FOLDER_ID is not configured");
+  // File into the deal's own 00-Pipeline working folder (created on first use).
+  const { folderId } = await ensureDealDriveFolder(dealId);
 
   const today = new Date().toISOString().slice(0, 10);
   const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-${cfg.fileSuffix}.html`;
-  const { fileId, webViewLink } = await uploadFile(html, fileName, sharedDriveFolderId, "text/html");
+  const { fileId, webViewLink } = await uploadFile(html, fileName, folderId, "text/html");
 
   const artifact = await prisma.$transaction(async (tx) => {
     const created = await tx.artifact.create({

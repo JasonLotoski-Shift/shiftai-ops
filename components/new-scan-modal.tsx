@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { X, ScanSearch, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Select } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { startContactScan } from "@/app/(app)/import/scan-actions";
 import type { ScanCriteria } from "@/lib/types";
 
@@ -87,10 +88,7 @@ export function NewScanModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose}>
       <div
         className="w-full max-w-[640px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
@@ -176,6 +174,6 @@ export function NewScanModal({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

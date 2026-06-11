@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Label, Badge, Button, Input, Textarea, Select, Avatar } from "@/components/ui";
+import { ModalShell as GuardedModalShell } from "@/components/modal-shell";
 import { formatDate } from "@/lib/format";
 import { createTask, updateTask, updateTaskStatus } from "@/app/(app)/tasks/actions";
 import { createMilestone, updateMilestoneBoardStatus, setMilestoneArchived } from "@/app/(app)/projects/[id]/actions";
@@ -781,7 +782,7 @@ function ModalShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-6" onClick={onClose}>
+    <GuardedModalShell onClose={onClose} positionClassName="items-center justify-center p-6" scroll={false}>
       <Card
         className="w-full max-w-lg p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -797,7 +798,7 @@ function ModalShell({
         </div>
         {children}
       </Card>
-    </div>
+    </GuardedModalShell>
   );
 }
 

@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive } from "@/lib/drive";
+import { ensureDealDriveFolder } from "@/lib/deal-drive";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
@@ -145,7 +146,8 @@ export async function generateDiscoveryReportForDeal(
   return { body: body.trim() };
 }
 
-/** Persist the deal's Discovery Report (HTML) → Shared-Drive root + Artifact(dealId). */
+/** Persist the deal's Discovery Report (HTML) → the deal's 00-Pipeline working
+ *  folder + Artifact(dealId). */
 export async function saveDiscoveryReportForDeal(dealId: string, input: { body: string }) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
@@ -159,13 +161,12 @@ export async function saveDiscoveryReportForDeal(dealId: string, input: { body: 
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, company: true } });
   if (!deal) throw new Error("Deal not found");
 
-  const sharedDriveFolderId = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID;
-  if (!sharedDriveFolderId) throw new Error("DRIVE_SHARED_DRIVE_FOLDER_ID is not configured");
+  const { folderId } = await ensureDealDriveFolder(dealId);
 
   const today = new Date().toISOString().slice(0, 10);
   const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-discovery-report.html`;
   const res = await drive.files.create({
-    requestBody: { name: fileName, parents: [sharedDriveFolderId], mimeType: "text/html" },
+    requestBody: { name: fileName, parents: [folderId], mimeType: "text/html" },
     media: { mimeType: "text/html", body: Readable.from(body) },
     fields: "id, webViewLink",
     supportsAllDrives: true,

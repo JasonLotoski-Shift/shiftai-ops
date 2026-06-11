@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { X, Upload, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Textarea } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { uploadClientFile } from "@/app/(app)/clients/[id]/actions";
 
 // Upload client files — ingest, not generation. Drop in meeting notes (e.g. a
@@ -58,10 +59,7 @@ export function UploadFileModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} guard={!saved}>
       <div className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
@@ -138,6 +136,6 @@ export function UploadFileModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }

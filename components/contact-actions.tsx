@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
+import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import type { ContactModel as Contact } from "@/lib/generated/prisma/models";
 import { interactionLabels } from "@/lib/data/seed";
@@ -128,10 +129,7 @@ function Modal({
   wide?: boolean;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} positionClassName="items-start justify-center pt-20 px-4">
       <div
         className={cn("w-full bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20", wide ? "max-w-[680px]" : "max-w-[520px]")}
         onClick={(e) => e.stopPropagation()}
@@ -147,7 +145,7 @@ function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { X, Sparkles, ShieldAlert, type LucideIcon } from "lucide-react";
 import { Button, Label, Textarea } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { generateClientDoc, saveClientDoc } from "@/app/(app)/clients/[id]/actions";
 
 // Generic generative client-doc modal — drives Draft client survey (and any
@@ -52,10 +53,7 @@ export function ClientDocModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} guard={step !== "saved"}>
       <div className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
@@ -159,6 +157,6 @@ export function ClientDocModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }

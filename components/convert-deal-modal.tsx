@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X, ArrowRight, Check, FolderPlus, ShieldAlert } from "lucide-react";
 import { Button, Textarea, Label, Select } from "@/components/ui";
+import { ModalShell } from "@/components/modal-shell";
 import { Wordmark } from "@/components/wordmark";
 import { TYPE_LABELS } from "@/components/project-type-edit";
 import type {
@@ -60,10 +61,7 @@ export function ConvertDealModal({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-bitumen/85 backdrop-blur-sm overflow-y-auto"
-      onClick={onClose}
-    >
+    <ModalShell onClose={onClose} guard={step === "review"}>
       <div
         className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-16"
         onClick={(e) => e.stopPropagation()}
@@ -235,6 +233,6 @@ export function ConvertDealModal({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }
