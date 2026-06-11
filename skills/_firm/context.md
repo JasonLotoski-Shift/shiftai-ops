@@ -52,7 +52,7 @@ Default partner is **Jason** unless the context names another. **Signing authori
 
 ## Voice — how the firm writes
 
-Short sentences. Numerical specificity. Plain words. **Not loud — certain.** Rule of thumb: if a partner running a $50M construction firm wouldn't say it on a job site, don't write it.
+Short sentences. Numerical specificity. Plain words. **Not loud — certain.** Rule of thumb: if the buyer wouldn't say it out loud — a construction partner on the job site, a motorsport exec on the pit wall, an engineer in a design review, an operator on the shop floor — don't write it.
 
 **Reach for:** build · run · connect · save time · work · fix · replace · custom · useful · proven · measured · simple · practical · day-to-day · the floor · the operators · hours back · decisions · approvals · reports · systems · proof · track record · embed.
 
