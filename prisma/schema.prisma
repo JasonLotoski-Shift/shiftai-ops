@@ -1440,6 +1440,12 @@ model ScanRun {
   // Anthropic Message Batches API id (the bulk async path). Null on the inline path.
   batchApiId String?
 
+  // When the current ingest attempt claimed this run (submitted→scoring, or a
+  // re-claim of a dead attempt). Bulk ingest takes seconds, so a claim older
+  // than INGEST_CLAIM_TTL_MS (5 min, lib/contact-scan.ts) means the serverless
+  // invocation died mid-write and the run may be re-claimed and resumed.
+  ingestClaimedAt DateTime?
+
   // The imported-contact ids in this scan, in request order. Each batch result
   // carries a global `index` that maps back to contactIds[index] — so ingest
   // (a LATER request than submit) never depends on unstable row ordering.
