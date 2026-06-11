@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-11",
+    tag: "improved",
+    title: "Actions are easier to spot on deal, contact, and client pages",
+    detail:
+      "The Actions panel under the title now shows open by default with a clear gold button, instead of hiding behind a faint text toggle. You can still collapse it.",
+  },
+  {
+    date: "2026-06-11",
     tag: "new",
     title: "Check Gmail and Fireflies on demand — right from Ingest",
     detail:

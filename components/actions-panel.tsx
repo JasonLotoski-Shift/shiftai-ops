@@ -1,9 +1,10 @@
 "use client";
 
-// ActionsPanel — a collapsible "Actions" section that sits just under a detail
-// page's title (pipeline deal / contact / client). Collapsed by default: a
-// single "Actions" toggle. Expanded: a grid of boxes, each explaining what the
-// action does. Boxes either run a handler (open a modal) or link out.
+// ActionsPanel — an "Actions" section that sits just under a detail page's
+// title (pipeline deal / contact / client). OPEN by default with a prominent
+// bordered toggle so the actions are easy to find; collapse to a single pill.
+// Expanded: a grid of boxes, each explaining what the action does. Boxes either
+// run a handler (open a modal) or link out.
 //
 // The parent owns the modals + builds the `actions` array; this component is
 // presentational + owns only the open/closed state. Pass `forceOpen` to expand
@@ -90,7 +91,9 @@ export function ActionsPanel({
   forceOpen?: boolean;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  // Open by default — the whole point is that partners can see what they can do
+  // here without hunting. Collapsible for when they want the page quiet.
+  const [open, setOpen] = useState(true);
 
   // A deep-link (?qa=) targeting one of these actions pops the panel open.
   useEffect(() => {
@@ -105,15 +108,15 @@ export function ActionsPanel({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex items-center gap-2 w-fit text-bone-dim hover:text-bone transition-colors"
+        className="group flex items-center gap-2 w-fit px-3 py-1.5 rounded-[var(--radius)] border border-track-gold/30 bg-track-gold-dim/10 hover:border-track-gold/60 hover:bg-track-gold-dim/20 transition-colors"
       >
         <Zap size={13} strokeWidth={1.5} className="text-track-gold" />
         <span className="text-[13px] font-medium text-bone">Actions</span>
-        <span className="text-[11px] text-bone-mute tabular-nums">{actions.length}</span>
+        <span className="px-1.5 py-px rounded-full bg-track-gold-dim/30 text-[11px] text-track-gold tabular-nums">{actions.length}</span>
         <ChevronDown
           size={14}
           strokeWidth={1.5}
-          className={cn("transition-transform text-bone-mute", open && "rotate-180")}
+          className={cn("transition-transform text-bone-mute group-hover:text-bone", open && "rotate-180")}
         />
       </button>
 
