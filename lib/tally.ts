@@ -89,44 +89,73 @@ export function parseQuestions(raw: string): SurveyQuestion[] {
 }
 
 // ── Question → Tally blocks ──
+// Tally's real model (validated against the live API 2026-06-10): every QUESTION
+// is a TITLE block carrying the label, FOLLOWED BY its input block(s). A block's
+// groupType is its own structural type (NOT a generic "QUESTION"), and the label
+// goes in the TITLE block's payload.html — input blocks carry NO html. Choice
+// questions emit one option block per choice, all sharing ONE option groupUuid.
+// (The earlier single-block / groupType:"QUESTION" / payload.html-on-input shape
+// was rejected 400 VALIDATION — "groupType must be [INPUT_TEXT]", "payload.html
+// is not allowed".)
 type TallyBlock = { uuid: string; type: string; groupUuid: string; groupType: string; payload: Record<string, unknown> };
 
-// Table-driven so a wire-format fix is one line per type. file_upload is
-// downgraded to a "paste a link" text field (free-tier FILE_UPLOAD is uncertain).
-const BLOCK_MAP: Record<SurveyQuestionType, { type: string; child?: { type: string; group: string }; extra?: Record<string, unknown> }> = {
-  short_text: { type: "INPUT_TEXT" },
-  long_text: { type: "TEXTAREA" },
-  number: { type: "INPUT_NUMBER" },
-  email: { type: "INPUT_EMAIL" },
-  single_select: { type: "MULTIPLE_CHOICE", child: { type: "MULTIPLE_CHOICE_OPTION", group: "MULTIPLE_CHOICE" } },
-  multi_select: { type: "CHECKBOXES", child: { type: "CHECKBOX", group: "CHECKBOXES" } },
-  dropdown: { type: "DROPDOWN", child: { type: "DROPDOWN_OPTION", group: "DROPDOWN" } },
-  rating: { type: "RATING", extra: { stars: 5 } },
-  linear_scale: { type: "LINEAR_SCALE", extra: { start: 1, end: 10 } },
-  ranking: { type: "RANKING", child: { type: "RANKING_OPTION", group: "RANKING" } },
-  file_upload: { type: "TEXTAREA" },
+// How each question type renders AFTER its TITLE block:
+//  - "input": one block; type === groupType; payload { isRequired, placeholder, …extra }.
+//  - "choice": one block per option, sharing one groupUuid; option `type`, the
+//    parent `group` as groupType; payload { text, index, isFirst, isLast, isRequired }.
+// file_upload is downgraded to a "paste a link" text field (free-tier uncertain).
+type BlockSpec =
+  | { kind: "input"; type: string; extra?: Record<string, unknown> }
+  | { kind: "choice"; type: string; group: string };
+
+const BLOCK_MAP: Record<SurveyQuestionType, BlockSpec> = {
+  short_text: { kind: "input", type: "INPUT_TEXT" },
+  long_text: { kind: "input", type: "TEXTAREA" },
+  number: { kind: "input", type: "INPUT_NUMBER" },
+  email: { kind: "input", type: "INPUT_EMAIL" },
+  rating: { kind: "input", type: "RATING", extra: { stars: 5 } },
+  linear_scale: { kind: "input", type: "LINEAR_SCALE", extra: { start: 1, end: 10 } },
+  file_upload: { kind: "input", type: "TEXTAREA" },
+  single_select: { kind: "choice", type: "MULTIPLE_CHOICE_OPTION", group: "MULTIPLE_CHOICE" },
+  multi_select: { kind: "choice", type: "CHECKBOX", group: "CHECKBOXES" },
+  dropdown: { kind: "choice", type: "DROPDOWN_OPTION", group: "DROPDOWN" },
+  ranking: { kind: "choice", type: "RANKING_OPTION", group: "RANKING" },
 };
 
 export function mapQuestionsToBlocks(title: string, questions: SurveyQuestion[]): TallyBlock[] {
   const blocks: TallyBlock[] = [];
-  const titleUuid = randomUUID();
-  blocks.push({ uuid: titleUuid, type: "FORM_TITLE", groupUuid: titleUuid, groupType: "FORM_TITLE", payload: { html: title } });
+  const formTitleUuid = randomUUID();
+  blocks.push({ uuid: formTitleUuid, type: "FORM_TITLE", groupUuid: formTitleUuid, groupType: "FORM_TITLE", payload: { html: title } });
 
   for (const q of questions) {
-    const map = BLOCK_MAP[q.type] ?? BLOCK_MAP.long_text;
-    const parentUuid = randomUUID();
+    const spec = BLOCK_MAP[q.type] ?? BLOCK_MAP.long_text;
     const label = q.type === "file_upload" ? `${q.label} (paste a link)` : q.label;
-    const payload: Record<string, unknown> = { html: label, isRequired: !!q.required, isHidden: false, ...(map.extra ?? {}) };
-    blocks.push({ uuid: parentUuid, type: map.type, groupUuid: parentUuid, groupType: "QUESTION", payload });
 
-    if (map.child && q.options?.length) {
-      q.options.forEach((opt, i) => {
+    // Every question opens with a TITLE block carrying the label.
+    const titleUuid = randomUUID();
+    blocks.push({ uuid: titleUuid, type: "TITLE", groupUuid: titleUuid, groupType: "QUESTION", payload: { html: label } });
+
+    if (spec.kind === "input") {
+      const inputUuid = randomUUID();
+      // placeholder is only valid on free-text inputs; RATING/LINEAR_SCALE reject it.
+      const isText = ["INPUT_TEXT", "TEXTAREA", "INPUT_NUMBER", "INPUT_EMAIL"].includes(spec.type);
+      blocks.push({
+        uuid: inputUuid,
+        type: spec.type,
+        groupUuid: inputUuid,
+        groupType: spec.type,
+        payload: { isRequired: !!q.required, ...(isText ? { placeholder: "" } : {}), ...(spec.extra ?? {}) },
+      });
+    } else {
+      const groupUuid = randomUUID(); // one group for all options of this question
+      const opts = q.options ?? [];
+      opts.forEach((opt, i) => {
         blocks.push({
           uuid: randomUUID(),
-          type: map.child!.type,
-          groupUuid: parentUuid, // links the option to its parent question
-          groupType: map.child!.group,
-          payload: { text: opt, index: i, isFirst: i === 0, isLast: i === q.options!.length - 1 },
+          type: spec.type,
+          groupUuid,
+          groupType: spec.group,
+          payload: { text: opt, index: i, isFirst: i === 0, isLast: i === opts.length - 1, isRequired: !!q.required },
         });
       });
     }
