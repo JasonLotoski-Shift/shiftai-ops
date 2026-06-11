@@ -500,7 +500,7 @@ const flows: Flow[] = [
     blurb: "Label a client thread in Gmail and it lands on Ingest for review — your inbox stays private.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Settings → Connect Gmail (once), then label any client thread “ops-log”" },
-      { tone: "claude", kind: "Claude", label: "Hourly: reads only labeled threads, matches the client/contact, drafts a summary + action items" },
+      { tone: "claude", kind: "Claude", label: "Every 6 hours (or hit “Check Gmail” on Ingest to run it now): reads only labeled threads, matches the client/contact, drafts a summary + action items" },
       { tone: "review", kind: "You review", label: "Each email waits on Ingest as a pending item — approve like a meeting" },
       { tone: "write", kind: "Saved", label: "Logs a sent/received email Interaction (+ Tasks/enrichment) + AuditLog; never reads unlabeled mail" },
     ],
@@ -511,7 +511,7 @@ const flows: Flow[] = [
     blurb: "Record a client call in Fireflies; titled ones land on Ingest for review.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Record the call in Fireflies with “Shift” in the meeting title" },
-      { tone: "claude", kind: "Claude", label: "When the transcript is ready: matches the client/contact, drafts a summary + action items" },
+      { tone: "claude", kind: "Claude", label: "When the transcript is ready (and a 6-hourly sweep, or “Check Fireflies” on Ingest, catches any you renamed later): matches the client/contact, drafts a summary + action items" },
       { tone: "review", kind: "You review", label: "Approve on Ingest like any meeting; internal-only or untitled calls are skipped" },
       { tone: "write", kind: "Saved", label: "Logs a meeting Interaction + files the transcript to Drive + Tasks/enrichment + AuditLog" },
     ],

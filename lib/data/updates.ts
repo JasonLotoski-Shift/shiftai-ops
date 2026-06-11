@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-11",
+    tag: "new",
+    title: "Check Gmail and Fireflies on demand — right from Ingest",
+    detail:
+      "Gmail and Fireflies now sweep every 6 hours (was hourly), and there are “Check Gmail” and “Check Fireflies” buttons at the top of the Ingest page. Just had a call? Hit Check Fireflies and the meeting lands for review in seconds instead of waiting for the next sweep.",
+  },
+  {
+    date: "2026-06-11",
     tag: "improved",
     title: "Smarter duplicate checks when adding contacts and tasks",
     detail:

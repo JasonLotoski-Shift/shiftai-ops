@@ -15,6 +15,7 @@ import {
   Upload,
   FolderOpen,
   Link2,
+  RefreshCw,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
@@ -32,6 +33,7 @@ import {
   type ProjectExtractedProposal,
 } from "@/app/(app)/projects/[id]/drop-actions";
 import { crossReferenceProposal } from "@/app/(app)/ingest/composer-actions";
+import { runManualScan, type ScanSource } from "@/app/(app)/ingest/scan-actions";
 import { IngestComposer } from "@/components/ingest/ingest-composer";
 import UnifiedProposalCard from "@/components/ingest/unified-proposal-card";
 import type { IngestTargetKind, UnifiedProposal, CrossReferenceResult } from "@/lib/ingest/types";
@@ -76,6 +78,29 @@ export function IngestView({
   const [composerOpen, setComposerOpen] = useState(!!initialFocus);
   const [expanded, setExpanded] = useState<string | null>(proposals[0]?.id ?? null);
 
+  const router = useRouter();
+  const [scanPending, startScan] = useTransition();
+  const [scanActive, setScanActive] = useState<ScanSource | null>(null);
+  const [scanMsg, setScanMsg] = useState<string | null>(null);
+  const [scanErr, setScanErr] = useState<string | null>(null);
+
+  function runScan(source: ScanSource) {
+    setScanMsg(null);
+    setScanErr(null);
+    setScanActive(source);
+    startScan(async () => {
+      try {
+        const r = await runManualScan(source);
+        setScanMsg(r.message);
+        if (r.created > 0) router.refresh();
+      } catch (e) {
+        setScanErr(e instanceof Error ? e.message : "Check failed");
+      } finally {
+        setScanActive(null);
+      }
+    });
+  }
+
   return (
     <div className="px-8 py-8 flex flex-col gap-8">
       <div className="flex items-start justify-between gap-6">
@@ -84,10 +109,29 @@ export function IngestView({
           changes across <span className="text-bone">every targeted record at once</span> and holds them here. Nothing is
           written until you approve it: every add is confirmed, every overwrite shows before → after. The partner is the gate.
         </p>
-        <Button variant="primary" size="sm" onClick={() => setComposerOpen(true)}>
-          <Plus size={13} strokeWidth={1.5} />
-          Ingest
-        </Button>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => runScan("gmail")} disabled={scanPending}>
+              <RefreshCw size={13} strokeWidth={1.5} className={cn(scanPending && scanActive === "gmail" && "animate-spin")} />
+              Check Gmail
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => runScan("fireflies")} disabled={scanPending}>
+              <RefreshCw size={13} strokeWidth={1.5} className={cn(scanPending && scanActive === "fireflies" && "animate-spin")} />
+              Check Fireflies
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setComposerOpen(true)}>
+              <Plus size={13} strokeWidth={1.5} />
+              Ingest
+            </Button>
+          </div>
+          {scanMsg && <span className="text-[11px] text-bone-mute">{scanMsg}</span>}
+          {scanErr && (
+            <span className="flex items-center gap-1 text-[11px] text-flag-red">
+              <ShieldAlert size={11} strokeWidth={1.5} />
+              {scanErr}
+            </span>
+          )}
+        </div>
       </div>
 
       {proposals.length === 0 ? (
