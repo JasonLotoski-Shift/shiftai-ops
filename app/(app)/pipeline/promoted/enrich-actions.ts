@@ -1,12 +1,14 @@
 "use server";
 
-// Enrich a promoted (origin=imported) ProspectLead with Apollo + Firecrawl.
+// Enrich a ProspectLead with Apollo + Firecrawl, then build its company picture
+// + positioning brief. No origin guard — this serves BOTH origins: the promoted
+// (origin=imported) cards and the AI Found / Promoted lead detail page.
 //
 // Synchronous and scoped to one company, so it fits a normal request — the
 // partner clicks "Enrich" and waits a few seconds. Promoted leads are firm-wide,
 // so any signed-in partner may enrich one (no per-partner scoping here, unlike
-// the private import staging). The /pipeline route sets maxDuration = 300 to
-// give the Apollo + Firecrawl round-trips budget.
+// the private import staging). The /pipeline and lead-detail routes set
+// maxDuration = 300 to give the Apollo + Firecrawl + web-search rounds budget.
 
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";

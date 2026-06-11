@@ -7,11 +7,17 @@ import { LeadEmailPanel } from "@/components/lead-email-panel";
 import { LeadPeopleList } from "@/components/lead-people-list";
 import { LeadClaimCard } from "@/components/lead-claim-card";
 import { RestoreLeadButton } from "@/components/restore-lead-button";
+import { LeadCompanyPictureCard, LeadPositioningCard } from "@/components/lead-profile-cards";
+import { LeadEnrichButton } from "@/components/lead-enrich-button";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
 import type { ProspectLead, ProspectPerson } from "@/lib/types";
 import { ArrowLeft, ExternalLink, Sparkles } from "lucide-react";
+
+// The lead Enrich pass (Apollo + Firecrawl + web-search rounds) runs
+// synchronously from this route — give it wall-clock budget.
+export const maxDuration = 300;
 
 function scoreTone(score: number): { cls: string; style?: React.CSSProperties } {
   if (score >= 8) return { cls: "bg-track-gold-dim/20 text-track-gold border-track-gold/40" };
@@ -55,6 +61,20 @@ export default async function LeadDetailPage({
     revenueEstimate: row.revenueEstimate ?? undefined,
     employeeEstimate: row.employeeEstimate ?? undefined,
     headquarters: row.headquarters ?? undefined,
+    linkedinUrl: row.linkedinUrl ?? undefined,
+    instagramUrl: row.instagramUrl ?? undefined,
+    companySize: row.companySize ?? undefined,
+    founded: row.founded ?? undefined,
+    ownership: row.ownership ?? undefined,
+    description: row.description ?? undefined,
+    subIndustry: row.subIndustry ?? undefined,
+    currentSystems: row.currentSystems,
+    painPoints: row.painPoints,
+    companyKeyFacts: row.companyKeyFacts,
+    fitSummary: row.fitSummary ?? undefined,
+    likelyNeeds: row.likelyNeeds,
+    salesAngle: row.salesAngle ?? undefined,
+    enrichedAt: row.enrichedAt?.toISOString(),
     segmentId: row.segmentId ?? undefined,
     segmentName: row.segment?.name ?? undefined,
     score: row.score,
@@ -144,6 +164,12 @@ export default async function LeadDetailPage({
             </div>
             <p className="text-[13px] text-bone-dim leading-relaxed">{lead.rationale}</p>
           </Card>
+
+          {/* Company picture (web-sourced) — Enrich builds it; carries to the deal on convert */}
+          <LeadCompanyPictureCard lead={lead} action={<LeadEnrichButton leadId={lead.id} />} />
+
+          {/* How we'd sell to them — the positioning brief */}
+          <LeadPositioningCard lead={lead} />
 
           {/* Firmographics */}
           <Card className="p-5 flex flex-col gap-4">

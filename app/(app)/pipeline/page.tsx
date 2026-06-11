@@ -31,6 +31,7 @@ function toLead(row: LeadRow): ProspectLead {
     revenueEstimate: row.revenueEstimate ?? undefined,
     employeeEstimate: row.employeeEstimate ?? undefined,
     headquarters: row.headquarters ?? undefined,
+    enrichedAt: row.enrichedAt?.toISOString(),
     segmentId: row.segmentId ?? undefined,
     segmentName: row.segment?.name ?? undefined,
     score: row.score,

@@ -127,6 +127,14 @@ export function LeadCard({ lead, muted = false }: { lead: ProspectLead; muted?: 
             {lead.people.length} {lead.people.length === 1 ? "contact" : "contacts"}
           </span>
           <span className="flex items-center gap-1">
+            {lead.enrichedAt && (
+              <span
+                title="Company picture built from the web"
+                className="inline-flex items-center px-1.5 py-0.5 border border-graphite-2 bg-graphite text-bone-mute font-mono text-[9px] uppercase tracking-wide rounded-[var(--radius-pill)]"
+              >
+                profile
+              </span>
+            )}
             {lead.foundBy.map((src) => (
               <span
                 key={src}
