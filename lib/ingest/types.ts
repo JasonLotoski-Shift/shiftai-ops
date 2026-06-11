@@ -214,6 +214,10 @@ export type CrossRefTaskOverlap = {
   title: string;
   existingTaskId: string;
   existingTitle: string;
+  // How sure we are it's the same task: "exact" = same normalized title (the
+  // approval backstop would skip it); "fuzzy" = near-identical, flagged for the
+  // partner to confirm. Optional so pre-existing cross-ref results still parse.
+  confidence?: "exact" | "fuzzy";
 };
 
 /** A proposed milestone (v2 project records) that duplicates a live milestone. */

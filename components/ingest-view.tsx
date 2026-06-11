@@ -526,13 +526,23 @@ function ProposalCard({
                     <div className="flex items-center gap-3">
                       <input type="checkbox" checked={it.keep} onChange={() => setItems((prev) => prev.map((x, j) => j === i ? { ...x, keep: !x.keep } : x))} className="accent-track-gold" />
                       <Input value={it.title} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} className="flex-1 h-8" disabled={isPending} />
-                      {taskOverlap.has(i) && <Badge tone="red">already on the board</Badge>}
+                      {taskOverlap.has(i) &&
+                        (taskOverlap.get(i)!.confidence === "fuzzy" ? (
+                          <Badge tone="steel">possible duplicate</Badge>
+                        ) : (
+                          <Badge tone="red">already on the board</Badge>
+                        ))}
                     </div>
-                    {taskOverlap.has(i) && (
-                      <p className="text-[11px] text-flag-red pl-7 leading-snug">
-                        Matches an open task: “{taskOverlap.get(i)!.existingTitle}” — unchecked to avoid a duplicate.
-                      </p>
-                    )}
+                    {taskOverlap.has(i) &&
+                      (taskOverlap.get(i)!.confidence === "fuzzy" ? (
+                        <p className="text-[11px] text-track-gold pl-7 leading-snug">
+                          Looks similar to an open task: “{taskOverlap.get(i)!.existingTitle}” — unchecked to skip; re-check to add anyway.
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-flag-red pl-7 leading-snug">
+                          Matches an open task: “{taskOverlap.get(i)!.existingTitle}” — unchecked to avoid a duplicate.
+                        </p>
+                      ))}
                     <div className="grid grid-cols-[1fr_160px] gap-3 pl-7">
                       <Input value={it.context} onChange={(e) => setItems((prev) => prev.map((x, j) => j === i ? { ...x, context: e.target.value } : x))} placeholder="context" className="h-8 text-[12px]" disabled={isPending} />
                       <div className="flex gap-2">

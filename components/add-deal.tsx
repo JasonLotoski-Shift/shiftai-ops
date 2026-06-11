@@ -306,9 +306,10 @@ function InlineAddContact({
       : partners[0]?.id ?? "",
   );
   const [error, setError] = useState<string | null>(null);
+  const [dupConfirm, setDupConfirm] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  function create() {
+  function create(force = false) {
     setError(null);
     if (!name.trim() || !company.trim() || !email.trim()) {
       setError("Name, company, and email are required");
@@ -316,7 +317,7 @@ function InlineAddContact({
     }
     startTransition(async () => {
       try {
-        const { id } = await createContact({
+        const res = await createContact({
           name,
           title,
           company,
@@ -326,8 +327,20 @@ function InlineAddContact({
           source,
           sourceCategory,
           partnerLeadId,
+          force,
         });
-        onCreated({ id, name: name.trim(), company: company.trim(), industry });
+        if ("id" in res) {
+          onCreated({ id: res.id, name: name.trim(), company: company.trim(), industry });
+        } else {
+          // Possible duplicate — name the match and let the partner add anyway.
+          const hit = res.match ?? res.candidates[0];
+          setDupConfirm(true);
+          setError(
+            hit
+              ? `Possible duplicate: ${hit.name} · ${hit.company}. Click "Add anyway" to create a new contact.`
+              : "Possible duplicate found. Click \"Add anyway\" to proceed.",
+          );
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to add contact");
       }
@@ -404,10 +417,10 @@ function InlineAddContact({
           variant="primary"
           size="sm"
           type="button"
-          onClick={create}
+          onClick={() => create(dupConfirm)}
           disabled={isPending || !name.trim() || !company.trim() || !email.trim()}
         >
-          {isPending ? "Saving…" : "Save & use contact"}
+          {isPending ? "Saving…" : dupConfirm ? "Add anyway" : "Save & use contact"}
         </Button>
       </div>
     </div>

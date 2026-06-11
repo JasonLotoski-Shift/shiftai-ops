@@ -39,6 +39,7 @@ import { resolveTargetsFromText, computeCrossReference, type DetectedTarget } fr
 import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract-file";
 import { createContact } from "@/app/(app)/contacts/actions";
 import { createContactTx } from "@/lib/contacts";
+import { resolveContact } from "@/lib/resolve-entity";
 import { linkContact } from "@/lib/contact-links";
 import type {
   IngestType,
@@ -122,27 +123,39 @@ export async function crossReferenceProposal(
   return computeCrossReference(proposalId, { clientId: opts?.scopeClientId ?? null });
 }
 
-// ── 2. checkContactDuplicate — case-insensitive email (and optional name). ──
+// ── 2. checkContactDuplicate — shared resolver (exact email → domain+name →
+// fuzzy name/company). `duplicate` is the best exact/strong hit (safe to treat as
+// the same person); `candidates` adds fuzzy near-matches for the partner to eyeball
+// before adding anyway. Backward-compatible: `duplicate` keeps its old shape. ──
 export async function checkContactDuplicate(input: {
   email: string;
   name?: string;
-}): Promise<{ duplicate: { id: string; name: string; company: string } | null }> {
+  company?: string;
+}): Promise<{
+  duplicate: { id: string; name: string; company: string } | null;
+  candidates: { id: string; name: string; company: string; confidence: string; reason: string }[];
+}> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
 
   const email = input.email.trim();
-  if (!email) return { duplicate: null };
+  if (!email && !input.name?.trim()) return { duplicate: null, candidates: [] };
 
-  const found = await prisma.contact.findFirst({
-    where: {
-      OR: [
-        { email: { equals: email, mode: "insensitive" } },
-        ...(input.name?.trim() ? [{ name: { equals: input.name.trim(), mode: "insensitive" as const } }] : []),
-      ],
-    },
-    select: { id: true, name: true, company: true },
+  const { match, candidates } = await resolveContact({
+    email,
+    name: input.name,
+    company: input.company,
   });
-  return { duplicate: found ?? null };
+  return {
+    duplicate: match ? { id: match.id, name: match.name, company: match.company } : null,
+    candidates: candidates.map((c) => ({
+      id: c.id,
+      name: c.name,
+      company: c.company,
+      confidence: c.confidence,
+      reason: c.reason,
+    })),
+  };
 }
 
 // ── 3. addContactInline — wrap the existing createContact. ──
@@ -160,7 +173,10 @@ export async function addContactInline(input: {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
 
-  const { id } = await createContact({
+  // force:true — the composer ran its own checkContactDuplicate first and the
+  // partner clicked Add, so skip createContact's dedup gate (it would never
+  // return an id here). The result is always the created-row shape.
+  const res = await createContact({
     name: input.name,
     title: input.title ?? "",
     company: input.company,
@@ -170,8 +186,10 @@ export async function addContactInline(input: {
     source: input.source ?? "Ingest composer",
     notes: input.notes,
     partnerLeadId: input.partnerLeadId,
+    force: true,
   });
-  return { id, name: input.name.trim(), company: input.company.trim() };
+  if (!("id" in res)) throw new Error("Failed to add contact");
+  return { id: res.id, name: input.name.trim(), company: input.company.trim() };
 }
 
 // ── 4. extractUnified — the one unified extraction. Builds context across all
@@ -635,16 +653,14 @@ export async function approveUnified(
       const name = pc.name?.trim();
       const email = pc.email?.trim().toLowerCase();
       if (!name || !email) continue;
-      // Dedupe by EMAIL only (parse guarantees a validated address on every
-      // proposedContact). A name match alone is a guess — a different
-      // "John Smith" at another company — and never merges silently; the
-      // manual flow surfaces name matches to the partner instead.
-      const existing = await tx.contact.findFirst({
-        where: { email: { equals: email, mode: "insensitive" } },
-        select: { id: true },
-      });
-      if (existing) {
-        emailToContactId.set(email, existing.id);
+      // Dedupe via the shared resolver: link to the existing person on an EXACT
+      // email or a STRONG (same company domain + matching name) hit — that catches
+      // "same person, new email", which an email-only check would miss. A FUZZY
+      // name/company guess is NOT auto-linked here (it would risk merging a
+      // different person); those are surfaced to the partner on the manual flow.
+      const { match } = await resolveContact({ email, name, company: pc.company }, tx);
+      if (match) {
+        emailToContactId.set(email, match.id);
         contactsMatchedExisting++;
         continue;
       }

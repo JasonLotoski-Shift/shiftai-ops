@@ -33,6 +33,7 @@ import {
 import { prisma } from "../lib/prisma";
 import { writeAudit, writeActivity, agentActor } from "../lib/audit";
 import { logOps } from "../lib/ops";
+import { findDuplicateOpenTask } from "../lib/ingest/dedup";
 import type { EngagementStatus, TaskPriority, ArtifactType, InteractionType } from "../lib/generated/prisma/enums";
 
 const ACTOR = agentActor("mcp");
@@ -240,6 +241,14 @@ const tools: Tool[] = [
       if (!owner) throw new Error("Owner (partner) not found");
       const due = new Date(str(a.due)!);
       if (Number.isNaN(due.getTime())) throw new Error("Invalid due date");
+      // Dedupe: an agent has no human to confirm, so skip an EXACT open-task twin
+      // in the same scope and return the existing id rather than creating a copy.
+      const existingTask = await findDuplicateOpenTask(prisma, {
+        title: str(a.title)!,
+        clientId: str(a.clientId) ?? null,
+        projectId: str(a.projectId) ?? null,
+      });
+      if (existingTask) return { id: existingTask.id, deduped: true };
       const created = await prisma.$transaction(async (tx) => {
         const task = await tx.task.create({
           data: {

@@ -24,6 +24,20 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-11",
+    tag: "improved",
+    title: "Smarter duplicate checks when adding contacts and tasks",
+    detail:
+      "Adding a contact now checks the whole book first — by email, by company + name, and by close-but-not-exact name matches. An exact or strong match is flagged before you create a second copy: you see who's already on file, can open them, or add anyway. Ingest does the same, and it now recognises the same person on a new email address. Task duplicate-checks at ingest also catch near-misses like \"Send proposal\" vs \"Send the proposal\" — flagged as a possible duplicate (unchecked by default, re-check to add anyway).",
+  },
+  {
+    date: "2026-06-11",
+    tag: "fixed",
+    title: "Lead enrichment now tells you when something didn't work",
+    detail:
+      "Enriching a promoted lead used to fail silently — it would run and appear to do nothing. It now reports what went wrong (a company it couldn't find a website for, a service that's misconfigured, or out of credits) right on the Enrich button.",
+  },
+  {
+    date: "2026-06-11",
     tag: "new",
     title: "Cold email sent — a holding tab so outreach doesn't flood the board",
     detail:

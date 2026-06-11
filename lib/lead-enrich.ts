@@ -30,7 +30,21 @@ export type EnrichSummary = {
   peopleAdded: number;
   score: number;
   firmographics: boolean;
+  // Non-fatal problems that would otherwise be invisible — a missing API key, a
+  // domain that couldn't be resolved, an Apollo/Firecrawl call that failed. The
+  // button surfaces these so "ran but did nothing" stops being a silent mystery.
+  notes: string[];
 };
+
+// Turn a swallowed error into a partner-readable note (the env-var and credit
+// cases are the ones worth calling out by name).
+function noteFor(step: string, err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("is not set")) return `${step}: API key not configured (check Vercel env vars).`;
+  if (msg.startsWith("APOLLO_AUTH")) return `${step}: Apollo rejected the API key (auth).`;
+  if (msg.startsWith("APOLLO_CREDITS")) return `${step}: out of Apollo credits.`;
+  return `${step}: ${msg.slice(0, 140)}`;
+}
 
 const personKey = (name: string, title: string) =>
   `${name.trim().toLowerCase()}|${(title ?? "").trim().toLowerCase()}`;
@@ -97,6 +111,7 @@ export async function enrichLead(opts: {
 }): Promise<EnrichSummary> {
   const lead = await prisma.prospectLead.findUnique({ where: { id: opts.leadId } });
   if (!lead) throw new Error("Lead not found");
+  const notes: string[] = [];
   let domain = normalizeDomain(lead.domain);
 
   // Promoted-from-import leads may be keyed on a company-name slug (no dot) when
@@ -105,8 +120,17 @@ export async function enrichLead(opts: {
   if (domain && !domain.includes(".")) {
     const resolved = await resolveDomainByName(lead.companyName);
     if (!resolved) {
-      // Couldn't find the company — nothing to enrich against yet.
-      return { revealed: 0, peopleAdded: 0, score: lead.score, firmographics: false };
+      // Couldn't find the company — nothing to enrich against yet. This is the
+      // most common silent "did nothing" for imported leads (no real domain).
+      return {
+        revealed: 0,
+        peopleAdded: 0,
+        score: lead.score,
+        firmographics: false,
+        notes: [
+          `Couldn't resolve a company domain for "${lead.companyName}" via Apollo. Add a website to the lead, or check the Apollo API key.`,
+        ],
+      };
     }
     if (resolved !== domain) {
       try {
@@ -130,6 +154,7 @@ export async function enrichLead(opts: {
     enrich = await apolloEnrichOrg(domain);
   } catch (err) {
     console.error(`[lead-enrich] enrich failed for ${domain}:`, err);
+    notes.push(noteFor("Firmographics (Apollo)", err));
   }
 
   // 2) Site signals (Firecrawl, best-effort — the slow step).
@@ -139,6 +164,7 @@ export async function enrichLead(opts: {
     signals = markdown.slice(0, 2000);
   } catch (err) {
     console.error(`[lead-enrich] scrape failed for ${domain}:`, err);
+    notes.push(noteFor("Site scrape (Firecrawl)", err));
   }
 
   // 3) Find more people at the company (surfaces decision-makers near the
@@ -148,6 +174,7 @@ export async function enrichLead(opts: {
     found = await apolloSearchPeople({ domains: [domain], perPage: 10 });
   } catch (err) {
     console.error(`[lead-enrich] people search failed for ${domain}:`, err);
+    notes.push(noteFor("People search (Apollo)", err));
   }
   const seen = new Set(people.map((p) => personKey(p.name ?? "", p.title ?? "")));
   for (const p of found) {
@@ -207,8 +234,10 @@ export async function enrichLead(opts: {
       if (err instanceof Error && err.message.startsWith("APOLLO_CREDITS")) {
         // Out of Apollo credits — keep the rest of the enrichment, skip reveal.
         console.warn("[lead-enrich] out of Apollo credits, skipping reveal");
+        notes.push("Email reveal skipped: out of Apollo credits.");
       } else {
         console.error(`[lead-enrich] reveal failed for ${domain}:`, err);
+        notes.push(noteFor("Email reveal (Apollo)", err));
       }
     }
   }
@@ -253,6 +282,7 @@ export async function enrichLead(opts: {
       }
     } catch (err) {
       console.error(`[lead-enrich] re-rate failed for ${domain}:`, err);
+      notes.push(noteFor("Re-rate (Claude)", err));
     }
   }
 
@@ -300,5 +330,5 @@ export async function enrichLead(opts: {
     });
   });
 
-  return { revealed, peopleAdded, score, firmographics: !!enrich };
+  return { revealed, peopleAdded, score, firmographics: !!enrich, notes };
 }

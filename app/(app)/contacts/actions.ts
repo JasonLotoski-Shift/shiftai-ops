@@ -11,6 +11,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { createContactTx } from "@/lib/contacts";
+import { resolveContact } from "@/lib/resolve-entity";
 import type {
   Industry,
   LeadSource,
@@ -55,6 +56,8 @@ export type CreateContactInput = {
   notes?: string;
   /** Partner who owns the relationship. Defaults to the signed-in partner. */
   partnerLeadId?: string;
+  /** Set true to create even when a possible duplicate was flagged ("Add anyway"). */
+  force?: boolean;
   // Reach & personal (D40) — all optional.
   linkedinUrl?: string;
   location?: string;
@@ -70,10 +73,23 @@ export type CreateContactInput = {
 // endpoint, and the tx helper carries no auth() guard by design (the caller
 // owns auth); keeping it in a plain lib module keeps it off the wire.
 
+// A possible-duplicate flag returned instead of creating — the partner confirms
+// ("Add anyway") or opens the existing record. `match` is an exact/strong hit;
+// `candidates` includes fuzzy near-matches worth a human glance.
+export type DuplicateContactFlag = {
+  needsConfirm: true;
+  match: { id: string; name: string; company: string } | null;
+  candidates: { id: string; name: string; company: string; confidence: string; reason: string }[];
+};
+
+export type CreateContactResult = { id: string } | DuplicateContactFlag;
+
 // Fast capture — a mutation, not a generative action. Mirrors the lineup item
 // "Add contact" (ROADMAP A4). One Contact row + one AuditLog + one Activity,
-// all in a single transaction (the row + audit via createContactTx).
-export async function createContact(input: CreateContactInput) {
+// all in a single transaction (the row + audit via createContactTx). Before
+// creating, it runs the shared resolver: an exact/strong or fuzzy hit returns a
+// needsConfirm flag (no write) so the partner decides — pass force:true to skip.
+export async function createContact(input: CreateContactInput): Promise<CreateContactResult> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
@@ -116,6 +132,26 @@ export async function createContact(input: CreateContactInput) {
     select: { id: true },
   });
   if (!partnerLead) throw new Error("Partner lead not found");
+
+  // Dedup gate — unless the partner already chose "Add anyway". An exact/strong
+  // match or any fuzzy near-match returns a flag instead of writing, so two rows
+  // for the same person don't pile up silently.
+  if (!input.force) {
+    const { match, candidates } = await resolveContact({ name, email, company });
+    if (match || candidates.length) {
+      return {
+        needsConfirm: true,
+        match: match ? { id: match.id, name: match.name, company: match.company } : null,
+        candidates: candidates.map((c) => ({
+          id: c.id,
+          name: c.name,
+          company: c.company,
+          confidence: c.confidence,
+          reason: c.reason,
+        })),
+      };
+    }
+  }
 
   const contact = await prisma.$transaction(async (tx) => {
     const created = await createContactTx(

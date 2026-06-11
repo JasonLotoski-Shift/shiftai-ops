@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { UserPlus, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
-import { createContact } from "@/app/(app)/contacts/actions";
+import { createContact, type DuplicateContactFlag } from "@/app/(app)/contacts/actions";
 import { industryLabels, leadSourceLabels } from "@/lib/data/seed";
 
 type PartnerOption = { id: string; name: string };
@@ -67,14 +67,20 @@ function AddContactModal({
     defaultPartnerId ?? partners[0]?.id ?? "",
   );
   const [error, setError] = useState<string | null>(null);
+  const [dupFlag, setDupFlag] = useState<DuplicateContactFlag | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
+  // Editing the match keys invalidates a prior flag — re-check on next submit.
+  useEffect(() => {
+    setDupFlag(null);
+  }, [name, email, company]);
+
+  function submit(e: React.FormEvent | null, force = false) {
+    e?.preventDefault();
     setError(null);
     startTransition(async () => {
       try {
-        const { id } = await createContact({
+        const res = await createContact({
           name,
           title,
           company,
@@ -85,8 +91,13 @@ function AddContactModal({
           sourceCategory,
           notes,
           partnerLeadId,
+          force,
         });
-        router.push(`/contacts/${id}`);
+        if ("id" in res) {
+          router.push(`/contacts/${res.id}`);
+        } else {
+          setDupFlag(res);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to add contact");
       }
@@ -173,6 +184,32 @@ function AddContactModal({
             <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering about this contact…" disabled={isPending} />
           </div>
 
+          {dupFlag && (
+            <div className="flex flex-col gap-2 px-3 py-3 border border-track-gold/40 bg-track-gold/5 rounded-[var(--radius)]">
+              <div className="flex items-start gap-2">
+                <ShieldAlert size={13} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
+                <span className="text-[12px] text-bone-dim">
+                  {dupFlag.match
+                    ? "This looks like someone already on file:"
+                    : "A similar contact may already exist:"}
+                </span>
+              </div>
+              <ul className="flex flex-col gap-1 pl-5">
+                {(dupFlag.match ? [{ ...dupFlag.match, confidence: "match", reason: "Same person" }] : [])
+                  .concat(dupFlag.candidates.filter((c) => c.id !== dupFlag.match?.id))
+                  .map((c) => (
+                    <li key={c.id} className="text-[12px]">
+                      <a href={`/contacts/${c.id}`} target="_blank" rel="noreferrer" className="text-bone hover:text-track-gold underline underline-offset-2">
+                        {c.name}
+                      </a>
+                      <span className="text-bone-mute"> · {c.company} — {c.reason}</span>
+                    </li>
+                  ))}
+              </ul>
+              <span className="text-[11px] text-bone-mute">Open one to check, or add this contact anyway.</span>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
               <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
@@ -182,9 +219,15 @@ function AddContactModal({
 
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" type="button" onClick={onClose} disabled={isPending}>Cancel</Button>
-            <Button variant="primary" size="sm" type="submit" disabled={isPending || !name.trim() || !company.trim() || !email.trim()}>
-              {isPending ? "Adding…" : "Add contact"}
-            </Button>
+            {dupFlag ? (
+              <Button variant="primary" size="sm" type="button" onClick={() => submit(null, true)} disabled={isPending}>
+                {isPending ? "Adding…" : "Add anyway"}
+              </Button>
+            ) : (
+              <Button variant="primary" size="sm" type="submit" disabled={isPending || !name.trim() || !company.trim() || !email.trim()}>
+                {isPending ? "Checking…" : "Add contact"}
+              </Button>
+            )}
           </div>
         </form>
       </div>

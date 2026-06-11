@@ -822,16 +822,26 @@ export default function UnifiedProposalCard({
                             ) : (
                               <Badge tone="neutral">new task</Badge>
                             )}
-                            {taskOverlap.has(ti) && <Badge tone="red">already on the board</Badge>}
+                            {taskOverlap.has(ti) &&
+                              (taskOverlap.get(ti)!.confidence === "fuzzy" ? (
+                                <Badge tone="steel">possible duplicate</Badge>
+                              ) : (
+                                <Badge tone="red">already on the board</Badge>
+                              ))}
                           </div>
                           {t.context && (
                             <p className="text-[12px] text-bone-dim mt-0.5 leading-snug">{t.context}</p>
                           )}
-                          {taskOverlap.has(ti) && (
-                            <p className="text-[11px] text-flag-red mt-0.5 leading-snug">
-                              Matches an open task: “{taskOverlap.get(ti)!.existingTitle}” — unchecked to skip.
-                            </p>
-                          )}
+                          {taskOverlap.has(ti) &&
+                            (taskOverlap.get(ti)!.confidence === "fuzzy" ? (
+                              <p className="text-[11px] text-track-gold mt-0.5 leading-snug">
+                                Looks similar to an open task: “{taskOverlap.get(ti)!.existingTitle}” — unchecked to skip; re-check to add anyway.
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-flag-red mt-0.5 leading-snug">
+                                Matches an open task: “{taskOverlap.get(ti)!.existingTitle}” — unchecked to skip.
+                              </p>
+                            ))}
                           <div className="flex items-center gap-3 mt-1 text-[11px] text-bone-mute">
                             <span className="inline-flex items-center gap-1">
                               priority <span className="text-bone-dim">{disp(t.priority)}</span>

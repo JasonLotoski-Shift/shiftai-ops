@@ -16,7 +16,7 @@
 // wrapper that needs auth() lives in app/(app)/ingest/composer-actions.ts.
 
 import { prisma } from "@/lib/prisma";
-import { findDuplicateOpenTask, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
+import { findSimilarOpenTasks, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
 import { isUnifiedProposal } from "@/lib/ingest/types";
 import type {
   IngestTargetKind,
@@ -222,12 +222,19 @@ export async function computeCrossReference(
     for (let i = 0; i < tasks.length; i++) {
       const t = tasks[i];
       if (!t?.title?.trim() || t.reassignTaskId) continue;
-      const dup = await findDuplicateOpenTask(prisma, {
+      const [dup] = await findSimilarOpenTasks(prisma, {
         title: t.title,
         clientId: t.clientId,
         projectId: t.projectId,
       });
-      if (dup) taskOverlaps.push({ index: i, title: t.title.trim(), existingTaskId: dup.id, existingTitle: dup.title });
+      if (dup)
+        taskOverlaps.push({
+          index: i,
+          title: t.title.trim(),
+          existingTaskId: dup.id,
+          existingTitle: dup.title,
+          confidence: dup.confidence,
+        });
     }
     // Milestones inherit their record's project at apply time — scope by recordId.
     const records = Array.isArray(data?.records) ? data.records : [];
@@ -258,8 +265,15 @@ export async function computeCrossReference(
     for (let i = 0; i < items.length; i++) {
       const a = items[i];
       if (!a?.title?.trim()) continue;
-      const dup = await findDuplicateOpenTask(prisma, { title: a.title, clientId: scopeClientId });
-      if (dup) taskOverlaps.push({ index: i, title: a.title.trim(), existingTaskId: dup.id, existingTitle: dup.title });
+      const [dup] = await findSimilarOpenTasks(prisma, { title: a.title, clientId: scopeClientId });
+      if (dup)
+        taskOverlaps.push({
+          index: i,
+          title: a.title.trim(),
+          existingTaskId: dup.id,
+          existingTitle: dup.title,
+          confidence: dup.confidence,
+        });
     }
   }
 

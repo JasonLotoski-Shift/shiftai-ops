@@ -14,6 +14,7 @@
 // so the check and the create share one transaction.
 
 import { prisma } from "@/lib/prisma";
+import { ratio, tokenJaccard } from "@/lib/resolve-entity";
 
 // The client handed to a prisma.$transaction(async (tx) => …) callback.
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
@@ -61,6 +62,58 @@ export async function findDuplicateOpenTask(
   });
 
   return candidates.find((c) => normalizeTitle(c.title) === target) ?? null;
+}
+
+export type SimilarTaskHit = DuplicateHit & {
+  similarity: number; // 0..1
+  confidence: "exact" | "fuzzy";
+};
+
+/**
+ * Find OPEN tasks in the same scope that are the SAME or NEARLY the same as
+ * `title` — exact normalized match (similarity 1) or a high title-similarity
+ * (edit-distance or token overlap ≥ threshold). Used by the ADVISORY cross-
+ * reference badge so the partner sees "this looks like an existing task" for
+ * near-duplicates like "Send proposal" vs "Send the proposal" — which the exact
+ * findDuplicateOpenTask backstop would miss. Returns best-first; never writes.
+ *
+ * The approval-time backstop (findDuplicateOpenTask) stays EXACT-only on purpose:
+ * fuzzy matches are flagged for the partner to confirm, never auto-skipped.
+ */
+export async function findSimilarOpenTasks(
+  tx: Tx,
+  input: { title: string; clientId?: string | null; projectId?: string | null },
+  opts?: { threshold?: number },
+): Promise<SimilarTaskHit[]> {
+  const target = normalizeTitle(input.title);
+  if (!target) return [];
+  const threshold = opts?.threshold ?? 0.8;
+
+  const candidates = await tx.task.findMany({
+    where: {
+      done: false,
+      ...(input.projectId
+        ? { projectId: input.projectId }
+        : input.clientId
+          ? { clientId: input.clientId }
+          : { clientId: null, projectId: null }),
+    },
+    select: { id: true, title: true },
+  });
+
+  const hits: SimilarTaskHit[] = [];
+  for (const c of candidates) {
+    const norm = normalizeTitle(c.title);
+    if (norm === target) {
+      hits.push({ id: c.id, title: c.title, similarity: 1, confidence: "exact" });
+      continue;
+    }
+    const sim = Math.max(ratio(target, norm), tokenJaccard(target, norm));
+    if (sim >= threshold) {
+      hits.push({ id: c.id, title: c.title, similarity: sim, confidence: "fuzzy" });
+    }
+  }
+  return hits.sort((a, b) => b.similarity - a.similarity);
 }
 
 /**

@@ -80,12 +80,15 @@ function EnrichButton({ leadId }: { leadId: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [notes, setNotes] = useState<string[]>([]);
 
   function onEnrich() {
     setError(null);
+    setNotes([]);
     startTransition(async () => {
       try {
-        await enrichPromotedLead(leadId);
+        const summary = await enrichPromotedLead(leadId);
+        setNotes(summary.notes ?? []);
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Enrichment failed");
@@ -105,6 +108,12 @@ function EnrichButton({ leadId }: { leadId: string }) {
           {error}
         </span>
       )}
+      {notes.map((n, i) => (
+        <span key={i} className="flex items-start gap-1 text-[11px] text-track-gold">
+          <ShieldAlert size={11} strokeWidth={1.5} className="mt-0.5 shrink-0" />
+          {n}
+        </span>
+      ))}
     </div>
   );
 }
