@@ -27,6 +27,12 @@ export const SCAN_CHUNK_SIZE = 20;
 // At/below this many scannable rows, run inline (batch latency isn't worth it).
 export const INLINE_SCAN_THRESHOLD = 40;
 const SCAN_MAX_TOKENS = 2000;
+// Bulk-ingest writes go in chunks of this many verdicts (one createMany + one
+// raw UPDATE per chunk; ~25 queries total for a 5k scan instead of ~10,500).
+export const INGEST_WRITE_CHUNK = 500;
+// A "scoring" claim older than this is a dead invocation (bulk ingest takes
+// seconds) — the run may be re-claimed and the idempotent ingest re-run.
+export const INGEST_CLAIM_TTL_MS = 5 * 60 * 1000;
 
 export type ScanRow = {
   id: string;
@@ -42,6 +48,14 @@ export type ScanVerdict = {
   index: number;
   score: number;
   leadType: "decision_maker" | "connector" | "none";
+  rationale: string;
+};
+
+// One verdict resolved to its ImportedContact id, ready to write.
+export type IngestRow = {
+  contactId: string;
+  score: number;
+  leadType: ScanVerdict["leadType"];
   rationale: string;
 };
 
@@ -149,6 +163,34 @@ function toScanContacts(rows: ScanRow[], indexBase: number): ScanContact[] {
     company: r.company ?? "",
     domain: r.domain ?? "",
   }));
+}
+
+// Resolve batch verdicts (global `index`) to contact ids. `seen` is shared
+// across the whole results stream so a repeated index never writes twice.
+export function toIngestRows(
+  verdicts: ScanVerdict[],
+  contactIds: string[],
+  seen: Set<number>,
+): IngestRow[] {
+  const out: IngestRow[] = [];
+  for (const v of verdicts) {
+    const contactId = contactIds[v.index];
+    if (!contactId || seen.has(v.index)) continue;
+    seen.add(v.index);
+    out.push({
+      contactId,
+      score: v.score,
+      leadType: v.leadType,
+      rationale: v.rationale.slice(0, 400),
+    });
+  }
+  return out;
+}
+
+export function claimExpired(ingestClaimedAt: Date | null, now = new Date()): boolean {
+  return (
+    !ingestClaimedAt || now.getTime() - ingestClaimedAt.getTime() > INGEST_CLAIM_TTL_MS
+  );
 }
 
 // Write one contact's result: the per-scan ScanResult row (the report "column")
