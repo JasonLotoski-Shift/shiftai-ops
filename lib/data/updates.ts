@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-11",
+    tag: "improved",
+    title: "Leads now build a real company picture — and tell you how to sell to them",
+    detail:
+      "Opening an AI Found or Promoted lead used to show a score and a one-line rationale. Enrich now also builds the same company profile deals get (description, systems, pain points, key facts, sourced from the web) plus a new selling view: how they map to what Shift AI does, what they likely need from us, and the angle to open with. Cold email drafts use it, and when a lead joins the pipeline the profile carries onto the deal automatically.",
+  },
+  {
+    date: "2026-06-11",
     tag: "fixed",
     title: "Big contact scans now finish — and show live progress",
     detail:

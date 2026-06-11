@@ -455,7 +455,7 @@ const flows: Flow[] = [
       { tone: "claude", kind: "Claude", label: "Stage 1 (free): pulls a wide pool (up to 150 matching companies), skips any already in your contacts or pipeline, and ranks it — headcount growth first, revenue-in-band breaks ties" },
       { tone: "claude", kind: "Claude", label: "Stage 2 (deep): on the top ~40 only, scrapes the site for buying signals, finds people, and rates fit 1–10 — revealing the best contact's email only when the lead clears the bar (score ≥ 6)" },
       { tone: "claude", kind: "Claude", label: "Optimized a segment? It also re-judges companies it previously filtered (never reviewed) against the new criteria — rescuing good leads that just missed before" },
-      { tone: "review", kind: "You review", label: "Open a lead → claim it (or assign a partner), Reveal email on any contact (1 Apollo credit), draft a cold intro, or add to the funnel. Restoring a filtered lead reveals its best contact's email too" },
+      { tone: "review", kind: "You review", label: "Open a lead → Enrich builds the full company picture (web-sourced: description, systems, pain points, key facts) plus a \"how we'd sell to them\" view — what they likely need and the angle to open with. Then claim it (or assign a partner), Reveal email on any contact (1 Apollo credit), draft a cold intro, or add to the funnel. Restoring a filtered lead reveals its best contact's email too" },
       { tone: "review", kind: "You review", label: "Sent a cold email? File it — Sent → add to pipeline puts it on the board now; Sent → cold funnel parks it in the Cold email sent tab until they reply (Replied → funnel opens a deal at Qualified; No reply sets it aside)" },
       { tone: "write", kind: "Saved", label: "Leads + reveals + claims + AuditLog; the run shows new + rescued + filtered and ~how many companies are left to explore; the Apollo-credits meter tracks emails revealed this month" },
     ],
@@ -469,7 +469,7 @@ const flows: Flow[] = [
       { tone: "trigger", kind: "You do", label: "New scan → set the criteria (industries, size, revenue, location, keywords), seeded from a segment + editable" },
       { tone: "claude", kind: "Claude", label: "Rates every contact 1–10 against the criteria — decision-maker, connector, or no fit — saved as its own report tab" },
       { tone: "review", kind: "You review", label: "Open the report, tick the strong ones (name-only set aside) → Add to Pipeline Leads. Delete reports/contacts anytime" },
-      { tone: "write", kind: "Saved", label: "Picks become firm-wide Promoted Leads; Enrich runs Apollo + Firecrawl, then add to the funnel + AuditLog" },
+      { tone: "write", kind: "Saved", label: "Picks become firm-wide Promoted Leads; Enrich runs Apollo + Firecrawl and builds the company picture + \"how we'd sell to them\" view (same as AI Found leads), then add to the funnel — the profile carries onto the deal + AuditLog" },
     ],
   },
   {
