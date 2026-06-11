@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-11",
+    tag: "fixed",
+    title: "Big contact scans now finish — and show live progress",
+    detail:
+      "Scanning a large import (thousands of contacts) used to stall at “scoring” and never produce a report. The results step is now fast and self-healing: if anything interrupts it, the next progress check picks up where it left off. The progress bar also shows real counts while results land. Stuck scans from before this fix will complete on their own the next time you open the Import page.",
+  },
+  {
+    date: "2026-06-11",
     tag: "improved",
     title: "Actions are easier to spot on deal, contact, and client pages",
     detail:
