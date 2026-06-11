@@ -33,6 +33,8 @@ export const INGEST_WRITE_CHUNK = 500;
 // A "scoring" claim older than this is a dead invocation (bulk ingest takes
 // seconds) — the run may be re-claimed and the idempotent ingest re-run.
 export const INGEST_CLAIM_TTL_MS = 5 * 60 * 1000;
+// Denormalized rationale budget on ScanResult/ImportedContact rows.
+export const RATIONALE_MAX_CHARS = 400;
 
 export type ScanRow = {
   id: string;
@@ -181,7 +183,7 @@ export function toIngestRows(
       contactId,
       score: v.score,
       leadType: v.leadType,
-      rationale: v.rationale.slice(0, 400),
+      rationale: v.rationale.slice(0, RATIONALE_MAX_CHARS),
     });
   }
   return out;
@@ -202,7 +204,7 @@ async function writeResult(
   contactId: string,
   v: ScanVerdict,
 ): Promise<void> {
-  const rationale = v.rationale.slice(0, 400);
+  const rationale = v.rationale.slice(0, RATIONALE_MAX_CHARS);
   await prisma.scanResult.upsert({
     where: { scanRunId_importedContactId: { scanRunId, importedContactId: contactId } },
     create: { scanRunId, importedContactId: contactId, partnerLeadId: partnerId, score: v.score, leadType: v.leadType, rationale },
@@ -287,9 +289,61 @@ export async function submitBatchScan(opts: {
   });
 }
 
+// Set-based result writes: per 500-row chunk, one createMany (idempotent via
+// the (scanRunId, importedContactId) unique key — a batch's verdicts never
+// change, so skipping existing rows on re-ingest loses nothing) + one raw
+// UPDATE with per-row values (Prisma updateMany can't do that). scoredCount is
+// bumped per chunk so the UI poll shows live progress.
+async function writeResultsBulk(
+  scanRunId: string,
+  partnerId: string,
+  rows: IngestRow[],
+): Promise<number> {
+  let written = 0;
+  for (const ch of chunk(rows, INGEST_WRITE_CHUNK)) {
+    const recordset = JSON.stringify(
+      ch.map((r) => ({
+        id: r.contactId,
+        score: r.score,
+        leadType: r.leadType,
+        rationale: r.rationale,
+      })),
+    );
+    await prisma.$transaction([
+      prisma.scanResult.createMany({
+        data: ch.map((r) => ({
+          scanRunId,
+          importedContactId: r.contactId,
+          partnerLeadId: partnerId,
+          score: r.score,
+          leadType: r.leadType,
+          rationale: r.rationale,
+        })),
+        skipDuplicates: true,
+      }),
+      prisma.$executeRaw`
+        UPDATE "ImportedContact" AS c
+        SET "scanStatus"    = 'scored'::"ImportScanStatus",
+            "scannedAt"     = now(),
+            "scanScore"     = v.score,
+            "leadType"      = v."leadType"::"ImportLeadType",
+            "scanRationale" = v.rationale
+        FROM jsonb_to_recordset(${recordset}::jsonb)
+          AS v(id text, score int, "leadType" text, rationale text)
+        WHERE c.id = v.id AND c."partnerLeadId" = ${partnerId}`,
+    ]);
+    written += ch.length;
+    await prisma.scanRun
+      .update({ where: { id: scanRunId }, data: { scoredCount: written } })
+      .catch(() => {});
+  }
+  return written;
+}
+
 /**
- * Retrieve a finished batch's results and write the report rows. Idempotent: the
- * ScanResult upsert + the submitted→scoring claim guard against double-ingest.
+ * Retrieve a finished batch's results and write the report rows. Idempotent:
+ * createMany skipDuplicates + the repeatable per-row UPDATE mean a re-claimed
+ * run (dead prior attempt) can safely re-ingest from the top.
  */
 export async function ingestScanResults(opts: {
   scanRunId: string;
@@ -300,26 +354,22 @@ export async function ingestScanResults(opts: {
   const { scanRunId, partnerId, batchApiId, contactIds } = opts;
   const client = getAnthropicClient();
 
-  const processed = new Set<number>();
-  let scored = 0;
-
+  // Collect everything first (a few MB at 5k rows), then write set-based.
+  const rows: IngestRow[] = [];
+  const seen = new Set<number>();
   try {
     for await (const entry of await client.messages.batches.results(batchApiId)) {
       const result = entry.result;
       if (result.type !== "succeeded") continue;
-      const verdicts = parseScanResults(extractText(result.message));
-      for (const v of verdicts) {
-        const contactId = contactIds[v.index];
-        if (!contactId || processed.has(v.index)) continue;
-        processed.add(v.index);
-        await writeResult(scanRunId, partnerId, contactId, v);
-        scored++;
-      }
+      rows.push(
+        ...toIngestRows(parseScanResults(extractText(result.message)), contactIds, seen),
+      );
     }
   } catch (err) {
     console.error(`[contact-scan] batch results read failed for ${batchApiId}:`, err);
   }
 
+  const scored = await writeResultsBulk(scanRunId, partnerId, rows);
   const errored = Math.max(0, contactIds.length - scored);
   await finalizeScan(scanRunId, partnerId, scored, errored, "batch");
 }
