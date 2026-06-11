@@ -16,9 +16,37 @@ import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit
 import { generate } from "@/lib/ai";
 import { apolloMatchPerson } from "@/lib/apollo";
 import type { Industry } from "@/lib/generated/prisma/enums";
+import type { ProspectLead as ProspectLeadModel } from "@/lib/generated/prisma/client";
 import type { ProspectPerson } from "@/lib/types";
 
 const VALID_INDUSTRIES: Industry[] = ["automotive", "motorsport", "engineering", "construction", "other"];
+
+// ──────────────────────────────────────────────────────────────────────
+// Profile fields an enriched lead carries onto the Deal it becomes, so the
+// deal starts pre-profiled instead of being re-enriched. Positioning fields
+// (fitSummary/likelyNeeds/salesAngle) stay on the lead — deals have no
+// positioning fields yet. employeeCount ← the lead's employeeEstimate.
+// ──────────────────────────────────────────────────────────────────────
+function leadProfileDealData(lead: ProspectLeadModel) {
+  return {
+    website: lead.website ?? undefined,
+    domain: lead.domain.includes(".") ? lead.domain : undefined,
+    linkedinUrl: lead.linkedinUrl ?? undefined,
+    instagramUrl: lead.instagramUrl ?? undefined,
+    revenueEstimate: lead.revenueEstimate ?? undefined,
+    employeeCount: lead.employeeEstimate ?? undefined,
+    companySize: lead.companySize ?? undefined,
+    headquarters: lead.headquarters ?? undefined,
+    founded: lead.founded ?? undefined,
+    ownership: lead.ownership ?? undefined,
+    description: lead.description ?? undefined,
+    subIndustry: lead.subIndustry ?? undefined,
+    companyKeyFacts: lead.companyKeyFacts,
+    currentSystems: lead.currentSystems,
+    painPoints: lead.painPoints,
+    enrichedAt: lead.enrichedAt ?? undefined,
+  };
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // addToFunnel — promote a discovered lead into the pipeline.
@@ -96,6 +124,7 @@ export async function addToFunnel(
           stageEnteredAt: now,
           contactId: contact.id,
           partnerLeadId,
+          ...leadProfileDealData(lead),
         },
       });
 
@@ -465,6 +494,9 @@ export async function draftLeadEmail(
     "",
     `Why this company fits (the lead agent's rationale):`,
     lead.rationale,
+    lead.fitSummary ? `\nHow we fit them (positioning): ${lead.fitSummary}` : null,
+    lead.likelyNeeds.length ? `Likely needs: ${lead.likelyNeeds.join("; ")}` : null,
+    lead.salesAngle ? `Suggested angle: ${lead.salesAngle}` : null,
     "",
     `Person to email: ${person.name}${person.title ? ` — ${person.title}` : ""}`,
     lead.segment?.name ? `Target segment: ${lead.segment.name}` : "Target segment: (unmatched)",
@@ -641,6 +673,7 @@ export async function markContactedLeadReplied(leadId: string): Promise<{ dealId
           outreachRepliedAt: now,
           contactId: contact.id,
           partnerLeadId,
+          ...leadProfileDealData(lead),
         },
       });
 
@@ -935,6 +968,7 @@ export async function sendColdEmail(leadId: string): Promise<{ dealId: string }>
           coldOutreachAt: now,
           contactId: contact.id,
           partnerLeadId,
+          ...leadProfileDealData(lead),
         },
       });
 
