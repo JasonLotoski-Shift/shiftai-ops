@@ -1241,6 +1241,26 @@ model ProspectLead {
   employeeEstimate Int?
   headquarters     String?
 
+  // ── Company picture (mirrors the Deal profile; filled by enrich) ──
+  linkedinUrl     String?
+  instagramUrl    String?
+  companySize     String?
+  founded         String?
+  ownership       String?
+  description     String?
+  subIndustry     String?
+  currentSystems  String[] @default([])
+  painPoints      String[] @default([])
+  companyKeyFacts String[] @default([])
+
+  // ── Positioning ("how we'd sell to them"; lead-positioning skill) ──
+  fitSummary  String? // how this company maps to who Shift AI is / what we do
+  likelyNeeds String[] @default([]) // grounded "X because Y" needs
+  salesAngle  String? // how to open and position the pitch
+
+  // Stamped when the combined enrich pass last built the picture.
+  enrichedAt DateTime?
+
   // Matched segment (nullable — a lead can be unsegmented).
   segment   TargetSegment? @relation(fields: [segmentId], references: [id])
   segmentId String?

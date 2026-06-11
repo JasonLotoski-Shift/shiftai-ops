@@ -1,0 +1,15 @@
+-- AlterTable
+ALTER TABLE "ProspectLead" ADD COLUMN     "companyKeyFacts" TEXT[] DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN     "companySize" TEXT,
+ADD COLUMN     "currentSystems" TEXT[] DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN     "description" TEXT,
+ADD COLUMN     "enrichedAt" TIMESTAMP(3),
+ADD COLUMN     "fitSummary" TEXT,
+ADD COLUMN     "founded" TEXT,
+ADD COLUMN     "instagramUrl" TEXT,
+ADD COLUMN     "likelyNeeds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN     "linkedinUrl" TEXT,
+ADD COLUMN     "ownership" TEXT,
+ADD COLUMN     "painPoints" TEXT[] DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN     "salesAngle" TEXT,
+ADD COLUMN     "subIndustry" TEXT;

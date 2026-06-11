@@ -467,6 +467,22 @@ export type ProspectLead = {
   revenueEstimate?: number; // whole CAD
   employeeEstimate?: number;
   headquarters?: string;
+  // Company picture (mirrors the deal profile; filled by enrich)
+  linkedinUrl?: string;
+  instagramUrl?: string;
+  companySize?: string;
+  founded?: string;
+  ownership?: string;
+  description?: string;
+  subIndustry?: string;
+  currentSystems?: string[];
+  painPoints?: string[];
+  companyKeyFacts?: string[];
+  // Positioning — how we'd sell to them
+  fitSummary?: string;
+  likelyNeeds?: string[];
+  salesAngle?: string;
+  enrichedAt?: string; // ISO date
   segmentId?: string;
   segmentName?: string; // denormalized for the card surface
   score: number; // 1–10
