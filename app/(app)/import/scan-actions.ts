@@ -144,6 +144,7 @@ export async function getScanRunStatus(scanRunId: string): Promise<ScanStatus | 
       data: { ingestClaimedAt: new Date() },
     });
     if (reclaim.count === 1) {
+      console.log(`[scan-actions] re-claimed dead ingest for run ${run.id}`);
       try {
         await ingestScanResults({
           scanRunId: run.id,
