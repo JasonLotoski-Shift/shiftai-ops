@@ -10,6 +10,7 @@
 // in lib/tally.ts + app/api/ingest/tally.
 
 import { Readable } from "node:stream";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -64,7 +65,14 @@ export async function createDiscoveryQuestionnaireForm(
   // No unresolved [NEEDS INPUT] markers in any label/option.
   assertNoNeedsInput(questions.map((q) => `${q.label} ${(q.options ?? []).join(" ")}`).join("\n"), "questionnaire");
 
-  const { formId, formUrl } = await createTallyForm({ title, questions });
+  // Public URL Tally posts responses to. Derived from the request host (same
+  // pattern as the Gmail OAuth callback) so prod uses ops.shiftai.partners; an
+  // explicit TALLY_WEBHOOK_URL overrides (e.g. a tunnel for local testing).
+  const host = (await headers()).get("host") ?? "localhost:3030";
+  const proto = host.startsWith("localhost") ? "http" : "https";
+  const webhookUrl = process.env.TALLY_WEBHOOK_URL || `${proto}://${host}/api/ingest/tally`;
+
+  const { formId, formUrl } = await createTallyForm({ title, questions, webhookUrl });
 
   const survey = await prisma.$transaction(async (tx) => {
     const created = await tx.discoverySurvey.create({

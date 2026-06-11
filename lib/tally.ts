@@ -9,7 +9,12 @@
 //   - choice = a parent (MULTIPLE_CHOICE/CHECKBOXES/DROPDOWN) + child option blocks
 //     whose groupUuid = the PARENT's uuid (that's the link); child payload {text,index,isFirst,isLast}
 //   - RATING payload {stars}; LINEAR_SCALE payload {start,end}
-//   - webhook: header "Tally-Signature" = base64( HMAC-SHA256(rawBody, signingSecret) );
+//   - Webhooks are PER-FORM, not per-workspace. There is no global webhook. So after
+//     creating each form we register one via POST /webhooks
+//     { formId, url, eventTypes:["FORM_RESPONSE"], signingSecret } — WE supply the
+//     signingSecret (Tally does not generate it), so every auto-created form shares
+//     the one TALLY_WEBHOOK_SIGNING_SECRET and the route routes by formId.
+//   - webhook delivery: header "Tally-Signature" = base64( HMAC-SHA256(rawBody, signingSecret) );
 //     payload { eventId, eventType, data:{ formId, responseId, fields[] } };
 //     choice fields carry options:[{id,text}] and value holds option ids → resolve to text.
 // Some exact keys (share-url field, RANKING parent type, FILE_UPLOAD on free tier)
@@ -129,11 +134,15 @@ export function mapQuestionsToBlocks(title: string, questions: SurveyQuestion[])
   return blocks;
 }
 
-/** Create a Tally form. Returns the form id + public URL. Logs an ops event. */
-export async function createTallyForm(input: { title: string; questions: SurveyQuestion[] }): Promise<{ formId: string; formUrl: string }> {
+/** Create a Tally form. Returns the form id + public URL. Logs an ops event.
+ *  If `webhookUrl` is given AND TALLY_WEBHOOK_SIGNING_SECRET is set, also registers
+ *  a per-form webhook so submissions flow back (Tally has no global webhook). */
+export async function createTallyForm(input: { title: string; questions: SurveyQuestion[]; webhookUrl?: string }): Promise<{ formId: string; formUrl: string }> {
   const apiKey = process.env.TALLY_API_KEY;
   if (!apiKey) throw new Error("TALLY_API_KEY is not set — add it to .env (dev) and Vercel (prod).");
   const t0 = Date.now();
+  let formId: string;
+  let formUrl: string;
   try {
     const body = {
       status: "PUBLISHED",
@@ -147,13 +156,53 @@ export async function createTallyForm(input: { title: string; questions: SurveyQ
     });
     if (!res.ok) throw new Error(`Tally API ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const json = (await res.json()) as { id?: string; formId?: string; shareUrl?: string; url?: string };
-    const formId = json.id ?? json.formId;
+    formId = (json.id ?? json.formId) as string;
     if (!formId) throw new Error("Tally create returned no form id");
-    const formUrl = json.shareUrl ?? json.url ?? `https://tally.so/r/${formId}`;
+    formUrl = json.shareUrl ?? json.url ?? `https://tally.so/r/${formId}`;
     void logOps({ kind: "integration", name: "tally", status: "ok", actor: "AGENT · CLAUDE", actorLabel: "AGENT · CLAUDE", durationMs: Date.now() - t0, detail: `Created form ${formId}` });
-    return { formId, formUrl };
   } catch (e) {
     void logOps({ kind: "integration", name: "tally", status: "error", actor: "AGENT · CLAUDE", actorLabel: "AGENT · CLAUDE", durationMs: Date.now() - t0, error: e instanceof Error ? e.message : "tally create failed" });
+    throw e;
+  }
+
+  // Register the per-form webhook so responses reach us. Without it the form
+  // works but no submission ever calls back. Skipped (with a loud error) if no
+  // signing secret — an unsigned webhook would be rejected by the route anyway.
+  if (input.webhookUrl) {
+    await registerTallyWebhook({ formId, webhookUrl: input.webhookUrl, apiKey });
+  }
+  return { formId, formUrl };
+}
+
+/** Subscribe our endpoint to a form's responses. WE pass the signingSecret so
+ *  every form shares one secret. Throws on failure (the survey row isn't written
+ *  yet, so the partner sees the error and retries — the orphan form is harmless). */
+export async function registerTallyWebhook(input: { formId: string; webhookUrl: string; apiKey?: string }): Promise<void> {
+  const apiKey = input.apiKey ?? process.env.TALLY_API_KEY;
+  const secret = process.env.TALLY_WEBHOOK_SIGNING_SECRET;
+  if (!apiKey) throw new Error("TALLY_API_KEY is not set");
+  if (!secret) {
+    // No secret → the webhook route returns 501 and would reject anything anyway.
+    void logOps({ kind: "integration", name: "tally", status: "error", actor: "AGENT · CLAUDE", actorLabel: "AGENT · CLAUDE", error: `Form ${input.formId} created but TALLY_WEBHOOK_SIGNING_SECRET is unset — no webhook registered; responses will not flow back.` });
+    return;
+  }
+  const t0 = Date.now();
+  try {
+    const res = await fetch(`${TALLY_API}/webhooks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        formId: input.formId,
+        url: input.webhookUrl,
+        eventTypes: ["FORM_RESPONSE"],
+        signingSecret: secret,
+        isEnabled: true,
+      }),
+    });
+    if (!res.ok) throw new Error(`Tally webhook ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    void logOps({ kind: "integration", name: "tally", status: "ok", actor: "AGENT · CLAUDE", actorLabel: "AGENT · CLAUDE", durationMs: Date.now() - t0, detail: `Registered webhook on form ${input.formId} → ${input.webhookUrl}` });
+  } catch (e) {
+    void logOps({ kind: "integration", name: "tally", status: "error", actor: "AGENT · CLAUDE", actorLabel: "AGENT · CLAUDE", durationMs: Date.now() - t0, error: e instanceof Error ? e.message : "tally webhook register failed" });
     throw e;
   }
 }
