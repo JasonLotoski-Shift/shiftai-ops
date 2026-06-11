@@ -303,6 +303,7 @@ async function writeResultsBulk(
   for (const ch of chunk(rows, INGEST_WRITE_CHUNK)) {
     const recordset = JSON.stringify(
       ch.map((r) => ({
+        // `id` = importedContactId — named to match the SQL alias v(id, ...).
         id: r.contactId,
         score: r.score,
         leadType: r.leadType,
