@@ -1,10 +1,14 @@
-// enrichLead() — enrich ONE promoted ProspectLead with Apollo + Firecrawl.
+// enrichLead() — enrich ONE ProspectLead with Apollo + Firecrawl + a web-sourced
+// company picture and a positioning brief. Serves BOTH origins (discovery +
+// imported); the detail-page and promoted-card Enrich buttons both call it.
 //
-// A promoted (origin=imported) lead starts with just the person(s) the partner
-// imported. This runs the same per-company enrichment the discovery engine does,
-// scoped to the lead's domain: pull firmographics (Apollo), scrape the site for
+// Scoped to the lead's domain: pull firmographics (Apollo), scrape the site for
 // signals (Firecrawl), find more people at the company, reveal ONE primary work
-// email (1 Apollo credit, credit-guarded), and re-rate fit if a segment matched.
+// email (1 Apollo credit, credit-guarded), re-rate fit if a segment matched,
+// then build the company picture (enrich-company-web, web search, auto-applied
+// with deal-equivalent merge semantics) and the "how we'd sell to them"
+// positioning view (lead-positioning skill). Every step is failure-isolated;
+// whatever succeeded persists in one transaction.
 //
 // Plain async (NO "use server"), reusing lib/apollo + lib/firecrawl + lib/ai +
 // lib/lead-discovery helpers. Bounded to one company so a single user-initiated
@@ -24,12 +28,27 @@ import {
 import { toSafeInt } from "@/lib/lead-discovery";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import type { ProspectPerson } from "@/lib/types";
+import {
+  parseEnrichmentJSON,
+  applyLeadEnrichment,
+  parsePositioning,
+  type LeadProfileSnapshot,
+  type Positioning,
+} from "@/lib/lead-profile";
+import type {
+  ProspectLead as ProspectLeadModel,
+  TargetSegment as TargetSegmentModel,
+} from "@/lib/generated/prisma/client";
 
 export type EnrichSummary = {
   revealed: number;
   peopleAdded: number;
   score: number;
   firmographics: boolean;
+  // True when that enrich step produced applied data (a built company picture /
+  // a usable positioning brief), surfaced on the Enrich button alongside notes.
+  profile: boolean;
+  positioning: boolean;
   // Non-fatal problems that would otherwise be invisible — a missing API key, a
   // domain that couldn't be resolved, an Apollo/Firecrawl call that failed. The
   // button surfaces these so "ran but did nothing" stops being a silent mystery.
@@ -104,6 +123,102 @@ function pickRevealIndex(people: ProspectPerson[]): number {
   return -1;
 }
 
+// Project the Prisma row into the plain snapshot the pure apply reads.
+function leadProfileSnapshot(lead: ProspectLeadModel): LeadProfileSnapshot {
+  return {
+    website: lead.website,
+    linkedinUrl: lead.linkedinUrl,
+    instagramUrl: lead.instagramUrl,
+    companySize: lead.companySize,
+    headquarters: lead.headquarters,
+    founded: lead.founded,
+    ownership: lead.ownership,
+    description: lead.description,
+    subIndustry: lead.subIndustry,
+    revenueEstimate: lead.revenueEstimate,
+    employeeEstimate: lead.employeeEstimate,
+    currentSystems: lead.currentSystems,
+    painPoints: lead.painPoints,
+    companyKeyFacts: lead.companyKeyFacts,
+  };
+}
+
+// Company-picture context for the web-search step — mirrors the deal ctx lines
+// in generateDealCompanyEnrichment, substituting lead fields. The record is a
+// PROSPECT LEAD (pre-pipeline). `enrich` is this pass's Apollo firmographics
+// (preferred over stale stored values where present).
+function buildProfileContext(
+  lead: ProspectLeadModel,
+  enrich: { name?: string; industry?: string; industryTags?: string[]; headquarters?: string | null; revenueEstimate?: number | null; employeeEstimate?: number | null } | null,
+  domain: string,
+): string {
+  const industryTags = enrich?.industryTags?.length
+    ? enrich.industryTags
+    : [enrich?.industry, ...lead.industryTags].filter((x): x is string => !!x);
+  return [
+    "## Company record (existing — PROSPECT LEAD, pre-pipeline)",
+    `Company: ${enrich?.name ?? lead.companyName}`,
+    `Domain: ${domain}`,
+    `Industry / tags: ${industryTags.join(", ") || "unknown"}`,
+    `Website: ${lead.website || "(empty)"}`,
+    `LinkedIn: ${lead.linkedinUrl || "(empty)"}`,
+    `Instagram: ${lead.instagramUrl || "(empty)"}`,
+    `Revenue estimate (CAD): ${lead.revenueEstimate ?? enrich?.revenueEstimate ?? "(empty)"}`,
+    `Employee count: ${lead.employeeEstimate ?? enrich?.employeeEstimate ?? "(empty)"}`,
+    `Company size: ${lead.companySize || "(empty)"}`,
+    `Headquarters: ${lead.headquarters || enrich?.headquarters || "(empty)"}`,
+    `Founded: ${lead.founded || "(empty)"}`,
+    `Ownership: ${lead.ownership || "(empty)"}`,
+    `Sub-industry: ${lead.subIndustry || "(empty)"}`,
+    `Description: ${lead.description || "(empty)"}`,
+    `Key facts: ${lead.companyKeyFacts.length ? lead.companyKeyFacts.join("; ") : "(none)"}`,
+    `Current systems: ${lead.currentSystems.length ? lead.currentSystems.join("; ") : "(none)"}`,
+    `Pain points: ${lead.painPoints.length ? lead.painPoints.join("; ") : "(none)"}`,
+  ].join("\n");
+}
+
+// Positioning context — the now-known picture (existing fields overlaid with
+// THIS pass's applied additions in `profileData`), the matched segment name,
+// and the current fit rationale. No web search; the model reasons over facts.
+function buildPositioningContext(
+  lead: ProspectLeadModel,
+  profileData: Record<string, unknown>,
+  enrich: { name?: string; industry?: string; industryTags?: string[] } | null,
+  rationale: string,
+  segmentName: string,
+  domain: string,
+): string {
+  // Overlay this pass's applied additions onto the stored row.
+  const str = (k: keyof ProspectLeadModel) =>
+    (profileData[k as string] as string | undefined) ?? (lead[k] as string | null) ?? "";
+  const list = (k: keyof ProspectLeadModel) =>
+    (profileData[k as string] as string[] | undefined) ?? ((lead[k] as string[]) ?? []);
+  const industryTags = enrich?.industryTags?.length
+    ? enrich.industryTags
+    : [enrich?.industry, ...lead.industryTags].filter((x): x is string => !!x);
+  const rev = (profileData["revenueEstimate"] as number | undefined) ?? lead.revenueEstimate;
+  const emp = (profileData["employeeEstimate"] as number | undefined) ?? lead.employeeEstimate;
+  return [
+    "## Company picture",
+    `Company: ${enrich?.name ?? lead.companyName}`,
+    `Domain: ${domain}`,
+    `Industry / tags: ${industryTags.join(", ") || "unknown"}`,
+    `Sub-industry: ${str("subIndustry") || "unknown"}`,
+    `Revenue estimate (CAD): ${rev ?? "unknown"}`,
+    `Employee estimate: ${emp ?? "unknown"}`,
+    `Company size: ${str("companySize") || "unknown"}`,
+    `Headquarters: ${str("headquarters") || "unknown"}`,
+    `Description: ${str("description") || "(none)"}`,
+    `Current systems: ${list("currentSystems").join("; ") || "(none)"}`,
+    `Pain points: ${list("painPoints").join("; ") || "(none)"}`,
+    `Key facts: ${list("companyKeyFacts").join("; ") || "(none)"}`,
+    "",
+    "## Targeting",
+    `Matched target segment: ${segmentName}`,
+    `Why they fit our ICP (current rationale): ${rationale || "(none)"}`,
+  ].join("\n");
+}
+
 export async function enrichLead(opts: {
   leadId: string;
   actorPartnerId: string;
@@ -127,6 +242,8 @@ export async function enrichLead(opts: {
         peopleAdded: 0,
         score: lead.score,
         firmographics: false,
+        profile: false,
+        positioning: false,
         notes: [
           `Couldn't resolve a company domain for "${lead.companyName}" via Apollo. Add a website to the lead, or check the Apollo API key.`,
         ],
@@ -243,11 +360,13 @@ export async function enrichLead(opts: {
   }
 
   // 5) Re-rate with firmographics if a segment matched (refresh score).
+  //    The matched segment is fetched once here and reused by positioning (7).
   let score = lead.score;
   let rationale = lead.rationale;
+  let segment: TargetSegmentModel | null = null;
   if (lead.segmentId) {
     try {
-      const segment = await prisma.targetSegment.findUnique({ where: { id: lead.segmentId } });
+      segment = await prisma.targetSegment.findUnique({ where: { id: lead.segmentId } });
       if (segment) {
         const industryTags = enrich?.industryTags?.length
           ? enrich.industryTags
@@ -286,7 +405,54 @@ export async function enrichLead(opts: {
     }
   }
 
-  // 6) Persist everything in one transaction.
+  // 6) Company picture: web-search enrichment (deal field subset), auto-applied.
+  let profileData: Record<string, unknown> = {};
+  let profileApplied = 0;
+  try {
+    const ctx = buildProfileContext(lead, enrich, domain);
+    const raw = await generate({
+      skill: "enrich-company-web",
+      context: ctx,
+      intake: [
+        "Use web search to find public, authoritative facts about this exact company (use the company name, industry tags, and website to disambiguate).",
+        "This record is a PROSPECT LEAD (pre-pipeline), so use the deal field set — `field` must be exactly one of:",
+        "website, companySize, headquarters, founded, ownership, description, linkedinUrl, instagramUrl, revenueEstimate, employeeCount, subIndustry (single-value); companyKeyFacts, currentSystems, painPoints (lists — one addition per item).",
+        "No brandColors. revenueEstimate and employeeCount must be numbers a source actually states.",
+        "Propose company-profile additions, citing a source for every fact. Return the JSON object exactly as specified.",
+      ].join("\n"),
+      webSearch: true,
+      maxTokens: 2000,
+    });
+    // Conflicts dropped: keep existing values (conservative auto-apply).
+    const { additions } = parseEnrichmentJSON(raw);
+    const res = applyLeadEnrichment(leadProfileSnapshot(lead), additions);
+    profileData = res.data;
+    profileApplied = res.applied;
+  } catch (err) {
+    console.error(`[lead-enrich] company picture failed for ${domain}:`, err);
+    notes.push(noteFor("Company picture (web search)", err));
+  }
+
+  // 7) Positioning — how we'd sell to them. Runs over the now-known picture
+  //    (existing fields + this pass's applied additions), no web search.
+  let positioning: Positioning | null = null;
+  try {
+    const segmentName = segment?.name ?? "(unmatched)";
+    const ctx = buildPositioningContext(lead, profileData, enrich, rationale, segmentName, domain);
+    const raw = await generate({
+      skill: "lead-positioning",
+      context: ctx,
+      intake: "Write the selling view for this prospect. Output ONLY the JSON object.",
+      maxTokens: 800,
+    });
+    positioning = parsePositioning(raw);
+    if (!positioning) notes.push("Positioning: model returned no usable JSON.");
+  } catch (err) {
+    console.error(`[lead-enrich] positioning failed for ${domain}:`, err);
+    notes.push(noteFor("Positioning (Claude)", err));
+  }
+
+  // 8) Persist everything in one transaction.
   const industryTags = enrich?.industryTags?.length
     ? enrich.industryTags
     : [enrich?.industry].filter((x): x is string => !!x);
@@ -312,6 +478,17 @@ export async function enrichLead(opts: {
         rationale,
         foundBy,
         sources: sources as unknown as object,
+        // Company-picture additions applied this pass (fills empties only; an
+        // unparseable/empty value is never emitted, so this can't resurrect null).
+        ...profileData,
+        ...(positioning && (positioning.fitSummary || positioning.likelyNeeds.length || positioning.salesAngle)
+          ? {
+              fitSummary: positioning.fitSummary || null,
+              likelyNeeds: positioning.likelyNeeds,
+              salesAngle: positioning.salesAngle || null,
+            }
+          : {}),
+        enrichedAt: new Date(),
       },
     });
     await writeAudit(tx, {
@@ -319,7 +496,7 @@ export async function enrichLead(opts: {
       action: "enrich.prospectLead",
       targetType: "ProspectLead",
       targetId: lead.id,
-      changes: { domain, revealed, peopleAdded, score, firmographics: !!enrich },
+      changes: { domain, revealed, peopleAdded, score, firmographics: !!enrich, profileApplied, positioning: !!positioning },
     });
     await writeActivity(tx, {
       actor: partnerActor(opts.actorPartnerId, opts.actorLabel),
@@ -330,5 +507,13 @@ export async function enrichLead(opts: {
     });
   });
 
-  return { revealed, peopleAdded, score, firmographics: !!enrich, notes };
+  return {
+    revealed,
+    peopleAdded,
+    score,
+    firmographics: !!enrich,
+    profile: profileApplied > 0,
+    positioning: !!positioning,
+    notes,
+  };
 }
