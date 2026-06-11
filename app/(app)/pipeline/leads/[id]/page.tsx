@@ -81,6 +81,7 @@ export default async function LeadDetailPage({
     rationale: row.rationale,
     disqualified: row.disqualified,
     status: row.status,
+    origin: row.origin,
     people,
     foundBy: row.foundBy,
     sources: (row.sources as Record<string, unknown> | null) ?? null,
