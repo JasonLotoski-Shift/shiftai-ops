@@ -18,6 +18,7 @@ import { folderIdFromUrl, uploadFile, uploadAsGoogleDoc } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
+import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import { formatDate } from "@/lib/format";
 import { normalizeDomain } from "@/lib/apollo";
 import type { ArtifactType, InteractionType } from "@/lib/generated/prisma/enums";
@@ -277,7 +278,17 @@ export async function generateDiscoveryReport(
     input.outcomes?.trim() || "(not supplied — mark [NEEDS INPUT: outcomes X and Y])",
   ].join("\n");
 
-  const body = await generate({ skill: "discovery-report", context, intake, maxTokens: 10000 });
+  // Screenshots the client shared via Ingest become visual evidence of their
+  // current tools/workflows — pass them to vision alongside the written context.
+  const images = await loadScreenshotImages({ clientId });
+
+  const body = await generate({
+    skill: "discovery-report",
+    context,
+    intake,
+    maxTokens: 10000,
+    images: images.length ? images : undefined,
+  });
   return { body: body.trim() };
 }
 

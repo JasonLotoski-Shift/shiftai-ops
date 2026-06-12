@@ -29,6 +29,7 @@ import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { buildDealContext } from "@/lib/deal-context";
+import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import type { ArtifactType } from "@/lib/generated/prisma/enums";
 
 const BUILD_MODEL = "claude-opus-4-8";
@@ -54,12 +55,19 @@ export async function generatePrototype(
 
   const { context } = await buildDealContext(dealId);
 
+  // Screenshots the prospect shared via Ingest (their current tool/spreadsheet)
+  // ground the prototype in what they actually use today — pass them to vision on
+  // the framing step and the build step.
+  const images = await loadScreenshotImages({ dealId });
+  const withImages = images.length ? images : undefined;
+
   // Step 1 — frame the problem (fast, Sonnet).
   const brief = await generate({
     skill: "prototype-brief",
     context,
     intake: `## What to prototype\n${focus}`,
     maxTokens: 1500,
+    images: withImages,
   });
 
   // Step 2 — turn the brief into a concrete build spec (fast, Sonnet).
@@ -77,6 +85,7 @@ export async function generatePrototype(
     intake: `## Build spec\n${spec}`,
     model: BUILD_MODEL,
     maxTokens: 16000,
+    images: withImages,
   });
 
   return { html: stripCodeFence(html) };

@@ -40,6 +40,7 @@ import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract
 import { createContact } from "@/app/(app)/contacts/actions";
 import { createContactTx } from "@/lib/contacts";
 import { resolveContact } from "@/lib/resolve-entity";
+import { persistIngestUploads } from "@/lib/ingest-uploads";
 import { linkContact } from "@/lib/contact-links";
 import type {
   IngestType,
@@ -415,6 +416,33 @@ export async function extractUnified(input: {
     },
     select: { id: true },
   });
+
+  // Save a COPY of the original uploads to the client/deal Drive folder (not just
+  // the extracted text) + register each as an Artifact. Best-effort — a Drive
+  // failure never undoes the proposal. Scope: a client target/focus wins, else a
+  // deal. Screenshots saved here become vision input for the discovery report +
+  // prototype later (see loadScreenshotImages).
+  if (input.files?.length) {
+    const clientScope =
+      (input.focus?.kind === "client" ? input.focus.id : null) ??
+      input.targets?.find((t) => t.kind === "client")?.id ??
+      null;
+    const dealScope =
+      (input.focus?.kind === "deal" ? input.focus.id : null) ??
+      input.targets?.find((t) => t.kind === "deal")?.id ??
+      null;
+    try {
+      await persistIngestUploads({
+        files: input.files,
+        clientId: clientScope,
+        dealId: dealScope,
+        actorLabel: partnerLabel,
+        actorPartnerId: partnerId,
+      });
+    } catch {
+      /* non-fatal — the file copy is a convenience, not the critical path */
+    }
+  }
 
   await notifyPartner(prisma, partnerId, "approval_needed", `"${title}" is ready for your review`, { link: "/ingest" });
 

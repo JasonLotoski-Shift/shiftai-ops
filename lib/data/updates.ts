@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-11",
+    tag: "new",
+    title: "Screenshots and files you ingest are saved to Drive — and feed the AI",
+    detail:
+      "Drop a screenshot or file into Ingest for a client or deal and a copy now lands in that client/deal Drive folder (and shows in Deliverables), not just the extracted text. Those screenshots also become visual input: when you generate a discovery report or a prototype, the AI sees the client's actual tools and spreadsheets, not just what was typed about them.",
+  },
+  {
+    date: "2026-06-11",
     tag: "improved",
     title: "Leads now build a real company picture — and tell you how to sell to them",
     detail:

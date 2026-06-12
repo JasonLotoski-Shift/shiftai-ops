@@ -100,6 +100,43 @@ export async function uploadAsGoogleDoc(
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
 
+// Upload any binary Buffer (image, doc, …) to a Drive folder under its own
+// mimeType. Used to save the original files a partner drops into Ingest so a copy
+// lands in the client/deal folder, not just the extracted text.
+export async function uploadBinary(
+  bytes: Buffer,
+  fileName: string,
+  parentFolderId: string,
+  mimeType: string,
+): Promise<{ fileId: string; webViewLink: string }> {
+  const res = await drive.files.create({
+    requestBody: { name: fileName, parents: [parentFolderId], mimeType },
+    media: { mimeType, body: Readable.from(bytes) },
+    fields: "id, webViewLink",
+    supportsAllDrives: true,
+  });
+  if (!res.data.id || !res.data.webViewLink) throw new Error("Drive binary upload returned no ID");
+  return { fileId: res.data.id, webViewLink: res.data.webViewLink };
+}
+
+// Download a Drive file's raw bytes (alt=media). Used to re-read saved screenshots
+// so the generators can pass them to Claude vision.
+export async function downloadDriveFile(fileId: string): Promise<Buffer> {
+  const res = await drive.files.get(
+    { fileId, alt: "media", supportsAllDrives: true },
+    { responseType: "arraybuffer" },
+  );
+  return Buffer.from(res.data as ArrayBuffer);
+}
+
+// Extract a file ID from a Drive file link like
+// https://drive.google.com/file/d/<id>/view  or  .../d/<id>?usp=… (folder URLs
+// use /folders/<id> — handled by folderIdFromUrl, no clash). Null if not found.
+export function fileIdFromUrl(url: string): string | null {
+  const m = url.match(/\/(?:file\/)?d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
 // Upload a binary PDF Buffer to a Drive folder (e.g. a rendered invoice). Same
 // shape as uploadFile, but takes a Buffer and fixes the mime to application/pdf.
 export async function uploadPdf(

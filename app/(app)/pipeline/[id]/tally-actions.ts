@@ -20,6 +20,7 @@ import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { buildDealContext } from "@/lib/deal-context";
+import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import { createTallyForm, parseQuestions, type SurveyQuestion } from "@/lib/tally";
 import type { ArtifactType } from "@/lib/generated/prisma/enums";
 
@@ -142,7 +143,17 @@ export async function generateDiscoveryReportForDeal(
     `The two outcomes the close confirms (X and Y): ${input.outcomes?.trim() || "[NEEDS INPUT: the two outcomes]"}`,
   ].join("\n");
 
-  const body = await generate({ skill: "discovery-report", context: fullContext, intake, maxTokens: 10000 });
+  // Screenshots the prospect shared via Ingest become visual evidence of their
+  // current tools/workflows — pass them to vision alongside the written context.
+  const images = await loadScreenshotImages({ dealId });
+
+  const body = await generate({
+    skill: "discovery-report",
+    context: fullContext,
+    intake,
+    maxTokens: 10000,
+    images: images.length ? images : undefined,
+  });
   return { body: body.trim() };
 }
 

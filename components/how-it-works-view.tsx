@@ -480,7 +480,7 @@ const flows: Flow[] = [
       { tone: "trigger", kind: "You do", label: "+ Ingest → pick type, target records, paste content/email/files" },
       { tone: "claude", kind: "Claude", label: "Proposes updates across contact, client, project, deal — incl. overwrites, new people it spotted, and how they connect to the deal or client" },
       { tone: "review", kind: "You review", label: "Approve each addition; every overwrite shows old → new; people + links wait in the same queue" },
-      { tone: "write", kind: "Saved", label: "Records updated + Contacts/links + Interaction/Tasks/Milestones + AuditLog" },
+      { tone: "write", kind: "Saved", label: "Records updated + Contacts/links + Interaction/Tasks/Milestones + AuditLog. A copy of any uploaded files/screenshots also lands in the client or deal Drive folder, and screenshots feed the discovery report + prototype as visual input" },
     ],
   },
   {
