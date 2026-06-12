@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-11",
     tag: "new",
+    title: "Find more people at a target company — for better cold outreach",
+    detail:
+      "Open a lead and hit “Find more people”: it searches Apollo for decision-makers and scrapes the company's own team/about pages, then adds everyone net-new to the people list with their title (and LinkedIn where the site shows it). It also tells you how many contacts you already have at that company. It spends no credits — reveal a work email per person with the existing Reveal button (1 credit each).",
+  },
+  {
+    date: "2026-06-11",
+    tag: "new",
     title: "Screenshots and files you ingest are saved to Drive — and feed the AI",
     detail:
       "Drop a screenshot or file into Ingest for a client or deal and a copy now lands in that client/deal Drive folder (and shows in Deliverables), not just the extracted text. Those screenshots also become visual input: when you generate a discovery report or a prototype, the AI sees the client's actual tools and spreadsheets, not just what was typed about them.",

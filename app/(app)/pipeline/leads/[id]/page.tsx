@@ -9,6 +9,7 @@ import { LeadClaimCard } from "@/components/lead-claim-card";
 import { RestoreLeadButton } from "@/components/restore-lead-button";
 import { LeadCompanyPictureCard, LeadPositioningCard } from "@/components/lead-profile-cards";
 import { LeadEnrichButton } from "@/components/lead-enrich-button";
+import { FindMorePeopleButton } from "@/components/find-more-people-button";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
@@ -214,7 +215,10 @@ export default async function LeadDetailPage({
 
           {/* People */}
           <Card className="p-5 flex flex-col gap-4">
-            <Label gold>Candidate people ({people.length})</Label>
+            <div className="flex items-start justify-between gap-3">
+              <Label gold>Candidate people ({people.length})</Label>
+              <FindMorePeopleButton leadId={lead.id} />
+            </div>
             <LeadPeopleList
               leadId={lead.id}
               people={people}
