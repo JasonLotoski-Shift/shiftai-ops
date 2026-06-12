@@ -20,12 +20,16 @@ import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { buildDealContext } from "@/lib/deal-context";
+import { loadDealDriveFiles } from "@/lib/deal-drive-context";
 import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import { createTallyForm, parseQuestions, type SurveyQuestion } from "@/lib/tally";
 import type { ArtifactType } from "@/lib/generated/prisma/enums";
 
 /** Generate a deep, business-specific questionnaire as STRUCTURED questions the
- *  partner reviews/edits before a form is created. Read-only. */
+ *  partner reviews/edits before a form is created. Reads the WHOLE deal Drive
+ *  folder (full call transcripts, notes, docs, screenshots) on top of the
+ *  Prisma context, so the questions ground in what the client actually said —
+ *  the interaction log only carries one-line summaries. Read-only. */
 export async function generateQuestionnaire(
   dealId: string,
   input: { focus?: string; notes?: string },
@@ -34,13 +38,23 @@ export async function generateQuestionnaire(
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
 
   const { context } = await buildDealContext(dealId);
+  const driveCtx = await loadDealDriveFiles(dealId);
+  const fullContext = driveCtx.text
+    ? `${context}\n\n## Files from the deal's Drive folder (call transcripts, notes, docs)\n${driveCtx.text}`
+    : context;
   const intake = [
     "## This discovery questionnaire",
     `Focus / must-ask areas: ${input.focus?.trim() || "(none specified — cover their operation broadly, grounded in the call)"}`,
     `Notes: ${input.notes?.trim() || "(none)"}`,
   ].join("\n");
 
-  const raw = await generate({ skill: "discovery-questionnaire", context, intake, maxTokens: 8000 });
+  const raw = await generate({
+    skill: "discovery-questionnaire",
+    context: fullContext,
+    intake,
+    maxTokens: 8000,
+    images: driveCtx.images.length ? driveCtx.images : undefined,
+  });
   const questions = parseQuestions(raw);
   if (questions.length === 0) throw new Error("The questionnaire came back empty or malformed — try again.");
   return { questions };

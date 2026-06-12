@@ -7,9 +7,9 @@
 //   save*      — Drive upload + Artifact (+ Interaction) + AuditLog + Activity,
 //                one transaction
 //
-// Generative client docs (Draft client survey) share one context loader +
-// generate/save pair, keyed by skill. Upload client files is an ingest
-// round-trip (no generation).
+// Upload client files is an ingest round-trip (no generation). The client
+// survey skill was removed 2026-06-12 — the deal-side discovery questionnaire
+// (pipeline/[id]/tally-actions.ts) covers that step with a live Tally form.
 
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
@@ -22,16 +22,6 @@ import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import { formatDate } from "@/lib/format";
 import { normalizeDomain } from "@/lib/apollo";
 import type { ArtifactType, InteractionType } from "@/lib/generated/prisma/enums";
-
-// Which generative client docs exist, and how each is labelled / filed.
-const CLIENT_DOCS = {
-  "client-survey": { kind: "survey", title: "Client survey", fileSuffix: "survey" },
-} as const;
-type ClientDocSkill = keyof typeof CLIENT_DOCS;
-
-function isClientDocSkill(s: string): s is ClientDocSkill {
-  return s in CLIENT_DOCS;
-}
 
 // Resolve the client's Drive folder; fall back to the Shared Drive root when the
 // stored URL is a placeholder without /folders/<id> (seed data). Mirrors the
@@ -52,150 +42,6 @@ function uploadMarkdown(body: string, fileName: string, parentFolderId: string) 
 
 function uploadHtml(body: string, fileName: string, parentFolderId: string) {
   return uploadFile(body, fileName, parentFolderId, "text/html");
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Generative client docs — survey
-// ──────────────────────────────────────────────────────────────────────
-
-export async function generateClientDoc(
-  clientId: string,
-  input: { skill: string; focus: string; notes?: string },
-): Promise<{ body: string }> {
-  const session = await auth();
-  if (!session?.user?.partnerId) throw new Error("Not authenticated");
-  if (!isClientDocSkill(input.skill)) throw new Error(`Unknown client doc skill: ${input.skill}`);
-
-  const focus = input.focus.trim();
-  if (!focus) throw new Error("Focus is required");
-
-  const client = await prisma.client.findUnique({
-    where: { id: clientId },
-    select: {
-      company: true,
-      industry: true,
-      status: true,
-      description: true,
-      companyKeyFacts: true,
-      primaryContact: {
-        select: {
-          name: true,
-          title: true,
-          interactions: {
-            orderBy: { date: "desc" },
-            take: 6,
-            select: { type: true, date: true, summary: true },
-          },
-        },
-      },
-      projects: {
-        orderBy: { startDate: "desc" },
-        select: { name: true, phase: true, status: true },
-      },
-    },
-  });
-  if (!client) throw new Error("Client not found");
-
-  const contextLines: string[] = [
-    "## Client",
-    `Company: ${client.company}`,
-    `Industry: ${client.industry}`,
-    `Engagement status: ${client.status.replace("_", "-")}`,
-  ];
-  if (client.description) contextLines.push(`About: ${client.description}`);
-  if (client.companyKeyFacts.length) contextLines.push(`Key facts: ${client.companyKeyFacts.join("; ")}`);
-
-  if (client.projects.length) {
-    contextLines.push("", "## What we're building");
-    for (const p of client.projects) {
-      contextLines.push(`- ${p.name} — phase: ${p.phase}, status: ${p.status.replace("_", "-")}`);
-    }
-  }
-
-  contextLines.push(
-    "",
-    "## Primary contact",
-    `${client.primaryContact.name} — ${client.primaryContact.title}`,
-  );
-  if (client.primaryContact.interactions.length) {
-    contextLines.push("", "## Recent interactions (newest first)");
-    for (const i of client.primaryContact.interactions) {
-      contextLines.push(`- ${formatDate(i.date)} · ${i.type.replace("_", "-")} — ${i.summary}`);
-    }
-  }
-  const context = contextLines.join("\n");
-
-  const intake = [
-    `## This ${CLIENT_DOCS[input.skill].title.toLowerCase()}`,
-    `Focus / what it's for: ${focus}`,
-    `Extra notes from the partner: ${input.notes?.trim() || "(none)"}`,
-  ].join("\n");
-
-  const body = await generate({ skill: input.skill, context, intake, maxTokens: 5000 });
-  return { body: body.trim() };
-}
-
-export async function saveClientDoc(
-  clientId: string,
-  input: { skill: string; body: string },
-) {
-  const session = await auth();
-  if (!session?.user?.partnerId) throw new Error("Not authenticated");
-  if (!isClientDocSkill(input.skill)) throw new Error(`Unknown client doc skill: ${input.skill}`);
-  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
-  const actor = partnerActor(session.user.partnerId, partnerLabel);
-
-  const body = input.body.trimEnd();
-  if (!body.trim()) throw new Error("Document body is required");
-  assertNoNeedsInput(body, CLIENT_DOCS[input.skill].title.toLowerCase());
-
-  const client = await prisma.client.findUnique({
-    where: { id: clientId },
-    select: { id: true, company: true, driveFolderUrl: true },
-  });
-  if (!client) throw new Error("Client not found");
-
-  const cfg = CLIENT_DOCS[input.skill];
-  const parentFolderId = resolveClientFolderId(client.driveFolderUrl);
-  const today = new Date().toISOString().slice(0, 10);
-  const fileName = `${today}-${client.company.replace(/\s+/g, "-")}-${cfg.fileSuffix}.md`;
-  const { fileId, webViewLink } = await uploadMarkdown(body, fileName, parentFolderId);
-
-  const artifact = await prisma.$transaction(async (tx) => {
-    const created = await tx.artifact.create({
-      data: {
-        type: "report" as ArtifactType,
-        title: `${cfg.title} · ${client.company} · ${today}`,
-        driveUrl: webViewLink,
-        fileName,
-        createdBy: partnerLabel,
-        generatedFromSkill: input.skill,
-        reviewStatus: "draft",
-        clientId: client.id,
-      },
-    });
-
-    await writeAudit(tx, {
-      actor,
-      action: `create.artifact.${cfg.kind}.draft`,
-      targetType: "Artifact",
-      targetId: created.id,
-      changes: { clientId, driveFileId: fileId, bodyLength: body.length },
-    });
-
-    await writeActivity(tx, {
-      actor,
-      type: "doc",
-      target: client.company,
-      detail: `Drafted ${cfg.title.toLowerCase()} — awaiting review`,
-      link: `/clients/${clientId}`,
-    });
-
-    return created;
-  });
-
-  revalidatePath(`/clients/${clientId}`);
-  return { artifactId: artifact.id, driveUrl: webViewLink };
 }
 
 // ──────────────────────────────────────────────────────────────────────

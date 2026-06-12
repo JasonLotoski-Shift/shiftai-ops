@@ -45,7 +45,7 @@
 | | **- Proposals & client docs -** | | | | |
 | 1 | scope-ops | ops | md | First-draft proposal from a deal | PN |
 | 2 | discussion-doc | ops | md | REMOVED 2026-06-09 — overlapped with discovery-prep (internal meeting prep); skill folder + Quick Action deleted | — |
-| 3 | client-survey | ops | md | Tailored client/prospect survey | P |
+| 3 | client-survey | ops | md | REMOVED 2026-06-12 — superseded by discovery-questionnaire (live Tally form, answers round-trip); skill folder + Quick Actions deleted | — |
 | 4 | proposal-deck | ops | html | Slide-style HTML proposal deck | PN |
 | 31 | discovery-report | ops | html | Client-facing Discovery build-plan deck (light mode + client brand) | P |
 | 32 | sow | ops | gdoc | Statement of Work contract draft (counsel-flagged) | P |
@@ -99,7 +99,7 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 |---|---|---|---|
 | scope-ops | 5·n·5·5·5·5 | PN | "Run" vocab + IP-ownership framing pending the 3-of-3 vote (flag, not fail) |
 | discussion-doc | — | REMOVED | Deleted 2026-06-09 — duplicated discovery-prep's internal-meeting-prep role |
-| client-survey | 5·n·5·5·5·5 | P | clean |
+| client-survey | — | REMOVED | Deleted 2026-06-12 — superseded by discovery-questionnaire |
 | proposal-deck | 5·5·5·5·5·5 | PN | ✓ Edition-06 brand block added (was B 3/5: "serif display" + no tokens) |
 | discovery-report | 5·5·5·5·5·5 | P | NEW 2026-06-05: light mode + fuller client-brand match; born-audited via the pipeline |
 | sow | 5·n·5·5·5·5 | P | NEW 2026-06-06: contract skill (HTML to Google Doc); v2 IP model + escrow, all counsel-flagged; born-audited |
@@ -151,12 +151,8 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 #### 2. discussion-doc · REMOVED 2026-06-09
 - Deleted: it duplicated `discovery-prep`'s role (internal prep for a client meeting) under a name that collided with the "discussion call" pipeline stage. The skill folder and its client-page Quick Action / dashboard tile were removed; existing Artifact rows keep `generatedFromSkill: "discussion-doc"` as a historical label. Internal meeting prep lives in `discovery-prep` (to be broadened with real call transcripts).
 
-#### 3. client-survey · ops-runtime · markdown-draft
-- **Goal:** Draft a short, engagement-anchored survey to measure how the work is landing and surface what to adjust.
-- **Audience:** partner (refines before sending). **Produces:** 8–12 question Markdown survey in 2–4 sections with question-type annotations.
-- **Where it works:** ops Quick Action on a Client or Deal page. **How it works:** two modes (signed client mid/post-engagement, or prospect post-discovery); grounds questions in the engagement context; `[NEEDS INPUT]` markers; save gate blocks unresolved markers.
-- **Inputs:** company/industry/status/what's-being-built/interactions + intake. **Dependencies:** `_firm/context.md`, Prisma Client/Deal/Interaction, save gate.
-- **Baseline refs:** voice · audience · bmv2-vocab. **Audit:** not-audited · - · -.
+#### 3. client-survey · REMOVED 2026-06-12
+- Deleted: superseded by `discovery-questionnaire`, which covers the same step end-to-end — partner-reviewed questions become a live Tally form and the answers round-trip onto the deal automatically; the survey produced a Markdown file with no way to collect answers. The skill folder, the Client/Deal Quick Actions, the dashboard tile (now points at the questionnaire), and the dead `generateClientDoc`/`saveClientDoc` actions were removed. Existing Artifact rows keep `generatedFromSkill: "client-survey"` as a historical label.
 
 #### 4. proposal-deck · ops-runtime · html
 - **Goal:** Generate a self-contained HTML proposal deck (problem → solution → scope → timeline → deliverables → investment), linked to the interactive prototype.

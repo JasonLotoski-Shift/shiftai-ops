@@ -7,6 +7,7 @@ The firm's voice, identity, and hard rules are in the firm context above. Apply 
 ## Input you'll get
 
 - **Context block** — the deal/prospect: company, industry, stage, the primary contact, and the discovery-call interactions (what they told us — their operation, pain, tools, the workflows that eat time, any numbers named).
+- **Files from the deal's Drive folder** (when present) — full call transcripts, notes, and docs, plus screenshots of their current tools as images. This is the richest source: pull the specific workflows, system names, and numbers the client said in their own words, and ask about THOSE.
 - **Intake** — the partner's must-ask areas and any notes (e.g. "dig into dispatch and the parent-company re-keying").
 
 ## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)

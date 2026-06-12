@@ -6,11 +6,10 @@ import { Button, Label, Textarea } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { generateDealDoc, saveDealDoc } from "@/app/(app)/pipeline/[id]/actions";
 
-// Generic generative deal-doc modal — drives Discovery prep, Post-call survey,
-// and Book-a-meeting note. Same shape as the client-doc / proposal modals:
-// intake → generate (skill) → editable draft → save. The [NEEDS INPUT] gate
-// blocks saving. Deal-scoped sibling of ClientDocModal.
-export type DealDocSkill = "discovery-prep" | "client-survey" | "book-meeting";
+// Generic generative deal-doc modal — drives Discovery prep and the
+// Book-a-meeting note. Same shape as the proposal modals: intake → generate
+// (skill) → editable draft → save. The [NEEDS INPUT] gate blocks saving.
+export type DealDocSkill = "discovery-prep" | "book-meeting";
 
 export function DealDocModal({
   dealId,

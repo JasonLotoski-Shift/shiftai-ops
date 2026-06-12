@@ -43,7 +43,7 @@ type QuickAction = {
 const quickActions: QuickAction[] = [
   { icon: Mail, label: "Draft email", hint: "Pick a contact — Claude drafts the email, confirms missing facts first", type: "contact", qa: "email" },
   { icon: FileText, label: "Draft proposal", hint: "Pick a deal — scope → proposal draft for review", type: "deal", qa: "proposal" },
-  { icon: ClipboardList, label: "Draft client survey", hint: "Pick a client — a tailored survey from the engagement context", type: "client", qa: "survey" },
+  { icon: ClipboardList, label: "Discovery questionnaire", hint: "Pick a deal — a business-specific Tally form built from the call notes and Drive files", type: "deal", qa: "questionnaire" },
   { icon: UserPlus, label: "Add contact", hint: "Capture an intro in under 30 seconds", type: "nav", route: "/contacts?qa=add" },
   { icon: Upload, label: "Upload client files", hint: "Pick a client — drop in meeting notes (e.g. Fireflies), filed and logged", type: "client", qa: "upload" },
   { icon: Sparkles, label: "Run an action", hint: "Pick a contact — Claude enriches the record from its interaction log", type: "contact", qa: "enrich" },

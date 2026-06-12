@@ -104,7 +104,7 @@ export function DiscoveryQuestionnaireModal({
         {step === "gen" && (
           <div className="px-5 py-5 flex flex-col gap-4">
             <p className="text-[12px] text-bone-dim leading-snug">
-              Generates a deep questionnaire tailored to {company}&apos;s business from the discovery-call notes. You review and edit it before a form is created.
+              Generates a deep questionnaire tailored to {company}&apos;s business from the call transcripts, notes, and files in the deal&apos;s Drive folder. You review and edit it before a form is created.
             </p>
             <div className="flex flex-col gap-2">
               <Label>Focus / must-ask areas</Label>

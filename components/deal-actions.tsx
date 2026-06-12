@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, FileText, Pencil, ClipboardList, ListChecks, CalendarPlus, FlaskConical, Presentation, FileQuestion, type LucideIcon } from "lucide-react";
+import { Mail, FileText, Pencil, ClipboardList, CalendarPlus, FlaskConical, Presentation, FileQuestion, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
@@ -35,12 +35,6 @@ const DOC_META: Record<DealDocSkill, { title: string; icon: LucideIcon; focusLab
     icon: ClipboardList,
     focusLabel: "What do you want out of this discovery call?",
     focusPlaceholder: "e.g. Understand their ops pain and AI maturity; qualify budget + decision process; earn a discussion call",
-  },
-  "client-survey": {
-    title: "Post-call survey",
-    icon: ListChecks,
-    focusLabel: "What should the survey find out?",
-    focusPlaceholder: "e.g. Confirm the pain we heard, their priorities, and appetite for a paid pilot",
   },
   "book-meeting": {
     title: "Book a meeting",
@@ -161,13 +155,6 @@ export function DealActionsPanel({
           } as ActionBox,
         ]
       : []),
-    {
-      key: "survey",
-      icon: ListChecks,
-      title: "Survey",
-      description: "Post-call survey to confirm fit and priorities.",
-      onClick: () => setDocSkill("client-survey"),
-    },
     {
       key: "book-meeting",
       icon: CalendarPlus,

@@ -635,17 +635,17 @@ export async function generateProposal(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Deal-scoped generative docs — discovery prep (internal), post-call survey,
-// book-a-meeting note. Mirror the client-doc pattern (generateClientDoc /
-// saveClientDoc) but read deal context. Each follows the canonical recipe:
+// Deal-scoped generative docs — discovery prep (internal) and the
+// book-a-meeting note. Each follows the canonical recipe:
 // generate* (read + generate, returns the editable draft) → save* (Drive
 // upload → Artifact + AuditLog + Activity, one transaction). The skill name IS
 // the registry key (matches the skills/<name>/SKILL.md folder).
+// (The post-call survey skill was removed 2026-06-12 — the discovery
+// questionnaire in tally-actions.ts covers that step with a live Tally form.)
 // ──────────────────────────────────────────────────────────────────────
 
 const DEAL_DOCS = {
   "discovery-prep": { title: "Discovery prep", fileSuffix: "discovery-prep", artifactType: "report", maxTokens: 3000 },
-  "client-survey": { title: "Post-call survey", fileSuffix: "survey", artifactType: "report", maxTokens: 2500 },
   "book-meeting": { title: "Meeting note", fileSuffix: "meeting-note", artifactType: "other", maxTokens: 1200 },
 } as const;
 type DealDocSkill = keyof typeof DEAL_DOCS;

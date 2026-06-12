@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-12",
+    tag: "improved",
+    title: "Discovery questionnaire now reads the whole deal folder — and replaces the old survey",
+    detail:
+      "The Discovery questionnaire used to draft from the deal record and the one-line interaction summaries. It now reads every file in the deal's Drive folder — full call transcripts, notes, docs, screenshots — so the questions reference what the client actually said. The old Survey action (on deals and clients) is retired: it produced a markdown file with no way to collect answers. The questionnaire covers that step end-to-end — you review the questions, it becomes a live Tally form, and the answers land back on the deal automatically. The dashboard tile now points at the questionnaire too.",
+  },
+  {
     date: "2026-06-11",
     tag: "improved",
     title: "Build prototype now reads everything — and you approve the brief first",
