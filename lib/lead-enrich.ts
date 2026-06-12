@@ -71,19 +71,16 @@ const personKey = (name: string, title: string) =>
 // Resolve a real company domain from a company name via Apollo's credit-free
 // keyword search — used when a promoted lead was keyed on a company-name slug
 // (the import carried no domain). Prefers an exact name match; falls back to the
-// first result that has a domain. Returns "" if nothing usable.
+// first result that has a domain. Returns "" when Apollo simply has no match;
+// THROWS on an API failure (missing key / auth / credits / timeout) so the caller
+// can tell "not in Apollo" apart from "Apollo isn't working".
 async function resolveDomainByName(company: string): Promise<string> {
   const name = company.trim();
   if (!name) return "";
-  try {
-    const { companies } = await apolloSearchCompanies({ keywordTags: [name], perPage: 5 });
-    const lower = name.toLowerCase();
-    const exact = companies.find((c) => c.domain && c.name.trim().toLowerCase() === lower);
-    return exact?.domain || companies.find((c) => c.domain)?.domain || "";
-  } catch (err) {
-    console.error(`[lead-enrich] domain resolve failed for "${name}":`, err);
-    return "";
-  }
+  const { companies } = await apolloSearchCompanies({ keywordTags: [name], perPage: 5 });
+  const lower = name.toLowerCase();
+  const exact = companies.find((c) => c.domain && c.name.trim().toLowerCase() === lower);
+  return exact?.domain || companies.find((c) => c.domain)?.domain || "";
 }
 
 // Minimal rating parse (the discovery engine's is module-private). Fence-strip,
@@ -228,38 +225,53 @@ export async function enrichLead(opts: {
   if (!lead) throw new Error("Lead not found");
   const notes: string[] = [];
   let domain = normalizeDomain(lead.domain);
+  const zero = (note: string): EnrichSummary => ({
+    revealed: 0,
+    peopleAdded: 0,
+    score: lead.score,
+    firmographics: false,
+    profile: false,
+    positioning: false,
+    notes: [note],
+  });
 
-  // Promoted-from-import leads may be keyed on a company-name slug (no dot) when
-  // the import carried no domain. Resolve the real domain via Apollo first, and
-  // best-effort upgrade the lead's key (skip on a rare unique collision).
-  if (domain && !domain.includes(".")) {
-    const resolved = await resolveDomainByName(lead.companyName);
-    if (!resolved) {
-      // Couldn't find the company — nothing to enrich against yet. This is the
-      // most common silent "did nothing" for imported leads (no real domain).
-      return {
-        revealed: 0,
-        peopleAdded: 0,
-        score: lead.score,
-        firmographics: false,
-        profile: false,
-        positioning: false,
-        notes: [
-          `Couldn't resolve a company domain for "${lead.companyName}" via Apollo. Add a website to the lead, or check the Apollo API key.`,
-        ],
-      };
-    }
-    if (resolved !== domain) {
+  // Empty domain, or a company-name SLUG (no dot, from an import) — derive a real
+  // one. Prefer the lead's own WEBSITE (the partner can paste it on the lead),
+  // then Apollo's name search. A slug like "tronnes-surveys" must be resolved or
+  // enrich has nothing to work against.
+  if (!domain || !domain.includes(".")) {
+    const fromWebsite = normalizeDomain(lead.website);
+    if (fromWebsite && fromWebsite.includes(".")) {
+      domain = fromWebsite;
+    } else {
+      let resolved = "";
       try {
-        await prisma.prospectLead.update({ where: { id: lead.id }, data: { domain: resolved } });
+        resolved = await resolveDomainByName(lead.companyName);
+      } catch (err) {
+        // Apollo itself failed — name the real problem (key/auth/credits), don't
+        // disguise it as "company not found".
+        return zero(noteFor("Domain lookup (Apollo)", err));
+      }
+      if (!resolved) {
+        return zero(
+          `Couldn't find a website for "${lead.companyName}" automatically (it may be too small for Apollo). Add the company's website on this lead, then Enrich again.`,
+        );
+      }
+      domain = resolved;
+    }
+    // Persist the upgraded domain so later passes reuse it (skip a rare unique
+    // collision — a lead for the real domain already exists; enrich anyway).
+    if (domain && domain !== normalizeDomain(lead.domain)) {
+      try {
+        await prisma.prospectLead.update({ where: { id: lead.id }, data: { domain } });
       } catch {
-        // A lead for the real domain already exists — keep the slug key and
-        // still enrich using the resolved domain.
+        /* unique collision — keep going with the resolved domain */
       }
     }
-    domain = resolved;
   }
-  if (!domain) throw new Error("This lead has no company domain to enrich.");
+  if (!domain || !domain.includes(".")) {
+    return zero(`Add the company's website on this lead, then Enrich again — there's no domain to look up yet.`);
+  }
 
   const people: ProspectPerson[] = (lead.people as unknown as ProspectPerson[]) ?? [];
   let revealed = 0;

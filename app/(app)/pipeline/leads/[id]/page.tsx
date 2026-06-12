@@ -10,6 +10,7 @@ import { RestoreLeadButton } from "@/components/restore-lead-button";
 import { LeadCompanyPictureCard, LeadPositioningCard } from "@/components/lead-profile-cards";
 import { LeadEnrichButton } from "@/components/lead-enrich-button";
 import { FindMorePeopleButton } from "@/components/find-more-people-button";
+import { LeadWebsiteSetter } from "@/components/lead-website-setter";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
@@ -212,6 +213,12 @@ export default async function LeadDetailPage({
               </div>
             )}
           </Card>
+
+          {/* No real domain yet — let the partner add the website so Enrich /
+              Find more people can resolve it. */}
+          {!lead.website && !(lead.domain ?? "").includes(".") && (
+            <LeadWebsiteSetter leadId={lead.id} />
+          )}
 
           {/* People */}
           <Card className="p-5 flex flex-col gap-4">

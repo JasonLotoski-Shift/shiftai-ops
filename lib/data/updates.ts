@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-11",
+    tag: "fixed",
+    title: "Enrich a lead Apollo can't find — just add the website",
+    detail:
+      "Enrich and Find more people used to dead-end on smaller companies Apollo doesn't list (you'd see \"couldn't resolve a domain\"). Now a lead with no domain shows an \"Add website\" box — paste the company's site and both work straight away. Enrich also reads a website you've added (it didn't before), and if the lookup fails because Apollo itself is down or misconfigured, the message now says so instead of blaming the company.",
+  },
+  {
+    date: "2026-06-11",
     tag: "new",
     title: "Check Tally too — and a 6-hourly backstop for questionnaires",
     detail:

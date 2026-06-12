@@ -115,12 +115,18 @@ export async function findMorePeople(opts: {
 
   const notes: string[] = [];
   let domain = normalizeDomain(lead.domain);
-  if (domain && !domain.includes(".")) {
-    const resolved = await resolveDomainByName(lead.companyName);
-    if (resolved) domain = resolved;
+  // Empty/slug domain → prefer the lead's website, then Apollo name search.
+  if (!domain || !domain.includes(".")) {
+    const fromWebsite = normalizeDomain(lead.website);
+    if (fromWebsite && fromWebsite.includes(".")) {
+      domain = fromWebsite;
+    } else {
+      const resolved = await resolveDomainByName(lead.companyName);
+      if (resolved) domain = resolved;
+    }
   }
   if (!domain || !domain.includes(".")) {
-    throw new Error("This lead has no company domain yet — Enrich it first, or add a website.");
+    throw new Error("No company domain yet — add the company's website on this lead (or Enrich it first), then try again.");
   }
 
   const people: ProspectPerson[] = (lead.people as unknown as ProspectPerson[]) ?? [];

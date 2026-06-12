@@ -14,7 +14,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { generate } from "@/lib/ai";
-import { apolloMatchPerson } from "@/lib/apollo";
+import { apolloMatchPerson, normalizeDomain } from "@/lib/apollo";
 import type { Industry } from "@/lib/generated/prisma/enums";
 import type { ProspectLead as ProspectLeadModel } from "@/lib/generated/prisma/client";
 import type { ProspectPerson } from "@/lib/types";
@@ -422,6 +422,50 @@ export async function revealLeadPersonEmail(
 
   revalidatePath(`/pipeline/leads/${leadId}`);
   return { email };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// setLeadWebsite — let a partner paste a company's website on a lead Apollo
+// couldn't resolve (small firms aren't in Apollo). Stores the website AND the
+// derived bare domain, so the next Enrich / Find more people has a real domain
+// to work against. Validates a host with a dot; everything else is rejected.
+// ──────────────────────────────────────────────────────────────────────
+export async function setLeadWebsite(
+  leadId: string,
+  website: string,
+): Promise<{ website: string; domain: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const domain = normalizeDomain(website);
+  if (!domain || !domain.includes(".")) {
+    throw new Error("Enter a valid website, e.g. acme.com");
+  }
+  const cleanWebsite = `https://${domain}`;
+
+  const lead = await prisma.prospectLead.findUnique({ where: { id: leadId }, select: { id: true, companyName: true } });
+  if (!lead) throw new Error("Lead not found");
+
+  await prisma.$transaction(async (tx) => {
+    // Set the domain too — but not if another lead already owns it (unique).
+    try {
+      await tx.prospectLead.update({ where: { id: leadId }, data: { website: cleanWebsite, domain } });
+    } catch {
+      await tx.prospectLead.update({ where: { id: leadId }, data: { website: cleanWebsite } });
+    }
+    await writeAudit(tx, {
+      actor,
+      action: "set.website.prospectLead",
+      targetType: "ProspectLead",
+      targetId: leadId,
+      changes: { website: cleanWebsite, domain },
+    });
+  });
+
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  return { website: cleanWebsite, domain };
 }
 
 // ──────────────────────────────────────────────────────────────────────
