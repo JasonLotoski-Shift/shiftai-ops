@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-11",
+    tag: "improved",
+    title: "Build prototype now reads everything — and you approve the brief first",
+    detail:
+      "Build prototype used to see only the deal record and a few screenshots. It now reads every file in the deal's Drive folder — call transcripts, the discovery report, survey responses, call notes — and looks up the client's brand colors from their website. It first drafts a prototype brief (the problem, user stories, key features, the tabs to build) that you review and edit before anything gets built; the brief saves to a new Prototype folder in the deal's Drive as a .md you can reuse. The build itself is bigger too: a multi-tab, clickable prototype with realistic mockup data, in the client's colors (Shift's look when we can't find theirs).",
+  },
+  {
+    date: "2026-06-11",
     tag: "fixed",
     title: "Enrich a lead Apollo can't find — just add the website",
     detail:

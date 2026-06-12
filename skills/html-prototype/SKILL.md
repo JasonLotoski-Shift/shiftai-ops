@@ -1,13 +1,14 @@
 # Skill — Build HTML prototype
 
-Final step of the prototype workflow. Turn the build spec into ONE self-contained, interactive HTML file that shows the client how Shift would solve their problem. The partner reviews and edits before it's shared — your job is a clean, working, on-brand single file.
+Final step of the prototype workflow. Turn the approved brief into ONE self-contained, **multi-tab interactive HTML app** that shows the client how Shift would solve their problem. The partner reviews and edits before it's shared — your job is a clean, working, on-brand single file. This is the firm's most complex deliverable: make it look and feel like a real product, not a mockup screenshot.
 
 The firm's voice, identity, and hard rules are in the firm context above. Apply them.
 
 ## Input you'll get
 
 - **Context block** — the opportunity.
-- **Intake** — the build spec from the previous step.
+- **Intake** — the approved prototype brief: problem, user stories, key features, the tabs/sections to build, the interaction to simulate, sample-data shape, the "after" picture, and a Brand direction line.
+- **Screenshots** (vision) — the client's current tools, when shared. Match the kind of data you see (the real fields, statuses, units) in your sample data.
 
 ## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
 
@@ -25,11 +26,12 @@ Return **only the HTML** — a complete document starting with `<!DOCTYPE html>`
 Requirements:
 
 - **One file, self-contained.** Inline `<style>` and a single inline `<script>` of vanilla JS. The ONLY external dependency allowed is Google Fonts via a `<link>`. No frameworks, no CDNs, no external images (use CSS/SVG/data-URI only).
-- **Genuinely interactive** — implement the one or two interactions from the spec so they actually work (click/toggle/filter with real DOM updates). Everything else can be static. No dead buttons.
-- **Plausible sample data** baked in, matching the spec. Clearly illustrative, never real client data.
-- **On-brand and precise** — dark, engineered, confident; take the palette/type from the spec. If the spec is silent on brand, fall back to the firm Edition-06 floor: soft ~10px radius, pill chips, a subtle shadow (never a glow), no gradients, Track Gold as the single accent moment. Responsive enough to look right on a laptop. No animation gimmicks beyond subtle transitions.
+- **Multi-tab app.** Build the 2–4 tabs/sections named in the brief as a real tabbed interface: a persistent top or side nav, clicking a tab swaps the visible section (real DOM/CSS state, the active tab is highlighted). Each tab is a distinct, populated view — a dashboard, a list/table, a detail or settings view — not the same content relabeled.
+- **Genuinely interactive** — implement the one or two interactions from the brief so they actually work (click a row → detail opens; toggle a filter → the list updates; assign/route → a badge recolors). Real DOM updates. Everything else can be static. No dead buttons, no tab that 404s.
+- **Plausible sample data** baked in, matching the brief's sample-data shape and the client's industry. Enough rows to look alive (8–15 per table, not 2). Clearly illustrative, never real client data.
+- **On-brand and precise** — engineered, confident. **Use the brand colors from the brief's Brand direction line** (primary for headers/active states/key accents, secondary for support chips/callouts) over a neutral Shift base. If the Brand direction says `[Shift Edition-06 fallback]` (or is silent), use the firm Edition-06 floor: dark base, soft ~10px radius, pill chips, a subtle shadow (never a glow), no gradients, Track Gold as the single accent moment. Either way: keep the firm's type feel (Big Shoulders Display for heads, Inter body, a mono for labels) unless the brief says otherwise. Responsive enough to look right on a laptop. No animation gimmicks beyond subtle transitions.
 - **Header** names the client and reads, plainly, that this is an illustrative prototype built by Shift.
-- **Self-QA before returning:** every interaction works, nothing is lorem/placeholder, no `TODO`, the file renders standalone with no network beyond fonts, and no banned words appear.
+- **Self-QA before returning:** every tab switches and every interaction works, nothing is lorem/placeholder, no `TODO`, tables have realistic volume, the file renders standalone with no network beyond fonts, and no banned words appear.
 
 ## When input is missing — never invent
 

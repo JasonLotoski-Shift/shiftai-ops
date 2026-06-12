@@ -533,10 +533,10 @@ const flows: Flow[] = [
     title: "Build the proposal package",
     blurb: "At the Proposal stage: an interactive prototype and a formal presentation deck.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "On the deal: Build prototype (say what to show) → then Build deck" },
-      { tone: "claude", kind: "Claude", label: "Prototype = frame → spec → write HTML (multi-step); deck = scope/timeline/price + a Demo-prototype link" },
-      { tone: "review", kind: "You review", label: "Preview in the browser, edit the HTML; [NEEDS INPUT] blocks save until resolved" },
-      { tone: "write", kind: "Saved", label: "Each files to Drive as a self-contained .html + an Artifact on the deal" },
+      { tone: "trigger", kind: "You do", label: "On the deal: Build prototype (say what to show) → review the brief → build · then Build deck" },
+      { tone: "claude", kind: "Claude", label: "Reads every file in the deal's Drive folder (transcripts, discovery, survey, notes, screenshots) + looks up the client's brand colors → drafts a prototype brief (user stories, features, tabs) you edit → then builds a multi-tab clickable HTML. Deck = scope/timeline/price + a Demo-prototype link" },
+      { tone: "review", kind: "You review", label: "Approve/edit the brief before the build, then preview the HTML; [NEEDS INPUT] blocks both saves until resolved" },
+      { tone: "write", kind: "Saved", label: "Brief (.md) + prototype (.html) file to a Prototype folder in the deal's Drive + Artifacts on the deal; the deck files to the deal folder" },
     ],
   },
   {

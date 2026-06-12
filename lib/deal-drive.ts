@@ -78,6 +78,31 @@ export async function ensureDealDriveFolder(
   return { folderId: folder.id, folderUrl: folder.url };
 }
 
+/** Find-or-create a named subfolder inside this deal's working folder. Used to
+ *  group prototype work (brief + HTML) under a "Prototype" folder. Cheap enough
+ *  to find-or-create per save — not persisted on the Deal row (no FK for it). */
+export async function ensureDealSubfolder(
+  dealId: string,
+  name: string,
+): Promise<{ folderId: string; folderUrl: string }> {
+  const { folderId: parentId } = await ensureDealDriveFolder(dealId);
+
+  const list = await drive.files.list({
+    q: `name = '${name}' and '${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id, webViewLink)",
+    pageSize: 1,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const existing = list.data.files?.[0];
+  if (existing?.id && existing.webViewLink) {
+    return { folderId: existing.id, folderUrl: existing.webViewLink };
+  }
+
+  const folder = await createFolder(name, parentId);
+  return { folderId: folder.id, folderUrl: folder.url };
+}
+
 /** On Convert: move the deal's working folder into the new client folder and
  *  rename it "00-Pipeline-files". Throws on Drive failure — call best-effort. */
 export async function moveDealFolderToClient(input: {

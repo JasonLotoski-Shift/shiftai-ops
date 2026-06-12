@@ -129,6 +129,60 @@ export async function downloadDriveFile(fileId: string): Promise<Buffer> {
   return Buffer.from(res.data as ArrayBuffer);
 }
 
+export type DriveFileMeta = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: number; // bytes; absent for native Google types
+  modifiedTime?: string;
+};
+
+// List the (non-recursive) contents of a folder, newest first. Used to read a
+// deal's whole working folder for the prototype brief. Caps at 100 items — far
+// more than a deal folder holds; not paginated. Includes subfolders (mimeType
+// application/vnd.google-apps.folder) — callers filter those out if unwanted.
+export async function listFolderFiles(folderId: string): Promise<DriveFileMeta[]> {
+  const res = await drive.files.list({
+    q: `'${folderId}' in parents and trashed = false`,
+    fields: "files(id, name, mimeType, size, modifiedTime)",
+    pageSize: 100,
+    orderBy: "modifiedTime desc",
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  return (res.data.files ?? []).map((f) => ({
+    id: f.id!,
+    name: f.name ?? "(unnamed)",
+    mimeType: f.mimeType ?? "application/octet-stream",
+    size: f.size ? Number(f.size) : undefined,
+    modifiedTime: f.modifiedTime ?? undefined,
+  }));
+}
+
+// Export a NATIVE Google file (Doc / Sheet / Slides) to text. These have no raw
+// bytes — downloadDriveFile (alt=media) fails on them — so Drive must convert via
+// files.export. Maps the native source type to a text export format. Throws on an
+// unsupported native type or an export failure (export caps at ~10MB; a huge deck
+// can exceed it) — callers wrap in try/catch and degrade gracefully.
+const GOOGLE_EXPORT_MIME: Record<string, string> = {
+  "application/vnd.google-apps.document": "text/plain",
+  "application/vnd.google-apps.spreadsheet": "text/csv",
+  "application/vnd.google-apps.presentation": "text/plain",
+};
+
+export async function exportGoogleDoc(
+  fileId: string,
+  sourceMimeType: string,
+): Promise<{ text: string; exportedAs: string }> {
+  const exportMime = GOOGLE_EXPORT_MIME[sourceMimeType];
+  if (!exportMime) throw new Error(`No text export for Google type: ${sourceMimeType}`);
+  const res = await drive.files.export(
+    { fileId, mimeType: exportMime },
+    { responseType: "arraybuffer" },
+  );
+  return { text: Buffer.from(res.data as ArrayBuffer).toString("utf8"), exportedAs: exportMime };
+}
+
 // Extract a file ID from a Drive file link like
 // https://drive.google.com/file/d/<id>/view  or  .../d/<id>?usp=… (folder URLs
 // use /folders/<id> — handled by folderIdFromUrl, no clash). Null if not found.
