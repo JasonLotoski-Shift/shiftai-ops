@@ -172,12 +172,18 @@ export type GenerateInput = {
 };
 
 /** One-shot generation. Returns the full text. Logs one OpsEvent per call
- *  (fire-and-forget — never blocks the return) with status, latency, and usage. */
+ *  (fire-and-forget — never blocks the return) with status, latency, and usage.
+ *
+ *  Streams under the hood (stream + finalMessage): the SDK refuses a
+ *  non-streaming create when max_tokens is large enough that the request could
+ *  exceed 10 minutes ("Streaming is required for operations that may take
+ *  longer..." — hit at 24k-token Opus builds). Streaming internally lifts that
+ *  cap with the identical return shape; callers see no difference. */
 export async function generate(input: GenerateInput): Promise<string> {
   const params = await buildMessageParams(input);
   const t0 = Date.now();
   try {
-    const res = await client().messages.create(params);
+    const res = await client().messages.stream(params).finalMessage();
     const text = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
