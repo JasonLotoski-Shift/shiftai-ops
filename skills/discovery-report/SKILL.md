@@ -21,7 +21,7 @@ Section sequence (drop a section only if there is genuinely nothing to say; neve
 3. **What we found** - the current state, the workflows eating time. Do two things: confirm what they already feel, **and** surface one thing they had not thought of (a hidden cost, a connection they missed). The new insight is what earns trust.
 4. **Our thinking** - the build plan, framed as an idea to buy into, not a verdict. Open it as "here is what we think this could look like" / "our thinking on the system." Describe the scoped pieces, what each does, and where AI does real work, in their language. Confident about the direction, open about the details. They need to see themselves in it.
 5. **How it connects** - the integration points: the tools it ties together so the business runs on one floor instead of swivel-chairing between five apps. Plain, concrete to their stack.
-6. **Time back** - the measurable target: hours a week, time saved, work removed, tied to the metric the client actually cares about. This is the load-bearing number. If the intake/context did not give one, mark `[NEEDS INPUT: time-back target]` visibly - never invent it.
+6. **Time back** - the measurable target: hours a week, time saved, work removed, tied to the metric the client actually cares about. This is the load-bearing number. If the intake gives a hypothesis (a workflow and a rough size), build it out: state the figure with **explicit units** (hours per week, and per person when more than one role is affected), break it into the roles that own the time, and **label every figure confirmed or estimated** (confirmed = the client's own number; estimated = Shift's, checked in the partner review). Then size two things: (a) **what the time is worth** in dollars (loaded hourly cost × hours × weeks, stated as a range with the assumption shown), and (b) the **opportunity cost / upside** beyond the saved hours (revenue on assets they already own, sales capacity freed for growth, retention protected). State assumptions inline; a footnote separates confirmed from estimated. If the intake gives no hypothesis at all, mark `[NEEDS INPUT: time-back target]` visibly - never invent the base figure.
 7. **How we would build it** - the phases, sequenced and simple enough that they follow it. Cover three beats: the **key problem we solve** (and that we solve it better than they thought possible), the **integration + AI piece**, and **security** (state plainly that their data and access are handled). Plain language, no methodology branding.
 8. **What you would have** - paint the end of the first build: a working system with **one key feature already live and in use**, not a slide-deck promise. Concrete, theirs, soon.
 9. **Does this hit the mark?** - the value-confirmation close. One clear statement that names the two outcomes from the intake: *"Do you see how this system gives you back [X] and [Y]? If anything is off, tell us where, so we hit the mark."* It is built to land a **Yes, I see it** or a **No, but it would need to do Z** - a redirect that surfaces the real gap - never a flat no. Do not phrase it as "do you want to proceed." It confirms they see the value; the proposal is where the decision happens.
@@ -32,18 +32,23 @@ Section sequence (drop a section only if there is genuinely nothing to say; neve
 - **Idea, not edict.** Section 4 must read as a proposal of thinking the client shapes with us, not a finished plan handed down. "Here's what we think could work" beats "here's the plan." Confidence in the direction, humility on the details. An operator buys a system they helped shape.
 - **Confirm value, don't ask to buy.** Section 9 is an affirmation, not a close-the-deal question. It invites "yes I see it" or a specific correction. The buying decision waits for the proposal. Never write "are you ready to move forward."
 
-## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
+## Writing rules — presentation density, no storytelling, no negation framing (firm-wide, 2026-06-09)
 
-Every draft this skill produces must be bite-sized and fact-based:
+This is a deck a partner **presents from**, not a document the client reads alone. The slide carries the talking points; the partner says the rest. Default to sparse.
 
+- **Talking points, not paragraphs.** Each section is a headline plus a few short lines or bullets, not blocks of prose. If a sentence explains something the partner would say out loud, cut it from the slide. Rule of thumb: a body section should be readable in one glance, roughly 40 words or fewer plus its bullets. Lists beat paragraphs; fragments beat full sentences where the meaning holds.
+- **Cut every redundant line.** Say a thing once. If two sentences make the same point, keep the sharper one. No restating the headline in the body, no "here is what this adds up to" lead-ins, no setup before the point.
 - Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
 - Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
 - No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
 - No em dashes (—) anywhere in the deliverable text. Use a period, a comma, or a colon instead.
+- Prefer chips, stat cards, and bulleted lists over prose for facts (firm stats, where-data-lives, integration points, phase scope). Reserve full sentences for the one or two claims per section that need to land.
 
 ## No pricing
 
-This deck carries **no fees, no rates, no totals**. The Discovery Report scopes the system and proves the value; the proposal and SOW carry the numbers. If the intake includes a price, leave it out and note that it belongs in the proposal.
+This deck carries **no fees, no rates, no totals** for Shift's engagement. The Discovery Report scopes the system and proves the value; the proposal and SOW carry the engagement numbers. If the intake includes a price for the work, leave it out and note that it belongs in the proposal.
+
+The dollar figures in Time back (section 6) are different and allowed: they size the **value of the client's own wasted time and avoidable costs** (loaded labour cost, runout truck cost), which is how the deck proves ROI. That is value sizing, not Shift's pricing. Keep it clearly framed as the client's cost today, with assumptions shown and estimates labelled.
 
 ## Brand spec - light mode, Shift craft, client color
 
