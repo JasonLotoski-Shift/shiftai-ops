@@ -10,7 +10,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 
-export type ScanSource = "gmail" | "fireflies";
+export type ScanSource = "gmail" | "fireflies" | "tally";
 
 export type ScanResult = {
   source: ScanSource;
@@ -58,12 +58,13 @@ export async function runManualScan(source: ScanSource): Promise<ScanResult> {
 
   // Some no-op responses carry a note (e.g. "FIREFLIES_API_KEY not set").
   const note = typeof json.note === "string" ? json.note : null;
-  const label = source === "gmail" ? "Gmail" : "Fireflies";
-  const message = note
-    ? note
-    : created > 0
-      ? `${created} new item${created === 1 ? "" : "s"} queued for review.`
-      : `${label} checked — nothing new.`;
+  const label = source === "gmail" ? "Gmail" : source === "fireflies" ? "Fireflies" : "Tally";
+  // Tally responses save straight to the deal/client; Gmail/Fireflies queue for review.
+  const found =
+    source === "tally"
+      ? `${created} new questionnaire response${created === 1 ? "" : "s"} saved.`
+      : `${created} new item${created === 1 ? "" : "s"} queued for review.`;
+  const message = note ? note : created > 0 ? found : `${label} checked — nothing new.`;
 
   if (created > 0) revalidatePath("/ingest");
   return { source, created, message };

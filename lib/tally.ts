@@ -237,6 +237,102 @@ export async function registerTallyWebhook(input: { formId: string; webhookUrl: 
   }
 }
 
+// ── Poll side (manual "Check Tally" + a 6-hourly cron) ──
+// The webhook is the primary path and delivers responses instantly; this is the
+// backstop for a missed/failed delivery. It lists a form's submissions via the
+// Tally API and feeds each through the SAME saveTallySubmission worker (idempotent
+// on externalSubmissionId), so the poll and webhook can never diverge.
+//
+// NOTE: the submissions-API response shape (question/answer field names) is from
+// the public docs and is best-effort — validate against a live form on first run.
+// If a field name differs, parseTallySubmission yields blank answers (never a
+// crash), so a wrong shape is inert, not destructive.
+
+type TallyApiQuestion = {
+  id?: string;
+  type?: string;
+  title?: string;
+  label?: string;
+  options?: { id?: string; text?: string }[];
+};
+type TallyApiSubmission = {
+  id?: string;
+  isCompleted?: boolean;
+  responses?: Record<string, unknown>[];
+};
+
+/** GET /forms/{formId}/submissions — the questions table + completed submissions. */
+export async function listTallySubmissions(
+  formId: string,
+): Promise<{ questions: TallyApiQuestion[]; submissions: TallyApiSubmission[] }> {
+  const apiKey = process.env.TALLY_API_KEY;
+  if (!apiKey) throw new Error("TALLY_API_KEY is not set");
+  const res = await fetch(`${TALLY_API}/forms/${formId}/submissions?page=1`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) throw new Error(`Tally submissions ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const json = (await res.json()) as Record<string, unknown>;
+  return {
+    questions: Array.isArray(json.questions) ? (json.questions as TallyApiQuestion[]) : [],
+    submissions: Array.isArray(json.submissions) ? (json.submissions as TallyApiSubmission[]) : [],
+  };
+}
+
+// Reshape one submissions-API row into the WEBHOOK payload parseTallySubmission
+// reads ({ data: { formId, responseId, fields:[{label,type,value,options}] } }),
+// joining each response to its question for the label/type/options. Tolerant of
+// the uncertain answer key (answer vs value).
+function submissionToWebhookPayload(
+  formId: string,
+  sub: TallyApiSubmission,
+  questions: TallyApiQuestion[],
+): unknown {
+  const qById = new Map(questions.filter((q) => q.id).map((q) => [q.id as string, q]));
+  const fields = (sub.responses ?? []).map((r) => {
+    const questionId = typeof r.questionId === "string" ? r.questionId : "";
+    const q = questionId ? qById.get(questionId) : undefined;
+    return {
+      key: questionId,
+      label: q?.title ?? q?.label ?? "",
+      type: q?.type ?? "",
+      value: r.answer ?? r.value ?? null,
+      options: q?.options ?? [],
+    };
+  });
+  return { data: { formId, responseId: sub.id, submissionId: sub.id, fields } };
+}
+
+export type TallyRescanResult = { scannedForms: number; created: number; notes: string[] };
+
+/** Re-pull submissions for every form we have a DiscoverySurvey for and save any
+ *  we haven't seen (idempotent via saveTallySubmission). Returns counts + notes. */
+export async function rescanTallyForms(): Promise<TallyRescanResult> {
+  const notes: string[] = [];
+  if (!process.env.TALLY_API_KEY) return { scannedForms: 0, created: 0, notes: ["TALLY_API_KEY not set"] };
+
+  const surveys = await prisma.discoverySurvey.findMany({
+    where: { tallyFormId: { not: null } },
+    select: { tallyFormId: true },
+  });
+
+  let created = 0;
+  for (const s of surveys) {
+    const formId = s.tallyFormId;
+    if (!formId) continue;
+    try {
+      const { questions, submissions } = await listTallySubmissions(formId);
+      for (const sub of submissions) {
+        if (sub.isCompleted === false) continue;
+        const r = await saveTallySubmission(submissionToWebhookPayload(formId, sub, questions));
+        if (r.status === "saved") created++;
+      }
+    } catch (e) {
+      notes.push(`Form ${formId}: ${e instanceof Error ? e.message.slice(0, 120) : "rescan failed"}`);
+    }
+  }
+  return { scannedForms: surveys.length, created, notes };
+}
+
 // ── Webhook side ──
 export function verifyTallySignature(rawBody: string, signature: string | null): boolean {
   const secret = process.env.TALLY_WEBHOOK_SIGNING_SECRET;

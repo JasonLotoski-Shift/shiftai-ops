@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-11",
     tag: "new",
+    title: "Check Tally too — and a 6-hourly backstop for questionnaires",
+    detail:
+      "There's now a “Check Tally” button alongside Check Gmail and Check Fireflies on Ingest, plus a 6-hourly sweep. The Tally webhook still delivers questionnaire responses instantly; this is the safety net that re-pulls any that didn't come through, and saves them to the deal/client just like a live submission.",
+  },
+  {
+    date: "2026-06-11",
+    tag: "new",
     title: "Find more people at a target company — for better cold outreach",
     detail:
       "Open a lead and hit “Find more people”: it searches Apollo for decision-makers and scrapes the company's own team/about pages, then adds everyone net-new to the people list with their title (and LinkedIn where the site shows it). It also tells you how many contacts you already have at that company. It spends no credits — reveal a work email per person with the existing Reveal button (1 credit each).",

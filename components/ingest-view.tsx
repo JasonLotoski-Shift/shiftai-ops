@@ -119,6 +119,10 @@ export function IngestView({
               <RefreshCw size={13} strokeWidth={1.5} className={cn(scanPending && scanActive === "fireflies" && "animate-spin")} />
               Check Fireflies
             </Button>
+            <Button variant="secondary" size="sm" onClick={() => runScan("tally")} disabled={scanPending}>
+              <RefreshCw size={13} strokeWidth={1.5} className={cn(scanPending && scanActive === "tally" && "animate-spin")} />
+              Check Tally
+            </Button>
             <Button variant="primary" size="sm" onClick={() => setComposerOpen(true)}>
               <Plus size={13} strokeWidth={1.5} />
               Ingest
