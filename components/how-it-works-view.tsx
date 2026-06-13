@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Card, CardBody, Label, Badge, Tabs } from "@/components/ui";
+import { DealProcessMap } from "@/components/deal-process-map";
 import {
   Database,
   FolderOpen,
@@ -26,21 +27,39 @@ import {
   Calculator,
   Target,
   Presentation,
+  Compass,
+  Hammer,
+  Activity,
+  HelpCircle,
+  Wrench,
+  ClipboardCheck,
+  Map as MapIcon,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────
-   How it works — two-tab reference.
-   1. How it's built — condensed plain-English architecture.
-   2. What happens when I do X — visual process maps for each flow.
+   How it works — the training manual. Four tabs, one walkthrough:
+   1. Start here       — "you are here" phase walkthrough (Discovery → Build → Run),
+                         each step a progressive-disclosure panel (why / what to do /
+                         how it works / what everything does).
+   2. The deal process — the racing-line track (folded in from the retired
+                         /deal-process route), hover any step for the live panel.
+   3. How it's built   — plain-English architecture (the original reference).
+   4. What happens when I do X — the visual process maps for every flow.
+
+   Brand tokens only (bitumen / asphalt / graphite / track-gold / bone /
+   diagnostic-steel) so the whole manual re-themes for light mode. Motion is the
+   shared fade-rise keyframe + the scale/shadow tricks proven on the track.
    ────────────────────────────────────────────────────────────────────── */
 
 export function HowItWorksView() {
-  const [tab, setTab] = useState("built");
+  const [tab, setTab] = useState("start");
 
   return (
     <div className="flex flex-col gap-8">
       <Tabs
         tabs={[
+          { key: "start", label: "Start here" },
+          { key: "process", label: "The deal process" },
           { key: "built", label: "How it's built" },
           { key: "flows", label: "What happens when I do X" },
         ]}
@@ -48,8 +67,374 @@ export function HowItWorksView() {
         onChange={setTab}
       />
 
+      {tab === "start" && <StartHere onJump={setTab} />}
+      {tab === "process" && <DealProcessSection />}
       {tab === "built" && <HowItsBuilt />}
       {tab === "flows" && <ProcessMaps />}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Tab — Start here. A guided "you are here" manual: the firm runs three
+   phases after a deal signs — Discovery, Build, Run. Each phase opens to four
+   panels (why it matters · what you do · how it works · what everything does).
+   Progressive disclosure via an accordion using the fade-rise keyframe; the
+   active phase node scales + lifts like the deal-process track nodes.
+   Content sourced from skills/_firm/context.md (phases + voice), the deal
+   STEPS data, lib/types.ts (real enums), and the SKILL.md files. Describes the
+   CURRENT live model — Discovery → Build → Run. No Business-Model-v2 prose.
+   ────────────────────────────────────────────────────────────────────── */
+
+type PhasePanel = { heading: string; icon: ReactNode; body: ReactNode };
+
+type Phase = {
+  key: string;
+  no: string;
+  name: string;
+  enumValue: string; // the real Project.phase value (lib/types.ts)
+  icon: ReactNode;
+  oneLine: string;
+  panels: PhasePanel[];
+};
+
+const PHASES: Phase[] = [
+  {
+    key: "discovery",
+    no: "01",
+    name: "Discovery",
+    enumValue: "discovery",
+    icon: <Compass size={18} strokeWidth={1.5} />,
+    oneLine: "Understand their world before anyone scopes or prices a thing.",
+    panels: [
+      {
+        heading: "Why it matters",
+        icon: <HelpCircle size={14} strokeWidth={1.5} />,
+        body: (
+          <p>
+            An operator buys a system they helped design. Discovery earns that. You learn the pain,
+            what it costs them per week, where they are with AI, and who decides. Get one concrete
+            number. No scoping, no pricing here.
+          </p>
+        ),
+      },
+      {
+        heading: "What you do",
+        icon: <MousePointerClick size={14} strokeWidth={1.5} />,
+        body: (
+          <ul className="flex flex-col gap-1.5">
+            <PhaseLi>Run the discovery call: let them describe their world first, listen more than you pitch.</PhaseLi>
+            <PhaseLi>Send the same-day follow-up, then a questionnaire to fill the gaps the call missed.</PhaseLi>
+            <PhaseLi>Walk the discovery report on the discussion call: their pain played back, the build as an idea, zero pricing.</PhaseLi>
+            <PhaseLi>Close on a confirmed direction and the right to propose.</PhaseLi>
+          </ul>
+        ),
+      },
+      {
+        heading: "How it works",
+        icon: <Wrench size={14} strokeWidth={1.5} />,
+        body: (
+          <p>
+            Each step has a one-click draft on the deal: <Mono>Discovery prep</Mono> (an internal
+            brief), <Mono>Discovery questionnaire</Mono> (reads every file in the deal&apos;s Drive
+            folder, becomes a live Tally form whose answers land back on the deal),{" "}
+            <Mono>Follow-up email</Mono>, and <Mono>Discovery report</Mono> (a client-facing deck in
+            their brand colors). Every draft is yours to edit; a <Mono>[NEEDS INPUT]</Mono> marker
+            blocks the save until you fill a real fact in.
+          </p>
+        ),
+      },
+      {
+        heading: "What everything does",
+        icon: <ClipboardCheck size={14} strokeWidth={1.5} />,
+        body: (
+          <ul className="flex flex-col gap-1.5">
+            <PhaseLi><b>Deal.</b> The opportunity in motion, sitting at the <Mono>discovery</Mono> / <Mono>discussion</Mono> stage on the board.</PhaseLi>
+            <PhaseLi><b>People.</b> Link the contacts on the deal: how they connect, and their pull in the decision.</PhaseLi>
+            <PhaseLi><b>Artifact.</b> Every saved draft files to the deal&apos;s Drive folder and shows on the deal.</PhaseLi>
+            <PhaseLi><b>Interaction.</b> A logged call, the follow-up email, the meeting. The touch history.</PhaseLi>
+          </ul>
+        ),
+      },
+    ],
+  },
+  {
+    key: "build",
+    no: "02",
+    name: "Build",
+    enumValue: "build",
+    icon: <Hammer size={18} strokeWidth={1.5} />,
+    oneLine: "Scope a first sprint they can say yes to, sign it, and build the system.",
+    panels: [
+      {
+        heading: "Why it matters",
+        icon: <HelpCircle size={14} strokeWidth={1.5} />,
+        body: (
+          <p>
+            One tool first, three months, real ROI. Small enough to say yes to, real enough to prove
+            the model. The proposal confirms a direction already agreed; it doesn&apos;t pitch. Then
+            the deal converts to a client and the engagement starts on day one, not week three.
+          </p>
+        ),
+      },
+      {
+        heading: "What you do",
+        icon: <MousePointerClick size={14} strokeWidth={1.5} />,
+        body: (
+          <ul className="flex flex-col gap-1.5">
+            <PhaseLi>Estimate the contract value from hours-by-tier, then draft the proposal and the deck.</PhaseLi>
+            <PhaseLi>At the proposal stage, build the prototype package: the clickable prototype and the presentation deck.</PhaseLi>
+            <PhaseLi>Settle terms, draft the SOW for counsel, then Convert to client when it&apos;s signed.</PhaseLi>
+            <PhaseLi>Shape delivery: set the project type, break work into milestones, plan the billing.</PhaseLi>
+          </ul>
+        ),
+      },
+      {
+        heading: "How it works",
+        icon: <Wrench size={14} strokeWidth={1.5} />,
+        body: (
+          <p>
+            <Mono>Build prototype</Mono> reads the whole deal folder, drafts a brief you approve, then
+            builds a multi-tab clickable HTML in the client&apos;s colors. <Mono>Build deck</Mono> adds
+            the scope / timeline / price. <Mono>Statement of Work</Mono> drafts a contract-grade Google
+            Doc, stamped DRAFT for counsel, never signature-ready. <Mono>Convert to client</Mono>
+            scaffolds the Drive folder, a starter project, a 50/25/25 schedule, and kickoff tasks; the
+            deal&apos;s people and company profile carry across.
+          </p>
+        ),
+      },
+      {
+        heading: "What everything does",
+        icon: <ClipboardCheck size={14} strokeWidth={1.5} />,
+        body: (
+          <ul className="flex flex-col gap-1.5">
+            <PhaseLi><b>Client.</b> The signed engagement: revenue, Drive folder, workspace path, primary contact.</PhaseLi>
+            <PhaseLi><b>Project.</b> The work, at phase <Mono>build</Mono>. Project types: discovery-report, pilot-project, subscription, full-build, buyout.</PhaseLi>
+            <PhaseLi><b>Milestone &amp; Task.</b> The delivery plan on the task board: milestones are cards, tasks live under them.</PhaseLi>
+            <PhaseLi><b>Invoice &amp; billing schedule.</b> The installments that bill against the project value.</PhaseLi>
+          </ul>
+        ),
+      },
+    ],
+  },
+  {
+    key: "run",
+    no: "03",
+    name: "Run",
+    enumValue: "run",
+    icon: <Activity size={18} strokeWidth={1.5} />,
+    oneLine: "Operate the system alongside them, measure it, and leave them owning it.",
+    panels: [
+      {
+        heading: "Why it matters",
+        icon: <HelpCircle size={14} strokeWidth={1.5} />,
+        body: (
+          <p>
+            The work compounds. We embed, we build, we measure, and the client owns reusable IP at
+            the end. Run is where the system earns its keep: hours back every week, decisions and
+            approvals moving faster, the proof that funds the next sprint.
+          </p>
+        ),
+      },
+      {
+        heading: "What you do",
+        icon: <MousePointerClick size={14} strokeWidth={1.5} />,
+        body: (
+          <ul className="flex flex-col gap-1.5">
+            <PhaseLi>Track delivery on the project: milestones, tasks, hours, the timeline.</PhaseLi>
+            <PhaseLi>Raise invoices off the billing schedule and track them to paid.</PhaseLi>
+            <PhaseLi>Log every client call, email, and meeting through Ingest so nothing falls through.</PhaseLi>
+            <PhaseLi>Open a follow-on engagement on the same client when there&apos;s more to build.</PhaseLi>
+          </ul>
+        ),
+      },
+      {
+        heading: "How it works",
+        icon: <Wrench size={14} strokeWidth={1.5} />,
+        body: (
+          <p>
+            The project&apos;s Financials tab handles economics and the 10/15/75 split; the task board
+            runs delivery. Meetings auto-log from Fireflies, client emails from a Gmail label, both
+            landing on <Mono>Ingest</Mono> for your review. A follow-on is just{" "}
+            <Mono>+ New project</Mono> on the client. Every channel round-trips a row into the
+            database. If it isn&apos;t tracked, it didn&apos;t happen.
+          </p>
+        ),
+      },
+      {
+        heading: "What everything does",
+        icon: <ClipboardCheck size={14} strokeWidth={1.5} />,
+        body: (
+          <ul className="flex flex-col gap-1.5">
+            <PhaseLi><b>Project.</b> Now at phase <Mono>run</Mono>, status on-track / at-risk / blocked / closing / closed.</PhaseLi>
+            <PhaseLi><b>HoursEntry.</b> Time logged against the work, by hand or a Claude Code session hook.</PhaseLi>
+            <PhaseLi><b>Invoice.</b> Draft, then sent, then paid, each carrying its real dates.</PhaseLi>
+            <PhaseLi><b>AuditLog.</b> Every mutation, one row, never written without an actor. The diligence trail.</PhaseLi>
+          </ul>
+        ),
+      },
+    ],
+  },
+];
+
+function StartHere({ onJump }: { onJump: (key: string) => void }) {
+  const [open, setOpen] = useState<string | null>("discovery");
+
+  return (
+    <div className="flex flex-col gap-8 max-w-[920px]">
+      {/* Intro */}
+      <section className="flex flex-col gap-4">
+        <SectionTitle eyebrow="You are here" title="The manual: how the firm runs an engagement." />
+        <p className="text-[14px] text-bone-dim leading-relaxed">
+          This tool is the firm&apos;s system of record. Read it top to bottom once and you&apos;ll
+          know the whole shape of the work: how a lead becomes a signed client, what every screen is
+          for, and where each thing you do ends up.
+        </p>
+        <p className="text-[14px] text-bone-dim leading-relaxed">
+          The firm runs three phases after a deal signs:{" "}
+          <span className="text-bone">Discovery</span>, then{" "}
+          <span className="text-bone">Build</span>, then <span className="text-bone">Run</span>.
+          Plain English, no branded methodology. Open each one below. Every phase tells you why it
+          matters, what you do, how the tool does its part, and what each record is for.
+        </p>
+
+        {/* The phase rail — three nodes; the open one lifts like a track node */}
+        <div className="grid grid-cols-3 gap-3">
+          {PHASES.map((p) => {
+            const active = open === p.key;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => setOpen(active ? null : p.key)}
+                className={
+                  "group text-left flex flex-col gap-2 px-4 py-4 rounded-[var(--radius-lg)] border transition-all duration-200 focus-gold " +
+                  (active
+                    ? "bg-track-gold-dim/15 border-track-gold/50 scale-[1.02] shadow-[0_0_24px_rgba(201,169,97,0.18)]"
+                    : "bg-asphalt border-graphite hover:border-track-gold/40 hover:scale-[1.01]")
+                }
+              >
+                <div className="flex items-center justify-between">
+                  <span className={active ? "text-track-gold" : "text-bone-dim group-hover:text-bone"}>
+                    {p.icon}
+                  </span>
+                  <span className="mono text-[11px] tabular-nums text-bone-mute">{p.no}</span>
+                </div>
+                <span className={"title-md text-[15px] " + (active ? "text-track-gold" : "text-bone")}>
+                  {p.name}
+                </span>
+                <span className="text-[11.5px] text-bone-mute leading-snug">{p.oneLine}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* The open phase's four panels — fade-rise on swap */}
+      {PHASES.map((p) =>
+        open === p.key ? (
+          <section key={p.key} className="fade-rise flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-track-gold">{p.icon}</span>
+              <span className="title-lg">
+                Phase {p.no} · {p.name}
+              </span>
+              <span className="mono text-[10px] uppercase tracking-wide text-bone-dim border hairline rounded-[var(--radius-pill)] px-2 py-0.5">
+                Project phase · {p.enumValue}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {p.panels.map((panel) => (
+                <PhasePanelCard key={panel.heading} panel={panel} />
+              ))}
+            </div>
+          </section>
+        ) : null,
+      )}
+
+      {/* Where the deal lives before any of this */}
+      <Card className="border border-track-gold/40 bg-track-gold-dim/5">
+        <CardBody className="flex items-start gap-3">
+          <GitBranch size={16} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
+          <p className="text-[13px] text-bone leading-relaxed">
+            Before Discovery there&apos;s the pipeline: finding the lead and earning each
+            conversation up to a signed deal.{" "}
+            <button
+              type="button"
+              onClick={() => onJump("process")}
+              className="text-track-gold underline underline-offset-2 hover:text-bone transition-colors"
+            >
+              See the deal process
+            </button>{" "}
+            for the full road, or{" "}
+            <button
+              type="button"
+              onClick={() => onJump("flows")}
+              className="text-track-gold underline underline-offset-2 hover:text-bone transition-colors"
+            >
+              what happens when I do X
+            </button>{" "}
+            for the step-by-step on any single action.
+          </p>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+function PhaseLi({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-2 text-[12.5px] text-bone-dim leading-snug">
+      <span className="w-1 h-1 rounded-full bg-track-gold mt-[7px] shrink-0" />
+      <span className="min-w-0">{children}</span>
+    </li>
+  );
+}
+
+function Mono({ children }: { children: ReactNode }) {
+  return <span className="mono text-[11.5px] text-bone">{children}</span>;
+}
+
+function PhasePanelCard({ panel }: { panel: PhasePanel }) {
+  return (
+    <Card className="transition-shadow hover:shadow-[var(--shadow)]">
+      <CardBody className="flex flex-col gap-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-track-gold">{panel.icon}</span>
+          <Label gold>{panel.heading}</Label>
+        </div>
+        <div className="text-[13px] text-bone-dim leading-relaxed [&_b]:text-bone [&_b]:font-medium">
+          {panel.body}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Tab — The deal process. The racing-line track, folded in from the retired
+   /deal-process route. The DealProcessMap component owns the STEPS data + the
+   hover-to-expand panel; this just frames it inside the manual.
+   ────────────────────────────────────────────────────────────────────── */
+
+function DealProcessSection() {
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-3 max-w-[760px]">
+        <SectionTitle eyebrow="The road to signed" title="The deal process, as a racing line." />
+        <p className="text-[14px] text-bone-dim leading-relaxed">
+          Before an engagement starts, a deal runs the same line every time: find the lead, earn each
+          conversation, and only talk money once the direction is already agreed. Three client
+          meetings (Discovery, Discussion, Proposal) and the work between them wins the deal. Hover
+          any step on the track to see what it&apos;s for and which part of this tool does the work.
+        </p>
+        <div className="flex items-center gap-2 text-bone-mute">
+          <MapIcon size={13} strokeWidth={1.5} />
+          <span className="label text-[9px]">Hover a step: the panel on the right is the live layer</span>
+        </div>
+      </section>
+
+      <DealProcessMap />
     </div>
   );
 }

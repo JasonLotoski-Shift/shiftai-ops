@@ -12,13 +12,14 @@ import { useRouter } from "next/navigation";
 import { X, Pencil, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
-import { stageLabels, industryLabels } from "@/lib/data/seed";
+import { stageLabels } from "@/lib/data/seed";
+import { INDUSTRY_VERTICALS, industryLabels } from "@/lib/industries";
+import { SubIndustrySelect, reconcileSubIndustry } from "@/components/sub-industry-select";
 import { updateDeal } from "@/app/(app)/pipeline/[id]/actions";
 import type { DealModel as Deal } from "@/lib/generated/prisma/models";
 
 // Stages settable here — "signed" is intentionally excluded (Convert owns it).
 const EDIT_STAGES = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation"] as const;
-const INDUSTRIES = ["automotive", "motorsport", "engineering", "construction", "other"] as const;
 
 function toISODate(d: Date): string {
   return new Date(d).toISOString().slice(0, 10);
@@ -31,6 +32,7 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
   const [value, setValue] = useState(String(deal.valueEstimate));
   const [stage, setStage] = useState<string>(deal.stage);
   const [industry, setIndustry] = useState<string>(deal.industry);
+  const [subIndustry, setSubIndustry] = useState<string>(deal.subIndustry ?? "");
   const [closeDate, setCloseDate] = useState(toISODate(deal.closeTargetDate));
   const [notes, setNotes] = useState(deal.notes ?? "");
   const [website, setWebsite] = useState(deal.website ?? "");
@@ -43,6 +45,13 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // Changing the vertical drops a now-invalid sub-industry (keeps the field
+  // controlled — you never carry a construction sub-type onto an automotive deal).
+  function onIndustryChange(next: string) {
+    setIndustry(next);
+    setSubIndustry((cur) => reconcileSubIndustry(next, cur));
+  }
+
   function save(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -53,6 +62,7 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
           valueEstimate: Number(value),
           stage,
           industry,
+          subIndustry: subIndustry || null,
           closeTargetDate: closeDate,
           notes,
           website,
@@ -126,13 +136,20 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
             </div>
             <div className="flex flex-col gap-2">
               <Label>Industry</Label>
-              <Select value={industry} onChange={(e) => setIndustry(e.target.value)} disabled={isPending}>
-                {INDUSTRIES.map((i) => (
+              <Select value={industry} onChange={(e) => onIndustryChange(e.target.value)} disabled={isPending}>
+                {INDUSTRY_VERTICALS.map((i) => (
                   <option key={i} value={i}>{industryLabels[i]}</option>
                 ))}
               </Select>
             </div>
           </div>
+
+          <SubIndustrySelect
+            vertical={industry}
+            value={subIndustry}
+            onChange={setSubIndustry}
+            disabled={isPending}
+          />
 
           <div className="flex flex-col gap-2">
             <Label>Website</Label>

@@ -167,6 +167,7 @@ export async function addContactInline(input: {
   email: string;
   phone?: string;
   industry: string;
+  subIndustry?: string;
   source?: string;
   notes?: string;
   partnerLeadId?: string;
@@ -184,6 +185,7 @@ export async function addContactInline(input: {
     email: input.email,
     phone: input.phone,
     industry: input.industry,
+    subIndustry: input.subIndustry,
     source: input.source ?? "Ingest composer",
     notes: input.notes,
     partnerLeadId: input.partnerLeadId,

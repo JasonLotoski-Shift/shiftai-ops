@@ -101,6 +101,8 @@ export function DealActionsPanel({
   contact,
   hasPrototype = false,
   surveyUrl,
+  ranAt = {},
+  savedAt = {},
 }: {
   deal: Deal;
   partner: Partner | null;
@@ -109,12 +111,18 @@ export function DealActionsPanel({
   hasPrototype?: boolean;
   /** Latest sent discovery-questionnaire URL — injected into the follow-up email. */
   surveyUrl?: string;
+  /** box key → last run date (green "last ran" state). */
+  ranAt?: Record<string, Date | undefined>;
+  /** box key → saved step-1 draft date (orange "step 1 of 2 saved" state). */
+  savedAt?: Record<string, Date | undefined>;
 }) {
   const [proposalOpen, setProposalOpen] = useState(false);
   const [docSkill, setDocSkill] = useState<DealDocSkill | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
   const [engineMode, setEngineMode] = useState<"prototype" | "deck" | null>(null);
   const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
+  // Which boxes are being reopened from a saved draft (preload + jump to editor).
+  const [reopen, setReopen] = useState<Record<string, boolean>>({});
 
   const signed = deal.stage === "signed";
 
@@ -129,20 +137,33 @@ export function DealActionsPanel({
 
   if (signed) return null;
 
+  // Attach run/saved status by box key + route an orange (saved) box's click to
+  // reopen the editor preloaded from the ActionDraft.
+  const status = (key: string): Pick<ActionBox, "ranAt" | "stepOneSavedAt"> => ({
+    ranAt: ranAt[key],
+    stepOneSavedAt: savedAt[key],
+  });
+  const openReopen = (key: string, open: () => void) => () => {
+    if (savedAt[key]) setReopen((r) => ({ ...r, [key]: true }));
+    open();
+  };
+
   const actions: ActionBox[] = [
     {
       key: "discovery-prep",
       icon: ClipboardList,
       title: "Discovery prep",
       description: "Brief for the discovery call — goals and questions to ask.",
-      onClick: () => setDocSkill("discovery-prep"),
+      onClick: openReopen("discovery-prep", () => setDocSkill("discovery-prep")),
+      ...status("discovery-prep"),
     },
     {
       key: "questionnaire",
       icon: FileQuestion,
       title: "Discovery questionnaire",
       description: "Generate a client-specific Tally form to send after the call.",
-      onClick: () => setQuestionnaireOpen(true),
+      onClick: openReopen("questionnaire", () => setQuestionnaireOpen(true)),
+      ...status("questionnaire"),
     },
     ...(contact
       ? [
@@ -152,6 +173,7 @@ export function DealActionsPanel({
             title: "Follow-up email",
             description: "Recap the call and propose the next step.",
             onClick: () => setEmailOpen(true),
+            ...status("followup"),
           } as ActionBox,
         ]
       : []),
@@ -160,14 +182,16 @@ export function DealActionsPanel({
       icon: CalendarPlus,
       title: "Book meeting",
       description: "Draft a short message to book the next call.",
-      onClick: () => setDocSkill("book-meeting"),
+      onClick: openReopen("book-meeting", () => setDocSkill("book-meeting")),
+      ...status("book-meeting"),
     },
     {
       key: "draft-proposal",
       icon: FileText,
       title: "Draft proposal",
       description: "Draft a tailored SOW from the IP library.",
-      onClick: () => setProposalOpen(true),
+      onClick: openReopen("draft-proposal", () => setProposalOpen(true)),
+      ...status("draft-proposal"),
     },
     {
       key: "build-prototype",
@@ -175,6 +199,7 @@ export function DealActionsPanel({
       title: "Build prototype",
       description: "Build an HTML prototype of what we'd ship.",
       onClick: () => setEngineMode("prototype"),
+      ...status("build-prototype"),
     },
     {
       key: "build-deck",
@@ -184,6 +209,7 @@ export function DealActionsPanel({
       onClick: () => setEngineMode("deck"),
       disabled: !hasPrototype,
       disabledReason: "Build a prototype first — the deck links to it",
+      ...status("build-deck"),
     },
   ];
 
@@ -195,7 +221,11 @@ export function DealActionsPanel({
         <DraftProposalModal
           dealId={deal.id}
           company={deal.company}
-          onClose={() => setProposalOpen(false)}
+          reopenDraft={!!reopen["draft-proposal"]}
+          onClose={() => {
+            setProposalOpen(false);
+            setReopen((r) => ({ ...r, "draft-proposal": false }));
+          }}
         />
       )}
 
@@ -208,7 +238,12 @@ export function DealActionsPanel({
           icon={DOC_META[docSkill].icon}
           focusLabel={DOC_META[docSkill].focusLabel}
           focusPlaceholder={DOC_META[docSkill].focusPlaceholder}
-          onClose={() => setDocSkill(null)}
+          reopenDraft={!!reopen[docSkill]}
+          onClose={() => {
+            const skill = docSkill;
+            setDocSkill(null);
+            setReopen((r) => ({ ...r, [skill]: false }));
+          }}
         />
       )}
 
@@ -221,6 +256,9 @@ export function DealActionsPanel({
           onClose={() => setEmailOpen(false)}
         />
       )}
+
+      {/* Note: the follow-up email persists to the deal's contact, so its
+          run-status + saved-draft live on the contact page, not here. */}
 
       {engineMode && (
         <ProposalEngineModal
@@ -235,7 +273,11 @@ export function DealActionsPanel({
         <DiscoveryQuestionnaireModal
           dealId={deal.id}
           company={deal.company}
-          onClose={() => setQuestionnaireOpen(false)}
+          reopenDraft={!!reopen["questionnaire"]}
+          onClose={() => {
+            setQuestionnaireOpen(false);
+            setReopen((r) => ({ ...r, questionnaire: false }));
+          }}
         />
       )}
     </>

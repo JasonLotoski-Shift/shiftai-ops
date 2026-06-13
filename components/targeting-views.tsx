@@ -41,18 +41,23 @@ import { AnchorRows, type Anchor } from "@/components/targeting-builder/anchor-r
 import { RevenueBand, EmployeeBand } from "@/components/targeting-builder/firmographics";
 import { SearchIntentPreview } from "@/components/targeting-builder/search-intent-preview";
 
-// Suggestion sets for the chip inputs.
+// Suggestion sets for the chip inputs — aligned to the firm's vertical
+// taxonomy (lib/industries). Free text: these seed the chips, they don't
+// constrain them.
 const INDUSTRY_SUGGESTIONS = [
-  "Automotive Manufacturing",
+  "Automotive",
   "Auto Parts & Suppliers",
-  "Industrial Manufacturing",
-  "Logistics & Distribution",
-  "SaaS",
-  "Professional Services",
-  "Healthcare",
-  "Financial Services",
+  "Dealership Groups",
+  "Motorsport",
+  "Engineering",
   "Construction",
-  "Energy",
+  "Architecture",
+  "Heavy Equipment & Machinery",
+  "Distribution & Wholesale",
+  "Logistics & Transportation",
+  "Professional Services",
+  "Wineries & Beverage",
+  "Manufacturing",
 ];
 
 type SegmentProp = {

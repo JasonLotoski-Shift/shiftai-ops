@@ -29,6 +29,8 @@ import { ManualDeliverableForm } from "@/components/manual-deliverable-form";
 import { DeliverableTasks } from "@/components/deliverable-tasks";
 import { SendInvoiceModal } from "@/components/send-invoice-modal";
 import { ProjectDropPanel } from "@/components/project-drop-panel";
+import { ProjectDealDocs } from "@/components/project-deal-docs";
+import { ArtifactDeleteControl } from "@/components/artifact-delete-control";
 import { ArrowLeft, Bot, Check, FolderOpen, Terminal, FileText, Presentation, Mail, ExternalLink } from "lucide-react";
 
 export default async function ProjectDetailPage({
@@ -48,6 +50,7 @@ export default async function ProjectDetailPage({
       include: {
         client: true,
         partnerLead: true,
+        clientLead: true,
         consultants: true,
         milestones: {
           orderBy: { dueDate: "asc" },
@@ -137,6 +140,23 @@ export default async function ProjectDetailPage({
   const client = project.client;
   const partner = project.partnerLead;
   const consultants = project.consultants;
+  const clientLead = project.clientLead;
+
+  // Deal-stage documents — artifacts convertDeal repointed to this client but
+  // left tied to their originating deal (so still off the project). These are
+  // the docs "sent before the project" (pursuit proposals, SOWs, decks).
+  const dealDocsRaw = await prisma.artifact.findMany({
+    where: { clientId: project.clientId, dealId: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, type: true, title: true, driveUrl: true, createdAt: true },
+  });
+  const dealDocs = dealDocsRaw.map((d) => ({
+    id: d.id,
+    type: d.type,
+    title: d.title,
+    driveUrl: d.driveUrl,
+    createdAt: d.createdAt,
+  }));
   const projectMilestones = project.milestones;
   const projectInvoices = project.invoices;
   const projectArtifacts = project.artifacts;
@@ -329,9 +349,51 @@ export default async function ProjectDetailPage({
           {tab === "overview" && (
           <>
           <Card>
-            <CardBody>
-              <h2 className="title-md">Scope</h2>
-              <p className="text-[14px] text-bone-dim mt-2 leading-relaxed whitespace-pre-line">{project.description}</p>
+            <CardBody className="flex flex-col gap-5">
+              <div>
+                <h2 className="title-md">Scope</h2>
+                <p className="text-[14px] text-bone-dim mt-2 leading-relaxed whitespace-pre-line">{project.description}</p>
+              </div>
+
+              {project.objectives && (
+                <div className="flex flex-col gap-1.5 border-t border-graphite/40 pt-4">
+                  <Label>Objectives</Label>
+                  <p className="text-[14px] text-bone-dim leading-relaxed whitespace-pre-line">{project.objectives}</p>
+                </div>
+              )}
+
+              {project.successMetrics.length > 0 && (
+                <div className="flex flex-col gap-1.5 border-t border-graphite/40 pt-4">
+                  <Label>Success metrics</Label>
+                  <ul className="flex flex-col gap-1.5">
+                    {project.successMetrics.map((m, i) => (
+                      <li key={i} className="flex items-start gap-2 text-[13px] text-bone-dim leading-relaxed">
+                        <span className="mt-1.5 w-1 h-1 rounded-[var(--radius-pill)] bg-track-gold shrink-0" />
+                        <span>{m}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {(clientLead || project.statusNote) && (
+                <div className="flex flex-col gap-3 border-t border-graphite/40 pt-4">
+                  {clientLead && (
+                    <div className="flex items-center gap-2 text-[12px]">
+                      <Label>Client lead</Label>
+                      <Link href={`/contacts/${clientLead.id}`} className="text-bone hover:text-track-gold">
+                        {clientLead.name}
+                      </Link>
+                      {clientLead.title && <span className="text-bone-mute">· {clientLead.title}</span>}
+                    </div>
+                  )}
+                  {project.statusNote && (
+                    <div className="flex items-start gap-2 px-3 py-2 bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+                      <span className="text-[12px] text-bone-dim leading-relaxed">{project.statusNote}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardBody>
           </Card>
 
@@ -401,11 +463,12 @@ export default async function ProjectDetailPage({
                   const isAgent = ar.createdBy.startsWith("AGENT");
                   return (
                     <div key={ar.id} className="flex flex-col">
+                      <div className="flex items-stretch group/doc">
                       <a
                         href={ar.driveUrl || "#"}
                         target="_blank"
                         rel="noreferrer"
-                        className="grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors group"
+                        className="flex-1 grid grid-cols-[28px_1fr_160px_100px_20px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors group"
                       >
                         <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
                           <Icon size={16} strokeWidth={1.5} />
@@ -432,6 +495,11 @@ export default async function ProjectDetailPage({
                           <ExternalLink size={12} strokeWidth={1.5} />
                         </div>
                       </a>
+                      <ArtifactDeleteControl
+                        artifactId={ar.id}
+                        className="self-center pl-3 pr-4 opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
+                      />
+                      </div>
                       {/* Tasks hang off the deliverable — rendered OUTSIDE the anchor (interactive buttons can't nest in <a>). */}
                       <div className="px-5 pb-4 pl-[60px]">
                         <DeliverableTasks
@@ -449,6 +517,8 @@ export default async function ProjectDetailPage({
             )}
             <ManualDeliverableForm projectId={project.id} />
           </Card>
+
+          <ProjectDealDocs docs={dealDocs} />
 
           <BillingSummaryCard
             projectId={project.id}

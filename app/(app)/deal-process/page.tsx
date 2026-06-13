@@ -1,18 +1,10 @@
-import { Header } from "@/components/header";
-import { DealProcessMap } from "@/components/deal-process-map";
+import { redirect } from "next/navigation";
 
-// Internal reference — the firm's deal process as a visual track, from finding
-// the lead to a signed engagement. Static content, no data fetch; the map
-// component owns the hover-to-expand behavior.
+// Retired 2026-06-13. The deal-process track is now a section inside the
+// How-it-works training manual (components/how-it-works-view.tsx). This route
+// stays only as a redirect so old links / bookmarks land in the right place.
+// The sidebar entry is dropped separately; nothing should link here anymore.
 
 export default function DealProcessPage() {
-  return (
-    <>
-      <Header eyebrow="Reference" title="The deal process" />
-
-      <div className="px-8 py-8">
-        <DealProcessMap />
-      </div>
-    </>
-  );
+  redirect("/how-it-works");
 }

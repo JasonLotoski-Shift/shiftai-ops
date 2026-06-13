@@ -5,11 +5,35 @@ import { useRouter } from "next/navigation";
 import { Card, Label, Badge, Button, Input, Textarea, Select, Avatar } from "@/components/ui";
 import { ModalShell as GuardedModalShell } from "@/components/modal-shell";
 import { formatDate } from "@/lib/format";
-import { createTask, updateTask, updateTaskStatus } from "@/app/(app)/tasks/actions";
-import { createMilestone, updateMilestoneBoardStatus, setMilestoneArchived } from "@/app/(app)/projects/[id]/actions";
+import {
+  createTask,
+  updateTask,
+  updateTaskStatus,
+  archiveTask,
+  deleteTask,
+  promoteTaskToMilestone,
+} from "@/app/(app)/tasks/actions";
+import {
+  createMilestone,
+  updateMilestoneBoardStatus,
+  setMilestoneArchived,
+  deleteMilestone,
+  demoteMilestoneToTask,
+} from "@/app/(app)/projects/[id]/actions";
 import { MilestoneDetailModal } from "@/components/milestone-detail-modal";
 import { cn } from "@/lib/cn";
-import { Plus, X, Flag, Link2, AlertTriangle, Archive } from "lucide-react";
+import {
+  Plus,
+  X,
+  Flag,
+  Link2,
+  AlertTriangle,
+  Archive,
+  Trash2,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  UserCheck,
+} from "lucide-react";
 import type { PartnerModel as Partner } from "@/lib/generated/prisma/models";
 import type { TaskStatus, WorkCategory } from "@/lib/generated/prisma/enums";
 
@@ -23,6 +47,7 @@ export type PartnerOption = Pick<Partner, "id" | "name" | "initials">;
 export type ProjectOption = { id: string; name: string };
 export type ClientOption = { id: string; company: string };
 export type DealOption = { id: string; company: string };
+export type ContactOption = { id: string; name: string; company: string };
 
 type OwnerRef = { id: string; name: string; initials: string } | null;
 
@@ -50,12 +75,11 @@ export type BoardMilestone = {
   dueDate: string | null;
   /** ISO timestamp when archived (in the Archive column), else null. */
   archivedAt: string | null;
+  // Milestones tag client/project only (2c) — no deal scope.
   projectId: string | null;
   clientId: string | null;
-  dealId: string | null;
   project: { id: string; name: string } | null;
   client: { id: string; company: string } | null;
-  deal: { id: string; company: string } | null;
   tasks: BoardSubTask[];
 };
 
@@ -69,12 +93,18 @@ export type BoardOrphanTask = {
   context: string | null;
   category: WorkCategory;
   categoryLabel: string | null;
+  /** ISO timestamp when archived (in the Archive column), else null. */
+  archivedAt: string | null;
   ownerId: string | null;
   owner: OwnerRef;
   projectId: string | null;
   clientId: string | null;
+  dealId: string | null;
+  contactId: string | null;
   project: { id: string; name: string } | null;
   client: { id: string; company: string } | null;
+  deal: { id: string; company: string } | null;
+  contact: { id: string; name: string } | null;
 };
 
 interface TasksBoardProps {
@@ -84,6 +114,7 @@ interface TasksBoardProps {
   projects: ProjectOption[];
   clients: ClientOption[];
   deals: DealOption[];
+  contacts: ContactOption[];
   currentPartnerId: string;
 }
 
@@ -162,13 +193,13 @@ export function toDateInput(d: string | Date | null | undefined): string {
   return date.toISOString().slice(0, 10);
 }
 
-// The record a milestone is tied to → a click-through link.
+// The record a milestone is tied to → a click-through link. Milestones tag
+// client/project only (2c).
 export function milestoneLink(
-  m: Pick<BoardMilestone, "project" | "client" | "deal" | "projectId" | "clientId" | "dealId">,
+  m: Pick<BoardMilestone, "project" | "client" | "projectId" | "clientId">,
 ): { href: string; label: string } | null {
   if (m.project) return { href: `/projects/${m.project.id}`, label: m.project.name };
   if (m.client) return { href: `/clients/${m.client.id}`, label: m.client.company };
-  if (m.deal) return { href: `/pipeline/${m.deal.id}`, label: m.deal.company };
   return null;
 }
 
@@ -183,6 +214,7 @@ export function TasksBoard({
   projects,
   clients,
   deals,
+  contacts,
   currentPartnerId,
 }: TasksBoardProps) {
   const router = useRouter();
@@ -190,6 +222,23 @@ export function TasksBoard({
   const [orphans, setOrphans] = useState(initialOrphans);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<BoardColumnKey | null>(null);
+
+  // 2h — a task drop into In Review opens a reviewer-picker. We hold the pending
+  // move here and only apply it once the partner confirms (or discard cleanly on
+  // cancel) so a cancelled tag never leaves a card visually moved. Milestones
+  // have no reviewer, so this only fires for tasks.
+  const [reviewPrompt, setReviewPrompt] = useState<
+    | { id: string; title: string }
+    | null
+  >(null);
+
+  // 2e — warn-before-delete. Holds the card pending deletion (task or milestone)
+  // until the confirm modal resolves.
+  const [deleting, setDeleting] = useState<
+    | { kind: "m" | "t"; id: string; title: string }
+    | null
+  >(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   // Filters.
   const [filterOwner, setFilterOwner] = useState(""); // "" all · "__unassigned__" · partnerId
@@ -270,6 +319,89 @@ export function TasksBoard({
     setDragOverCol(null);
   }
 
+  // Commit a milestone move into a real board column (optimistic; reverts on
+  // error). Shared by a plain drop and the reviewer-picker confirm (2h).
+  async function commitMilestoneMove(id: string, status: StatusKey) {
+    const prev = milestones;
+    setMilestones((cur) =>
+      cur.map((x) => (x.id === id ? { ...x, boardStatus: status, archivedAt: null } : x)),
+    );
+    try {
+      await updateMilestoneBoardStatus(id, status);
+      router.refresh();
+    } catch (err) {
+      console.error("updateMilestoneBoardStatus failed:", err);
+      setMilestones(prev);
+    }
+  }
+
+  // Commit an orphan-task move into a real board column. reviewerId is only
+  // honoured on the in_review move (2h).
+  async function commitTaskMove(id: string, status: StatusKey, reviewerId?: string) {
+    const prev = orphans;
+    setOrphans((cur) =>
+      cur.map((x) => (x.id === id ? { ...x, status, done: status === "done", archivedAt: null } : x)),
+    );
+    try {
+      await updateTaskStatus(id, status, reviewerId);
+      router.refresh();
+    } catch (err) {
+      console.error("updateTaskStatus failed:", err);
+      setOrphans(prev);
+    }
+  }
+
+  // 2a — promote an orphan task to a milestone (the task row is consumed).
+  // Optimistic: drop it from the board, then refresh to pull in the new card.
+  async function promote(id: string) {
+    const prev = orphans;
+    setOrphans((cur) => cur.filter((x) => x.id !== id));
+    try {
+      await promoteTaskToMilestone(id);
+      router.refresh();
+    } catch (err) {
+      console.error("promoteTaskToMilestone failed:", err);
+      setOrphans(prev);
+    }
+  }
+
+  // 2a — demote a milestone to a standalone task (the milestone row is consumed).
+  async function demote(id: string) {
+    const prev = milestones;
+    setMilestones((cur) => cur.filter((x) => x.id !== id));
+    try {
+      await demoteMilestoneToTask(id);
+      router.refresh();
+    } catch (err) {
+      console.error("demoteMilestoneToTask failed:", err);
+      setMilestones(prev);
+    }
+  }
+
+  // 2e — confirmed delete. A milestone delete frees its child tasks to standalone
+  // (server SET NULL), so we refresh rather than guessing the new orphan rows.
+  async function confirmDelete() {
+    if (!deleting) return;
+    setActionBusy(true);
+    const { kind, id } = deleting;
+    const prevM = milestones;
+    const prevO = orphans;
+    if (kind === "m") setMilestones((cur) => cur.filter((x) => x.id !== id));
+    else setOrphans((cur) => cur.filter((x) => x.id !== id));
+    try {
+      if (kind === "m") await deleteMilestone(id);
+      else await deleteTask(id);
+      setDeleting(null);
+      router.refresh();
+    } catch (err) {
+      console.error("delete failed:", err);
+      if (kind === "m") setMilestones(prevM);
+      else setOrphans(prevO);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   async function onDrop(e: DragEvent, status: BoardColumnKey) {
     e.preventDefault();
     setDragOverCol(null);
@@ -299,35 +431,43 @@ export function TasksBoard({
       }
 
       // Real column: no-op only if already there AND not archived (a drag out of
-      // Archive into its current column still needs to un-archive).
+      // Archive into its current column still needs to un-archive). Milestones
+      // have no reviewer, so In Review is a plain move for them (only tasks get
+      // the reviewer-picker, 2h).
       if (m.boardStatus === status && !m.archivedAt) return;
-      const prev = milestones;
-      setMilestones((cur) =>
-        cur.map((x) => (x.id === id ? { ...x, boardStatus: status, archivedAt: null } : x)),
-      );
-      try {
-        await updateMilestoneBoardStatus(id, status);
-        router.refresh();
-      } catch (err) {
-        console.error("updateMilestoneBoardStatus failed:", err);
-        setMilestones(prev);
-      }
+
+      await commitMilestoneMove(id, status);
     } else {
-      // Orphan tasks don't archive — ignore a drop on the Archive column.
-      if (status === "archive") return;
       const t = orphans.find((x) => x.id === id);
-      if (!t || t.status === status) return;
-      const prev = orphans;
-      setOrphans((cur) =>
-        cur.map((x) => (x.id === id ? { ...x, status, done: status === "done" } : x)),
-      );
-      try {
-        await updateTaskStatus(id, status);
-        router.refresh();
-      } catch (err) {
-        console.error("updateTaskStatus failed:", err);
-        setOrphans(prev);
+      if (!t) return;
+
+      // 2g — orphan tasks archive too. Optimistic move; revert on error.
+      if (status === "archive") {
+        if (t.archivedAt) return; // already archived
+        const prev = orphans;
+        const nowIso = new Date().toISOString();
+        setOrphans((cur) => cur.map((x) => (x.id === id ? { ...x, archivedAt: nowIso } : x)));
+        try {
+          await archiveTask(id);
+          router.refresh();
+        } catch (err) {
+          console.error("archiveTask failed:", err);
+          setOrphans(prev);
+        }
+        return;
       }
+
+      // No-op only if already in this column AND not archived (a drag out of
+      // Archive into its current column still needs to un-archive).
+      if (t.status === status && !t.archivedAt) return;
+
+      // 2h — In Review opens the reviewer-picker; defer the move until confirm.
+      if (status === "in_review") {
+        setReviewPrompt({ id, title: t.title });
+        return;
+      }
+
+      await commitTaskMove(id, status);
     }
   }
 
@@ -395,15 +535,19 @@ export function TasksBoard({
         </div>
       </div>
 
-      {/* Board */}
-      <div className="flex-1 overflow-x-auto px-8 py-6">
-        <div className="flex gap-5 items-start">
+      {/* Board — its own bounded-height vertical scroll container so the sticky
+          column headers have something to stick to (the app shell scrolls the
+          document otherwise). Scoped here only; other routes are untouched. */}
+      <div className="flex-1 min-h-0 overflow-auto px-8 py-6">
+        <div className="flex gap-5 items-start min-h-full">
           {BOARD_COLUMNS.map((col) => {
             const isArchive = col.key === "archive";
             const colMilestones = isArchive
               ? filteredMilestones.filter((m) => m.archivedAt)
               : filteredMilestones.filter((m) => !m.archivedAt && m.boardStatus === col.key);
-            const colTasks = isArchive ? [] : filteredOrphans.filter((t) => t.status === col.key);
+            const colTasks = isArchive
+              ? filteredOrphans.filter((t) => t.archivedAt)
+              : filteredOrphans.filter((t) => !t.archivedAt && t.status === col.key);
             const count = colMilestones.length + colTasks.length;
             const isOver = dragOverCol === col.key;
             return (
@@ -427,7 +571,16 @@ export function TasksBoard({
                   <span className="text-[12px] text-bone-mute tabular-nums">{count}</span>
                 </div>
 
-                <div className="flex flex-col gap-2">
+                {/* The card list owns the full column height (min-h-full) so the
+                    whole empty area below the cards is a drop target, plus a
+                    column-level drag-over highlight so a drop over empty space
+                    reads as responsive (2f). */}
+                <div
+                  className={cn(
+                    "flex flex-col gap-2 flex-1 min-h-[60vh] rounded-[var(--radius-lg)] transition-colors",
+                    isOver && "bg-track-gold-dim/5 outline outline-1 outline-track-gold/30",
+                  )}
+                >
                   {colMilestones.map((m) => (
                     <MilestoneCard
                       key={m.id}
@@ -437,6 +590,8 @@ export function TasksBoard({
                       onDragEnd={onDragEnd}
                       onOpen={() => setDetailMilestone(m)}
                       onNavigate={(href) => router.push(href)}
+                      onPromptDelete={() => setDeleting({ kind: "m", id: m.id, title: m.title })}
+                      onDemote={() => demote(m.id)}
                     />
                   ))}
 
@@ -449,11 +604,13 @@ export function TasksBoard({
                       onDragEnd={onDragEnd}
                       onOpen={() => setEditing(t)}
                       onNavigate={(href) => router.push(href)}
+                      onPromptDelete={() => setDeleting({ kind: "t", id: t.id, title: t.title })}
+                      onPromote={() => promote(t.id)}
                     />
                   ))}
 
                   {isArchive ? (
-                    /* Archive is a drop target only — no add-task. The note doubles
+                    /* Archive is a drop target only — no add. The note doubles
                        as the drop affordance and explains the 7-day auto-hide. */
                     <div
                       className={cn(
@@ -463,7 +620,7 @@ export function TasksBoard({
                           : "border-graphite text-bone-mute",
                       )}
                     >
-                      {isOver ? "Drop to archive" : `Drag milestones here · hidden after ${ARCHIVE_HIDE_DAYS} days`}
+                      {isOver ? "Drop to archive" : `Drag cards here · hidden after ${ARCHIVE_HIDE_DAYS} days`}
                     </div>
                   ) : (
                     /* Persistent bottom add — also the drop target affordance. */
@@ -503,6 +660,9 @@ export function TasksBoard({
         <EditTaskModal
           task={editing}
           partners={partners}
+          milestones={milestones}
+          deals={deals}
+          contacts={contacts}
           currentPartnerId={currentPartnerId}
           onClose={() => {
             setEditing(null);
@@ -516,6 +676,8 @@ export function TasksBoard({
           partners={partners}
           projects={projects}
           clients={clients}
+          deals={deals}
+          contacts={contacts}
           currentPartnerId={currentPartnerId}
           initialStatus={creating.task}
           onClose={() => {
@@ -530,12 +692,37 @@ export function TasksBoard({
           partners={partners}
           projects={projects}
           clients={clients}
-          deals={deals}
           currentPartnerId={currentPartnerId}
           onClose={() => {
             setCreating(null);
             router.refresh();
           }}
+        />
+      )}
+
+      {/* 2h — reviewer-picker for a task dropped into In Review. */}
+      {reviewPrompt && (
+        <ReviewerPickerModal
+          taskTitle={reviewPrompt.title}
+          partners={partners}
+          currentPartnerId={currentPartnerId}
+          onCancel={() => setReviewPrompt(null)}
+          onConfirm={async (reviewerId) => {
+            const { id } = reviewPrompt;
+            setReviewPrompt(null);
+            await commitTaskMove(id, "in_review", reviewerId || undefined);
+          }}
+        />
+      )}
+
+      {/* 2e — warn-before-delete for a task or milestone card. */}
+      {deleting && (
+        <DeleteConfirmModal
+          kind={deleting.kind}
+          title={deleting.title}
+          busy={actionBusy}
+          onCancel={() => setDeleting(null)}
+          onConfirm={confirmDelete}
         />
       )}
     </>
@@ -553,6 +740,8 @@ function MilestoneCard({
   onDragEnd,
   onOpen,
   onNavigate,
+  onPromptDelete,
+  onDemote,
 }: {
   milestone: BoardMilestone;
   dragging: boolean;
@@ -560,6 +749,8 @@ function MilestoneCard({
   onDragEnd: () => void;
   onOpen: () => void;
   onNavigate: (href: string) => void;
+  onPromptDelete: () => void;
+  onDemote: () => void;
 }) {
   const total = m.tasks.length;
   const done = m.tasks.filter((t) => t.done).length;
@@ -586,7 +777,7 @@ function MilestoneCard({
       onDragEnd={onDragEnd}
       onClick={onOpen}
       className={cn(
-        "block bg-asphalt rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-all cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow)] hover:-translate-y-px",
+        "group block bg-asphalt rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 transition-all cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow)] hover:-translate-y-px",
         shellClass,
         m.archivedAt && "opacity-75",
         dragging && "opacity-40",
@@ -602,6 +793,29 @@ function MilestoneCard({
           <span className="text-[13px] leading-snug text-bone">{m.title}</span>
         </span>
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Hover controls — demote to a standalone task / delete (2a, 2e). */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDemote();
+            }}
+            title="Demote to a standalone task"
+            aria-label="Demote milestone to task"
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-bone-mute hover:text-track-gold"
+          >
+            <ArrowDownToLine size={13} strokeWidth={1.5} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onPromptDelete();
+            }}
+            title="Delete milestone"
+            aria-label="Delete milestone"
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-bone-mute hover:text-flag-red"
+          >
+            <Trash2 size={13} strokeWidth={1.5} />
+          </button>
           {link && (
             <button
               onClick={(e) => {
@@ -686,6 +900,8 @@ function OrphanTaskCard({
   onDragEnd,
   onOpen,
   onNavigate,
+  onPromptDelete,
+  onPromote,
 }: {
   task: BoardOrphanTask;
   dragging: boolean;
@@ -693,12 +909,19 @@ function OrphanTaskCard({
   onDragEnd: () => void;
   onOpen: () => void;
   onNavigate: (href: string) => void;
+  onPromptDelete: () => void;
+  onPromote: () => void;
 }) {
+  // The card's click-through, preferring the most specific scope.
   const link = t.project
     ? { href: `/projects/${t.project.id}`, label: t.project.name }
     : t.client
       ? { href: `/clients/${t.client.id}`, label: t.client.company }
-      : null;
+      : t.deal
+        ? { href: `/pipeline/${t.deal.id}`, label: t.deal.company }
+        : t.contact
+          ? { href: `/contacts/${t.contact.id}`, label: t.contact.name }
+          : null;
 
   return (
     <div
@@ -707,8 +930,9 @@ function OrphanTaskCard({
       onDragEnd={onDragEnd}
       onClick={onOpen}
       className={cn(
-        "block bg-asphalt rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 border-l-2 transition-all cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow)] hover:-translate-y-px",
+        "group block bg-asphalt rounded-[var(--radius)] shadow-[var(--shadow-sm)] p-3 border-l-2 transition-all cursor-grab active:cursor-grabbing hover:shadow-[var(--shadow)] hover:-translate-y-px",
         CATEGORY_BORDER[t.category],
+        t.archivedAt && "opacity-75",
         dragging && "opacity-40",
       )}
     >
@@ -716,12 +940,36 @@ function OrphanTaskCard({
         <span className={cn("text-[13px] leading-snug", t.done ? "text-bone-mute line-through" : "text-bone")}>
           {t.title}
         </span>
-        <Badge
-          tone={t.priority === "high" ? "red" : t.priority === "medium" ? "gold" : "neutral"}
-          className="shrink-0"
-        >
-          {t.priority}
-        </Badge>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Hover controls — promote to a milestone / delete (2a, 2e). */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onPromote();
+            }}
+            title="Promote to a milestone"
+            aria-label="Promote task to milestone"
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-bone-mute hover:text-track-gold"
+          >
+            <ArrowUpToLine size={13} strokeWidth={1.5} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onPromptDelete();
+            }}
+            title="Delete task"
+            aria-label="Delete task"
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-bone-mute hover:text-flag-red"
+          >
+            <Trash2 size={13} strokeWidth={1.5} />
+          </button>
+          <Badge
+            tone={t.priority === "high" ? "red" : t.priority === "medium" ? "gold" : "neutral"}
+          >
+            {t.priority}
+          </Badge>
+        </div>
       </div>
 
       <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
@@ -762,6 +1010,20 @@ function OrphanTaskCard({
           </span>
         )}
       </div>
+
+      {/* Archived footer — when + how long until the 7-day auto-hide (2g). */}
+      {t.archivedAt && (
+        <div className="mt-2 pt-2 border-t border-graphite/60 flex items-center gap-1.5 text-[10px] text-bone-mute">
+          <Archive size={10} strokeWidth={1.5} />
+          <span>Archived {formatDate(t.archivedAt)}</span>
+          <span className="ml-auto tabular-nums">
+            {(() => {
+              const left = ARCHIVE_HIDE_DAYS - Math.floor((Date.now() - new Date(t.archivedAt).getTime()) / 86_400_000);
+              return left <= 0 ? "hides today" : `${left}d left`;
+            })()}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -809,11 +1071,17 @@ function ModalShell({
 function EditTaskModal({
   task,
   partners,
+  milestones,
+  deals,
+  contacts,
   currentPartnerId,
   onClose,
 }: {
   task: BoardOrphanTask;
   partners: PartnerOption[];
+  milestones: BoardMilestone[];
+  deals: DealOption[];
+  contacts: ContactOption[];
   currentPartnerId: string;
   onClose: () => void;
 }) {
@@ -827,6 +1095,11 @@ function EditTaskModal({
   );
   const [due, setDue] = useState(dueISO(task.due));
   const [context, setContext] = useState(task.context ?? "");
+  // 2a — re-parent to a milestone (moves the card off the board into the epic).
+  const [milestoneId, setMilestoneId] = useState("");
+  // 2b — deal / contact tags.
+  const [dealId, setDealId] = useState(task.dealId ?? "");
+  const [contactId, setContactId] = useState(task.contactId ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -847,6 +1120,11 @@ function EditTaskModal({
         priority,
         due,
         context: context.trim() || null,
+        // Only send milestoneId when the partner picked one (re-parenting is a
+        // deliberate move; an empty pick leaves the task standalone).
+        ...(milestoneId ? { milestoneId } : {}),
+        dealId: dealId || null,
+        contactId: contactId || null,
       });
       onClose();
     } catch (err) {
@@ -930,6 +1208,47 @@ function EditTaskModal({
         </div>
       </div>
 
+      {/* 2b — deal / contact tags. */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label>Deal (optional)</Label>
+          <Select value={dealId} onChange={(e) => setDealId(e.target.value)}>
+            <option value="">No deal</option>
+            {deals.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.company}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Contact (optional)</Label>
+          <Select value={contactId} onChange={(e) => setContactId(e.target.value)}>
+            <option value="">No contact</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.company ? ` · ${c.company}` : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      {/* 2a — re-parent into a milestone. Picking one moves this card off the
+          board and into that milestone as a sub-task. */}
+      <div className="flex flex-col gap-1.5">
+        <Label>Move into milestone (optional)</Label>
+        <Select value={milestoneId} onChange={(e) => setMilestoneId(e.target.value)}>
+          <option value="">Keep as a standalone task</option>
+          {milestones.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.title}
+            </option>
+          ))}
+        </Select>
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <Label>Context (optional)</Label>
         <Textarea
@@ -958,9 +1277,14 @@ function EditTaskModal({
    Create task — pre-set to a column's status. Allows an Unassigned assignee.
    ────────────────────────────────────────────────────────────────────── */
 
-function deriveCategory(projectId: string, clientId: string): WorkCategory {
-  if (projectId) return "project";
-  if (clientId) return "project";
+function deriveCategory(scope: {
+  projectId: string;
+  clientId: string;
+  dealId: string;
+}): WorkCategory {
+  if (scope.projectId) return "project";
+  if (scope.dealId) return "pipeline";
+  if (scope.clientId) return "project";
   return "firm";
 }
 
@@ -968,6 +1292,8 @@ function CreateTaskModal({
   partners,
   projects,
   clients,
+  deals,
+  contacts,
   currentPartnerId,
   initialStatus,
   onClose,
@@ -975,6 +1301,8 @@ function CreateTaskModal({
   partners: PartnerOption[];
   projects: ProjectOption[];
   clients: ClientOption[];
+  deals: DealOption[];
+  contacts: ContactOption[];
   currentPartnerId: string;
   initialStatus: StatusKey;
   onClose: () => void;
@@ -986,6 +1314,10 @@ function CreateTaskModal({
   const [status, setStatus] = useState<StatusKey>(initialStatus);
   const [projectId, setProjectId] = useState("");
   const [clientId, setClientId] = useState("");
+  // 2b — deal / contact tags. Deal and contact are independent of project/client
+  // (a task can hang off any of them); a deal tags the card as pipeline work.
+  const [dealId, setDealId] = useState("");
+  const [contactId, setContactId] = useState("");
   const [category, setCategory] = useState<WorkCategory>("firm");
   const [categoryTouched, setCategoryTouched] = useState(false);
   const [categoryLabel, setCategoryLabel] = useState("");
@@ -993,7 +1325,7 @@ function CreateTaskModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const autoCategory = deriveCategory(projectId, clientId);
+  const autoCategory = deriveCategory({ projectId, clientId, dealId });
   const effectiveCategory = categoryTouched ? category : autoCategory;
 
   async function submit() {
@@ -1014,6 +1346,8 @@ function CreateTaskModal({
         categoryLabel: categoryLabel.trim() || undefined,
         projectId: projectId || undefined,
         clientId: clientId || undefined,
+        dealId: dealId || undefined,
+        contactId: contactId || undefined,
         context: context.trim() || undefined,
       });
       onClose();
@@ -1106,6 +1440,33 @@ function CreateTaskModal({
         </div>
       </div>
 
+      {/* 2b — deal / contact tags (independent of project/client). */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label>Deal (optional)</Label>
+          <Select value={dealId} onChange={(e) => setDealId(e.target.value)}>
+            <option value="">No deal</option>
+            {deals.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.company}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Contact (optional)</Label>
+          <Select value={contactId} onChange={(e) => setContactId(e.target.value)}>
+            <option value="">No contact</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.company ? ` · ${c.company}` : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label>Category</Label>
@@ -1176,22 +1537,20 @@ function CreateMilestoneModal({
   partners,
   projects,
   clients,
-  deals,
   currentPartnerId,
   onClose,
 }: {
   partners: PartnerOption[];
   projects: ProjectOption[];
   clients: ClientOption[];
-  deals: DealOption[];
   currentPartnerId: string;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [ownerId, setOwnerId] = useState(currentPartnerId || ""); // "" = Unassigned
+  // 2c — milestones tag client/project only (no deal). Pipeline work is a task.
   const [projectId, setProjectId] = useState("");
   const [clientId, setClientId] = useState("");
-  const [dealId, setDealId] = useState("");
   const [category, setCategory] = useState<WorkCategory>("firm");
   const [categoryTouched, setCategoryTouched] = useState(false);
   const [categoryLabel, setCategoryLabel] = useState("");
@@ -1200,13 +1559,7 @@ function CreateMilestoneModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const autoCategory: WorkCategory = projectId
-    ? "project"
-    : dealId
-      ? "pipeline"
-      : clientId
-        ? "project"
-        : "firm";
+  const autoCategory: WorkCategory = projectId || clientId ? "project" : "firm";
   const effectiveCategory = categoryTouched ? category : autoCategory;
 
   async function submit() {
@@ -1226,7 +1579,6 @@ function CreateMilestoneModal({
         categoryLabel: categoryLabel.trim() || null,
         projectId: projectId || null,
         clientId: clientId || null,
-        dealId: dealId || null,
       });
       onClose();
     } catch (err) {
@@ -1276,17 +1628,15 @@ function CreateMilestoneModal({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      {/* 2c — client / project only; pipeline (deal) work belongs on a task. */}
+      <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label>Project</Label>
           <Select
             value={projectId}
             onChange={(e) => {
               setProjectId(e.target.value);
-              if (e.target.value) {
-                setClientId("");
-                setDealId("");
-              }
+              if (e.target.value) setClientId("");
             }}
           >
             <option value="">None</option>
@@ -1303,36 +1653,13 @@ function CreateMilestoneModal({
             value={clientId}
             onChange={(e) => {
               setClientId(e.target.value);
-              if (e.target.value) {
-                setProjectId("");
-                setDealId("");
-              }
+              if (e.target.value) setProjectId("");
             }}
           >
             <option value="">None</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.company}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Deal</Label>
-          <Select
-            value={dealId}
-            onChange={(e) => {
-              setDealId(e.target.value);
-              if (e.target.value) {
-                setProjectId("");
-                setClientId("");
-              }
-            }}
-          >
-            <option value="">None</option>
-            {deals.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.company}
               </option>
             ))}
           </Select>
@@ -1383,5 +1710,149 @@ function CreateMilestoneModal({
         </Button>
       </div>
     </ModalShell>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Reviewer picker (2h) — shown when a task is dropped into In Review. The
+   board defers the optimistic move until this resolves: confirm fires the
+   status change with the chosen reviewerId; cancel reverts cleanly (the card
+   never visually moved). guard={false} so cancel/click-out closes without a
+   discard prompt.
+   ────────────────────────────────────────────────────────────────────── */
+
+function ReviewerPickerModal({
+  taskTitle,
+  partners,
+  currentPartnerId,
+  onCancel,
+  onConfirm,
+}: {
+  taskTitle: string;
+  partners: PartnerOption[];
+  currentPartnerId: string;
+  onCancel: () => void;
+  onConfirm: (reviewerId: string) => void | Promise<void>;
+}) {
+  const [reviewerId, setReviewerId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function confirm() {
+    setBusy(true);
+    await onConfirm(reviewerId);
+    // Parent unmounts this modal on confirm — no need to reset busy.
+  }
+
+  return (
+    <GuardedModalShell
+      onClose={onCancel}
+      guard={false}
+      positionClassName="items-center justify-center p-6"
+      scroll={false}
+    >
+      <Card
+        className="w-full max-w-md p-6 flex flex-col gap-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <Label gold>In Review</Label>
+            <h2 className="text-[18px] text-bone">Who should review this?</h2>
+          </div>
+          <button onClick={onCancel} aria-label="Close" className="text-bone-mute hover:text-bone">
+            <X size={18} strokeWidth={1.5} />
+          </button>
+        </div>
+
+        <p className="text-[12px] text-bone-dim leading-relaxed">
+          Moving <span className="text-bone">{taskTitle}</span> into In Review. Tag a
+          partner to review it — they get a ping in their Claude chat. Leave it
+          unassigned to just park it for review.
+        </p>
+
+        <div className="flex flex-col gap-1.5">
+          <Label>Reviewer</Label>
+          <Select value={reviewerId} onChange={(e) => setReviewerId(e.target.value)} autoFocus>
+            <option value="">No specific reviewer</option>
+            {partners.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.id === currentPartnerId ? " (you)" : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="flex items-center justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" onClick={confirm} disabled={busy}>
+            <UserCheck size={13} strokeWidth={1.5} />
+            {busy ? "Moving…" : "Move to In Review"}
+          </Button>
+        </div>
+      </Card>
+    </GuardedModalShell>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Delete confirm (2e) — warn before deleting a task or milestone card. A
+   milestone delete keeps its child tasks as standalone tasks (server SET
+   NULL); the copy says so. guard={false} so cancel/click-out is a clean no-op.
+   ────────────────────────────────────────────────────────────────────── */
+
+function DeleteConfirmModal({
+  kind,
+  title,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  kind: "m" | "t";
+  title: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  const isMilestone = kind === "m";
+  return (
+    <GuardedModalShell
+      onClose={onCancel}
+      guard={false}
+      positionClassName="items-center justify-center p-6"
+      scroll={false}
+    >
+      <Card
+        className="w-full max-w-md p-6 flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <AlertTriangle size={18} strokeWidth={1.5} className="text-flag-red shrink-0 mt-0.5" />
+          <div className="flex flex-col gap-1">
+            <span className="text-[14px] text-bone font-medium">
+              Delete {isMilestone ? "milestone" : "task"}?
+            </span>
+            <span className="text-[12px] text-bone-dim leading-relaxed">
+              <span className="text-bone">{title}</span> will be removed.{" "}
+              {isMilestone
+                ? "Its sub-tasks are kept as standalone tasks on the board."
+                : "This can't be undone."}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="danger" onClick={onConfirm} disabled={busy}>
+            <Trash2 size={13} strokeWidth={1.5} />
+            {busy ? "Deleting…" : `Delete ${isMilestone ? "milestone" : "task"}`}
+          </Button>
+        </div>
+      </Card>
+    </GuardedModalShell>
   );
 }

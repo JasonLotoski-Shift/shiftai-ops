@@ -12,19 +12,14 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, seedClientSubfolders } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
+import { validateIndustry, validateSubIndustry } from "@/lib/industries";
 import type { Industry } from "@/lib/generated/prisma/enums";
-
-const VALID_INDUSTRIES: Industry[] = [
-  "automotive",
-  "motorsport",
-  "engineering",
-  "construction",
-  "other",
-];
 
 export type CreateClientInput = {
   company: string;
   industry: string;
+  /** Tier-2 sub-industry (controlled vocabulary for the chosen vertical). */
+  subIndustry?: string;
   /** Free-text annual revenue (e.g. "$50M"). Optional — defaults to "—". */
   revenue?: string;
   contractValue: number;
@@ -48,9 +43,15 @@ export async function createClient(input: CreateClientInput) {
   // Validate
   const company = input.company.trim();
   if (!company) throw new Error("Company is required");
-  if (!VALID_INDUSTRIES.includes(input.industry as Industry)) {
+  if (!validateIndustry(input.industry)) {
     throw new Error(`Invalid industry: ${input.industry}`);
   }
+  // Optional Tier-2 sub-industry — validated against the chosen vertical's
+  // vocabulary; an off-list value is dropped (never guessed) rather than thrown.
+  const subIndustry =
+    input.subIndustry && validateSubIndustry(input.industry, input.subIndustry)
+      ? input.subIndustry.trim()
+      : null;
   const contractValue = Number(input.contractValue);
   if (!Number.isFinite(contractValue) || contractValue < 0) {
     throw new Error("Contract value must be a non-negative number");
@@ -112,6 +113,7 @@ export async function createClient(input: CreateClientInput) {
       data: {
         company,
         industry: input.industry as Industry,
+        subIndustry,
         revenue: input.revenue?.trim() || "—",
         driveFolderUrl: folderUrl,
         workspacePath,
@@ -132,6 +134,7 @@ export async function createClient(input: CreateClientInput) {
       changes: {
         company,
         industry: input.industry,
+        subIndustry,
         contractValue,
         partnerLeadId,
         primaryContactId,

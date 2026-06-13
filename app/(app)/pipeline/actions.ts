@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { generate } from "@/lib/ai";
 import { linkContact } from "@/lib/contact-links";
+import { validateIndustry, validateSubIndustry } from "@/lib/industries";
 import type { DealStage, Industry } from "@/lib/generated/prisma/enums";
 
 const STAGE_LABELS: Record<DealStage, string> = {
@@ -92,7 +93,6 @@ export async function updateDealStage(dealId: string, newStage: string) {
 // ──────────────────────────────────────────────────────────────────────
 
 const VALID_STAGES: DealStage[] = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation", "signed"];
-const VALID_INDUSTRIES: Industry[] = ["automotive", "motorsport", "engineering", "construction", "other"];
 
 export async function createDeal(input: {
   contactId: string;
@@ -100,6 +100,7 @@ export async function createDeal(input: {
   stage?: string;
   valueEstimate: number;
   industry?: string;
+  subIndustry?: string;
   closeTargetDate: string; // YYYY-MM-DD
   partnerLeadId?: string;
   notes?: string;
@@ -111,7 +112,7 @@ export async function createDeal(input: {
 
   const contact = await prisma.contact.findUnique({
     where: { id: input.contactId },
-    select: { id: true, name: true, company: true, industry: true, domain: true },
+    select: { id: true, name: true, company: true, industry: true, subIndustry: true, domain: true },
   });
   if (!contact) throw new Error("Pick a contact for this deal");
 
@@ -119,9 +120,17 @@ export async function createDeal(input: {
   const stage = (input.stage && VALID_STAGES.includes(input.stage as DealStage)
     ? (input.stage as DealStage)
     : "lead");
-  const industry = (input.industry && VALID_INDUSTRIES.includes(input.industry as Industry)
+  const industry = (input.industry && validateIndustry(input.industry)
     ? (input.industry as Industry)
     : contact.industry);
+  // Tier-2 sub-industry: take the supplied value when valid for the resolved
+  // vertical; else fall back to the contact's sub-industry if it's valid there.
+  const subIndustry =
+    input.subIndustry && validateSubIndustry(industry, input.subIndustry)
+      ? input.subIndustry.trim()
+      : validateSubIndustry(industry, contact.subIndustry)
+        ? contact.subIndustry
+        : null;
 
   const value = Math.round(Number(input.valueEstimate));
   if (!Number.isFinite(value) || value < 0) throw new Error("Enter a valid estimated value");
@@ -147,6 +156,7 @@ export async function createDeal(input: {
         stage,
         valueEstimate: value,
         industry,
+        ...(subIndustry ? { subIndustry } : {}),
         closeTargetDate,
         lastTouchAt: now,
         stageEnteredAt: now,
@@ -172,7 +182,7 @@ export async function createDeal(input: {
       action: "create.deal",
       targetType: "Deal",
       targetId: created.id,
-      changes: { company, stage, valueEstimate: value, industry, contactId: contact.id, domain },
+      changes: { company, stage, valueEstimate: value, industry, subIndustry, contactId: contact.id, domain },
     });
 
     await writeActivity(tx, {

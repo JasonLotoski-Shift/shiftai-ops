@@ -49,7 +49,7 @@ export const consultants = [
 
 export const contacts: Contact[] = [
   {
-    id: "c-1", name: "Heather Bennett", title: "COO", company: "Cascade Heavy Civil", email: "h.bennett@cascadeheavy.com", phone: "+1 604 555 0142", partnerLeadId: "p-1", industry: "construction", lastTouchAt: "2026-05-08", source: "Intro from B. Mathieu",
+    id: "c-1", name: "Heather Bennett", title: "COO", company: "Cascade Heavy Civil", email: "h.bennett@cascadeheavy.com", phone: "+1 604 555 0142", partnerLeadId: "p-1", industry: "construction", subIndustry: "Heavy Civil & Infrastructure", lastTouchAt: "2026-05-08", source: "Intro from B. Mathieu",
     persona: "Operator-COO who came up through the field. Decides on proof, not pitch — wants to see the thing run before she signs. Holds the operating budget and the sign-off.",
     communicationStyle: "Direct, low-patience for jargon. Prefers a short call over a long email; bullet points over prose. Responds fastest early morning (before 8 AM PT).",
     keyFacts: [
@@ -64,7 +64,7 @@ export const contacts: Contact[] = [
     enrichedAt: "2026-05-08",
   },
   {
-    id: "c-2", name: "Tomás Iglesias", title: "VP Operations", company: "Northshore Powertrain", email: "tiglesias@northshorepwr.com", phone: "+1 519 555 0203", partnerLeadId: "p-2", industry: "automotive", lastTouchAt: "2026-05-10", source: "Conference (SAE Detroit)",
+    id: "c-2", name: "Tomás Iglesias", title: "VP Operations", company: "Northshore Powertrain", email: "tiglesias@northshorepwr.com", phone: "+1 519 555 0203", partnerLeadId: "p-2", industry: "automotive", subIndustry: "Parts & Suppliers (Tier 1/2)", lastTouchAt: "2026-05-10", source: "Conference (SAE Detroit)",
     persona: "Technical VP, engineer by training. Curious about the build, wants to understand how the system works under the hood before he champions it internally.",
     communicationStyle: "Email-first, detailed. Appreciates a written rationale he can forward to his ops sponsor. Long-form is fine with him.",
     keyFacts: [
@@ -114,8 +114,8 @@ export const interactions: Interaction[] = [
 // stageEnteredAt spread to showcase the board's aging colors (today ≈ 2026-05-29):
 // fresh/green < 14d (after ~05-15), warming/orange 14–27d (~05-02→05-15), stale/red 28d+.
 export const deals: Deal[] = [
-  { id: "d-1", contactId: "c-1", company: "Cascade Heavy Civil", stage: "negotiation", valueEstimate: 480000, partnerLeadId: "p-1", industry: "construction", closeTargetDate: "2026-05-22", createdAt: "2026-03-04", lastTouchAt: "2026-05-08", stageEnteredAt: "2026-05-08", notes: "MSA red-lines back from legal. Operating-sponsor sign-off pending." },
-  { id: "d-2", contactId: "c-2", company: "Northshore Powertrain", stage: "proposal", valueEstimate: 320000, partnerLeadId: "p-2", industry: "automotive", closeTargetDate: "2026-06-15", createdAt: "2026-03-28", lastTouchAt: "2026-05-10", stageEnteredAt: "2026-05-18", notes: "SOW v2 out. They asked for a phased pilot." },
+  { id: "d-1", contactId: "c-1", company: "Cascade Heavy Civil", stage: "negotiation", valueEstimate: 480000, partnerLeadId: "p-1", industry: "construction", subIndustry: "Heavy Civil & Infrastructure", closeTargetDate: "2026-05-22", createdAt: "2026-03-04", lastTouchAt: "2026-05-08", stageEnteredAt: "2026-05-08", notes: "MSA red-lines back from legal. Operating-sponsor sign-off pending." },
+  { id: "d-2", contactId: "c-2", company: "Northshore Powertrain", stage: "proposal", valueEstimate: 320000, partnerLeadId: "p-2", industry: "automotive", subIndustry: "Parts & Suppliers (Tier 1/2)", closeTargetDate: "2026-06-15", createdAt: "2026-03-28", lastTouchAt: "2026-05-10", stageEnteredAt: "2026-05-18", notes: "SOW v2 out. They asked for a phased pilot." },
   { id: "d-3", contactId: "c-3", company: "Westline Engineering", stage: "discovery", valueEstimate: 280000, partnerLeadId: "p-3", industry: "engineering", closeTargetDate: "2026-07-01", createdAt: "2026-04-15", lastTouchAt: "2026-05-09", stageEnteredAt: "2026-05-20", notes: "On-site embed week 1 of June. Need to confirm two operator interviews." },
   { id: "d-4", contactId: "c-4", company: "Apex Racing Group", stage: "qualified", valueEstimate: 180000, partnerLeadId: "p-4", industry: "motorsport", closeTargetDate: "2026-06-30", createdAt: "2026-05-01", lastTouchAt: "2026-05-11", stageEnteredAt: "2026-05-22", notes: "Connor wants a discovery scoped before September race calendar locks." },
   { id: "d-5", contactId: "c-5", company: "Granite Bay Auto Group", stage: "lead", valueEstimate: 240000, partnerLeadId: "p-2", industry: "automotive", closeTargetDate: "2026-08-01", createdAt: "2026-02-18", lastTouchAt: "2026-04-02", stageEnteredAt: "2026-04-02", notes: "Cold for 5+ weeks. Re-engage." },
@@ -136,6 +136,7 @@ export const clients: Client[] = [
     id: "cl-1",
     company: "Brightline Industrial Group",
     industry: "engineering",
+    subIndustry: "Industrial Equipment",
     revenue: "$85M",
     partnerLeadId: "p-3",
     primaryContactId: "c-1",
@@ -166,6 +167,7 @@ export const clients: Client[] = [
     id: "cl-2",
     company: "Driveline Auto Holdings",
     industry: "automotive",
+    subIndustry: "Dealership Groups",
     revenue: "$140M",
     partnerLeadId: "p-2",
     primaryContactId: "c-2",
@@ -510,13 +512,11 @@ export const leadSourceLabels: Record<string, string> = {
   other: "Other",
 };
 
-export const industryLabels: Record<string, string> = {
-  automotive: "Automotive",
-  motorsport: "Motorsport",
-  engineering: "Engineering",
-  construction: "Construction",
-  other: "Other",
-};
+// industryLabels is the firm's canonical vertical-label map — now owned by
+// @/lib/industries (the single source of truth). Re-exported here for
+// back-compat with pages/components still importing it from seed.ts; migrate
+// new code to import from @/lib/industries directly.
+export { industryLabels } from "@/lib/industries";
 
 // Pure formatters now live in @/lib/format. Re-exported here for back-compat
 // with pages still importing from seed.ts; migrate new code to @/lib/format directly.

@@ -7,8 +7,10 @@ import { MarkRepliedButton } from "@/components/mark-replied-button";
 import { DiscoverySurveyCard } from "@/components/discovery-survey-card";
 import { DealCommitteeCard } from "@/components/deal-committee-card";
 import { DealEnrichPanel } from "@/components/deal-enrich-panel";
+import { ArtifactDeleteControl } from "@/components/artifact-delete-control";
 import { EstimateEditor } from "@/components/billing/estimate-editor";
 import { prisma } from "@/lib/prisma";
+import { ranAtBySkill, savedAtBySkill } from "@/lib/action-status";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { stageLabels, industryLabels, leadSourceLabels } from "@/lib/data/seed";
 import { ArrowLeft, Mail, Phone, Sparkles, Activity, FileText, ExternalLink, FolderOpen } from "lucide-react";
@@ -29,7 +31,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   // Latest open/accepted estimate for this deal (Phase 5 scoping) + whether a
   // prototype already exists (gates the proposal-deck action).
-  const [estimateRaw, tiers, prototype, artifacts, surveyRaw, contactLinksRaw, allContacts] = await Promise.all([
+  const [estimateRaw, tiers, prototype, artifacts, surveyRaw, contactLinksRaw, allContacts, ranAt, savedAt] = await Promise.all([
     prisma.estimate.findFirst({
       where: { dealId: id, status: { not: "superseded" } },
       orderBy: { version: "desc" },
@@ -61,7 +63,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     prisma.discoverySurvey.findFirst({
       where: { dealId: id },
       orderBy: { createdAt: "desc" },
-      select: { status: true, title: true, tallyFormUrl: true, respondentName: true, respondentEmail: true, submittedAt: true, driveUrl: true, answers: true },
+      select: { status: true, title: true, tallyFormUrl: true, respondentName: true, respondentEmail: true, submittedAt: true, driveUrl: true, answers: true, createdAt: true },
     }),
     // Buying committee — the deal's Contact↔Deal links, primary first.
     prisma.contactLink.findMany({
@@ -74,6 +76,9 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       orderBy: { name: "asc" },
       select: { id: true, name: true, title: true, company: true },
     }),
+    // Actions panel run-status (green) + saved step-1 drafts (orange), per skill.
+    ranAtBySkill({ dealId: id }),
+    savedAtBySkill({ dealId: id }),
   ]);
   const hasPrototype = !!prototype;
   const surveyUrl =
@@ -90,6 +95,25 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         answers: Array.isArray(surveyRaw.answers) ? (surveyRaw.answers as { label: string; value: string }[]) : null,
       }
     : null;
+
+  // Run-status (green) + saved-draft (orange) per Actions box KEY. Box keys and
+  // generatedFromSkill values differ — map each explicitly. The questionnaire's
+  // run-status is a DiscoverySurvey, not an Artifact.
+  const actionRanAt: Record<string, Date | undefined> = {
+    "discovery-prep": ranAt["discovery-prep"],
+    questionnaire: surveyRaw?.createdAt,
+    "book-meeting": ranAt["book-meeting"],
+    "draft-proposal": ranAt["scope"],
+    "build-prototype": ranAt["html-prototype"],
+    "build-deck": ranAt["proposal-deck"],
+  };
+  const actionSavedAt: Record<string, Date | undefined> = {
+    "discovery-prep": savedAt["discovery-prep"],
+    questionnaire: savedAt["discovery-questionnaire"],
+    "draft-proposal": savedAt["scope"],
+    "book-meeting": savedAt["book-meeting"],
+  };
+
   const estimate = estimateRaw
     ? {
         id: estimateRaw.id,
@@ -138,7 +162,15 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       />
 
       <div className="px-8 py-8 flex flex-col gap-8">
-        <DealActionsPanel deal={deal} partner={partner} contact={contact} hasPrototype={hasPrototype} surveyUrl={surveyUrl} />
+        <DealActionsPanel
+          deal={deal}
+          partner={partner}
+          contact={contact}
+          hasPrototype={hasPrototype}
+          surveyUrl={surveyUrl}
+          ranAt={actionRanAt}
+          savedAt={actionSavedAt}
+        />
 
         <Link href="/pipeline" className="label hover:text-bone flex items-center gap-2">
           <ArrowLeft size={12} strokeWidth={1.5} />
@@ -332,7 +364,14 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
             </CardBody>
           </Card>
 
-          {surveyCard && <DiscoverySurveyCard survey={surveyCard} dealId={deal.id} company={deal.company} />}
+          {surveyCard && (
+            <DiscoverySurveyCard
+              survey={surveyCard}
+              dealId={deal.id}
+              company={deal.company}
+              reportDraftSaved={!!savedAt["discovery-report"]}
+            />
+          )}
 
           {/* Documents — every doc generated for this deal, with its Drive link
               and creation date. Files live in the deal's 00-Pipeline folder. */}
@@ -361,12 +400,12 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
             ) : (
               <div className="flex flex-col pb-2">
                 {artifacts.map((a) => (
+                  <div key={a.id} className="flex items-stretch group/doc">
                   <a
-                    key={a.id}
                     href={a.driveUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-5 py-2.5 flex items-start gap-3 hover:bg-[var(--color-row-hover)] transition-colors group"
+                    className="flex-1 min-w-0 px-5 py-2.5 flex items-start gap-3 hover:bg-[var(--color-row-hover)] transition-colors group"
                   >
                     <FileText size={14} strokeWidth={1.5} className="text-bone-mute mt-0.5 shrink-0" />
                     <span className="flex-1 min-w-0 flex flex-col gap-0.5">
@@ -380,6 +419,11 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                     </span>
                     <ExternalLink size={12} strokeWidth={1.5} className="text-bone-mute mt-1 shrink-0" />
                   </a>
+                  <ArtifactDeleteControl
+                    artifactId={a.id}
+                    className="self-center pl-2 pr-4 opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
+                  />
+                  </div>
                 ))}
               </div>
             )}

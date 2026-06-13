@@ -37,11 +37,19 @@ const TODAY = "2026-05-19";
 export function ContactActions({
   contact,
   partnerName,
+  ranAt = {},
+  savedAt = {},
 }: {
   contact: Contact;
   partnerName?: string;
+  /** box key → last run date (green "last ran" state). */
+  ranAt?: Record<string, Date | undefined>;
+  /** box key → saved step-1 draft date (orange "step 1 of 2 saved" state). */
+  savedAt?: Record<string, Date | undefined>;
 }) {
   const [open, setOpen] = useState<ActionKey | null>(null);
+  // Whether the email editor is reopening from a saved step-1 draft.
+  const [reopenEmail, setReopenEmail] = useState(false);
 
   // Auto-open the matching modal when launched from a dashboard Quick Action
   // (which routes here with ?qa=email / ?qa=enrich after the contact is picked).
@@ -58,8 +66,13 @@ export function ContactActions({
       icon: Mail,
       title: "Draft email",
       description: "Draft an email to this contact.",
-      onClick: () => setOpen("email"),
+      onClick: () => {
+        if (savedAt["email"]) setReopenEmail(true);
+        setOpen("email");
+      },
       gold: true,
+      ranAt: ranAt["email"],
+      stepOneSavedAt: savedAt["email"],
     },
     {
       key: "log",
@@ -102,7 +115,18 @@ export function ContactActions({
     <>
       <ActionsPanel actions={actions} forceOpen={qa === "email" || qa === "enrich"} />
 
-      {open === "email" && <DraftEmailModal contactId={contact.id} contactName={contact.name} partnerName={partnerName} onClose={() => setOpen(null)} />}
+      {open === "email" && (
+        <DraftEmailModal
+          contactId={contact.id}
+          contactName={contact.name}
+          partnerName={partnerName}
+          reopenDraft={reopenEmail}
+          onClose={() => {
+            setOpen(null);
+            setReopenEmail(false);
+          }}
+        />
+      )}
       {open === "log" && <LogInteractionModal contact={contact} onClose={() => setOpen(null)} />}
       {open === "edit" && <EditContactModal contact={contact} onClose={() => setOpen(null)} />}
       {open === "search" && <EnrichModal contact={contact} mode="web" onClose={() => setOpen(null)} />}

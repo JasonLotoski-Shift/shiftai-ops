@@ -4,6 +4,7 @@ import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Avatar, EmptyState } from "@/components/ui";
 import { ContactActions } from "@/components/contact-actions";
 import { prisma } from "@/lib/prisma";
+import { savedAtBySkill } from "@/lib/action-status";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { interactionLabels, industryLabels, stageLabels, leadSourceLabels } from "@/lib/data/seed";
 import {
@@ -99,12 +100,23 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   const stale = daysSince(contact.lastTouchAt) > 30;
   const enriched = Boolean(contact.persona || contact.keyFacts.length || contact.background);
 
+  // Actions panel run-status (green) + saved step-1 drafts (orange). The only
+  // two-step contact action is Draft email. The email Artifact is scoped to the
+  // contact's client/deal (Artifact has no contactId), so the contact-true
+  // "last ran" signal is the most recent email_sent interaction logged here.
+  // Saved step-1 drafts ARE contact-scoped (ActionDraft.contactId), so those
+  // come from savedAtBySkill.
+  const contactSavedAt = await savedAtBySkill({ contactId: id });
+  const lastEmailSent = log.find((i) => i.type === "email_sent")?.date;
+  const actionRanAt: Record<string, Date | undefined> = { email: lastEmailSent };
+  const actionSavedAt: Record<string, Date | undefined> = { email: contactSavedAt["draft-email"] };
+
   return (
     <>
       <Header eyebrow={contact.title} title={contact.name} />
 
       <div className="px-8 py-8 flex flex-col gap-8">
-        <ContactActions contact={contact} partnerName={partner?.name} />
+        <ContactActions contact={contact} partnerName={partner?.name} ranAt={actionRanAt} savedAt={actionSavedAt} />
 
         <div className="flex items-center justify-between">
           <Link href="/contacts" className="label hover:text-bone flex items-center gap-2">

@@ -24,6 +24,15 @@ enum Industry {
   motorsport
   engineering
   construction
+  architecture
+  real_estate
+  manufacturing
+  heavy_equipment
+  distribution
+  logistics
+  professional_services
+  healthcare
+  beverage
   other
 }
 
@@ -376,6 +385,7 @@ model Partner {
   projectsConsult    Project[]       @relation("ProjectConsultants")
   tasksOwned         Task[]          @relation("TaskOwner")
   tasksAssigned      Task[]          @relation("TaskAssignedBy")
+  reviewTasks        Task[]          @relation("TaskReviewer")
   milestonesOwned    Milestone[]     @relation("MilestoneOwner")
   agentPlans         AgentPlan[]     @relation("AgentPlanCreatedBy")
   channelMemberships ChannelMember[]
@@ -414,6 +424,7 @@ model Contact {
   email          String
   phone          String?
   industry       Industry
+  subIndustry    String? // finer than Industry — "heavy-civil", "motorsport fab"
   source         String // free-text "where exactly" note
   sourceCategory LeadSource? // structured bucket — color-codes lead cards
   // Normalized bare domain (lowercase, no scheme/www) — powers the
@@ -450,6 +461,8 @@ model Contact {
   billingForClients Client[]      @relation("ClientBillingContact")
   links             ContactLink[]
   clientLeadProjects Project[]    @relation("ProjectClientLead")
+  tasks             Task[]
+  actionDrafts      ActionDraft[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -574,10 +587,11 @@ model Deal {
   partnerLeadId String
 
   artifacts  Artifact[]
-  milestones Milestone[]
   estimates  Estimate[]
   discoverySurveys DiscoverySurvey[]
   contactLinks ContactLink[]
+  tasks      Task[]
+  actionDrafts ActionDraft[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -688,6 +702,7 @@ model Client {
   milestones Milestone[]
   discoverySurveys DiscoverySurvey[]
   contactLinks ContactLink[]
+  actionDrafts ActionDraft[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -738,6 +753,7 @@ model Project {
   directCosts    ProjectDirectCost[]
   payouts        ConsultantPayout[]
   originations   Origination[]
+  actionDrafts   ActionDraft[]
 
   // How the standard client billing schedule is generated (Phase 4):
   // fifty_twenty_five (default, pilots/projects) or monthly_even (retainers).
@@ -926,14 +942,12 @@ model Milestone {
   // Moving an archived milestone back into a real column clears this.
   archivedAt  DateTime?
 
-  // Universal parent: a milestone may be tied to a project, a deal/client, or
+  // Universal parent: a milestone may be tied to a project, a client, or
   // nothing (firm-level BD/Admin). All scope FKs are nullable.
   project   Project? @relation(fields: [projectId], references: [id])
   projectId String?
   client    Client?  @relation(fields: [clientId], references: [id])
   clientId  String?
-  deal      Deal?    @relation(fields: [dealId], references: [id])
-  dealId    String?
 
   // Assigned partner (the milestone owner).
   owner   Partner? @relation("MilestoneOwner", fields: [ownerId], references: [id])
@@ -1043,18 +1057,33 @@ model Task {
   assignedBy   Partner? @relation("TaskAssignedBy", fields: [assignedById], references: [id])
   assignedById String?
 
+  // When set, the task has been moved to the board's Archive column. The
+  // timestamp drives the 7-day auto-hide (mirrors Milestone.archivedAt).
+  archivedAt    DateTime?
+
   // Scoping FKs (nullable — firm-wide tasks have neither).
   // Enables "what's open on Acme" queries without parsing relatedTo.
   client      Client?    @relation(fields: [clientId], references: [id])
   clientId    String?
   project     Project?   @relation(fields: [projectId], references: [id])
   projectId   String?
+  // The deal this task hangs off, if any (pipeline task).
+  deal        Deal?      @relation(fields: [dealId], references: [id])
+  dealId      String?
+  // The contact this task hangs off, if any.
+  contact     Contact?   @relation(fields: [contactId], references: [id])
+  contactId   String?
   // The deliverable this task hangs off, if any (deliverable card → add task).
   artifact    Artifact?  @relation(fields: [artifactId], references: [id])
   artifactId  String?
-  // The milestone (epic) this task is a sub-task of, if any.
-  milestone   Milestone? @relation(fields: [milestoneId], references: [id])
+  // The milestone (epic) this task is a sub-task of, if any. SetNull so
+  // deleting a milestone nulls its child tasks instead of failing on Restrict.
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
   milestoneId String?
+
+  // Reviewer — a partner asked to review this task's output (optional).
+  reviewer   Partner? @relation("TaskReviewer", fields: [reviewerId], references: [id])
+  reviewerId String?
 
   // Messages that reference this task render as inline task cards in chat.
   // One Task row, surfaced in three places (chat card, Tasks tab, feed).
@@ -1065,8 +1094,11 @@ model Task {
 
   @@index([clientId])
   @@index([projectId])
+  @@index([dealId])
+  @@index([contactId])
   @@index([artifactId])
   @@index([milestoneId])
+  @@index([reviewerId])
   @@index([status])
 }
 
@@ -1138,6 +1170,41 @@ model Artifact {
   @@index([clientId, createdAt])
   @@index([projectId, createdAt])
   @@index([dealId, createdAt])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ActionDraft — the editable step-1 output of a Quick Action, saved before
+// it's run into a finished deliverable. `skill` is the generatedFromSkill
+// value; `content` is the editable JSON (e.g. a reviewable brief). Scope FKs
+// are nullable so one model serves Client/Project/Deal/Contact scopes — the
+// loose-coupling convention the rest of the schema uses (Artifact, Task).
+// ──────────────────────────────────────────────────────────────────────
+
+model ActionDraft {
+  id        String @id @default(cuid())
+  skill     String // the generatedFromSkill value
+  content   Json // the editable step-1 output
+  status    String @default("draft")
+  createdBy String // partner name or "AGENT · CLAUDE"
+
+  // Scope FKs — exactly one expected at write time, all nullable.
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  deal      Deal?    @relation(fields: [dealId], references: [id])
+  dealId    String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  contactId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([dealId])
+  @@index([contactId])
+  @@index([projectId])
+  @@index([skill])
 }
 
 // ──────────────────────────────────────────────────────────────────────

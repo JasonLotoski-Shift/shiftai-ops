@@ -1,11 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { X, Mail, Sparkles, ShieldAlert, Check } from "lucide-react";
 import { Button, Label, Input, Textarea } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
+import { useActionDraft } from "@/components/use-action-draft";
 import { generateEmailDraft, saveEmailDraft, sendEmail } from "@/app/(app)/contacts/[id]/actions";
+
+type EmailDraft = {
+  purpose: string;
+  senderRole: string;
+  pricePoint: string;
+  timeline: string;
+  ask: string;
+  body: string;
+};
 
 // Shared draft-email modal — used from the contact page (Draft email) and the
 // deal page (post-discovery Follow-up email, via defaultPurpose). Wraps the
@@ -20,6 +30,7 @@ export function DraftEmailModal({
   partnerName,
   defaultPurpose,
   titleSuffix,
+  reopenDraft = false,
   onClose,
 }: {
   contactId: string;
@@ -29,6 +40,8 @@ export function DraftEmailModal({
   defaultPurpose?: string;
   /** Override the modal title suffix (defaults to the contact name). */
   titleSuffix?: string;
+  /** Reopen preloaded from a saved ActionDraft (orange "step 1 of 2 saved"). */
+  reopenDraft?: boolean;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"inputs" | "draft" | "saved">("inputs");
@@ -44,7 +57,33 @@ export function DraftEmailModal({
   const [isGenerating, startGenerate] = useTransition();
   const [isPersisting, startPersist] = useTransition();
 
+  const draft = useActionDraft<EmailDraft>("draft-email", { contactId });
+
   const needsInputCount = (draftBody.match(/\[NEEDS INPUT/g) || []).length;
+
+  useEffect(() => {
+    if (!reopenDraft) return;
+    let active = true;
+    draft.load().then((c) => {
+      if (!active || !c) return;
+      setPurpose(c.purpose ?? "");
+      setSenderRole(c.senderRole ?? "");
+      setPricePoint(c.pricePoint ?? "");
+      setTimeline(c.timeline ?? "");
+      setAsk(c.ask ?? "");
+      setDraftBody(c.body ?? "");
+      setStep("draft");
+    });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reopenDraft]);
+
+  useEffect(() => {
+    if (step === "draft") draft.track({ purpose, senderRole, pricePoint, timeline, ask, body: draftBody });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, purpose, senderRole, pricePoint, timeline, ask, draftBody]);
 
   function runGenerate() {
     setGenErr(null);
@@ -66,8 +105,16 @@ export function DraftEmailModal({
     });
   }
 
+  // On the editable step, closing parks the step-1 draft (ActionDraft). On
+  // inputs, keep the discard guard.
+  const onEditable = step === "draft";
+  function handleClose() {
+    if (onEditable) void draft.autoSave();
+    onClose();
+  }
+
   return (
-    <ModalShell onClose={onClose} guard={step !== "saved"} positionClassName="items-start justify-center pt-20 px-4">
+    <ModalShell onClose={handleClose} guard={!onEditable && step !== "saved"} positionClassName="items-start justify-center pt-20 px-4">
       <div
         className="w-full max-w-[680px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20"
         onClick={(e) => e.stopPropagation()}
@@ -77,7 +124,7 @@ export function DraftEmailModal({
             <Mail size={14} strokeWidth={1.5} className="text-track-gold" />
             <span className="title-md">Draft email · {titleSuffix ?? contactName}</span>
           </div>
-          <button onClick={onClose} className="text-bone-mute hover:text-bone">
+          <button onClick={handleClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
           </button>
         </div>
@@ -133,7 +180,7 @@ export function DraftEmailModal({
             )}
 
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={onClose} disabled={isGenerating}>Cancel</Button>
+              <Button variant="ghost" size="sm" onClick={handleClose} disabled={isGenerating}>Cancel</Button>
               <Button variant="primary" size="sm" disabled={!purpose.trim() || isGenerating} onClick={runGenerate}>
                 {isGenerating ? "Generating…" : "Generate draft"}
               </Button>
@@ -175,6 +222,19 @@ export function DraftEmailModal({
               </div>
               <div className="flex gap-2">
                 <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={isPersisting || isGenerating || draft.busy || !draftBody.trim()}
+                  onClick={() => {
+                    void draft
+                      .save({ purpose, senderRole, pricePoint, timeline, ask, body: draftBody })
+                      .then(onClose);
+                  }}
+                  title="Park this for later — finish it from the orange box on the contact"
+                >
+                  {draft.busy ? "Saving…" : "Save for later"}
+                </Button>
+                <Button
                   variant="secondary"
                   size="sm"
                   disabled={needsInputCount > 0 || isPersisting || !draftBody.trim()}
@@ -183,6 +243,7 @@ export function DraftEmailModal({
                     startPersist(async () => {
                       try {
                         await saveEmailDraft(contactId, { body: draftBody });
+                        await draft.clear();
                         setSavedKind("draft");
                         setStep("saved");
                       } catch (err) {
@@ -202,6 +263,7 @@ export function DraftEmailModal({
                     startPersist(async () => {
                       try {
                         await sendEmail(contactId, { body: draftBody });
+                        await draft.clear();
                         setSavedKind("sent");
                         setStep("saved");
                       } catch (err) {

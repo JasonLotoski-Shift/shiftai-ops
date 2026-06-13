@@ -298,8 +298,11 @@ export async function setProjectDates(
 
 // ──────────────────────────────────────────────────────────────────────
 // createMilestone — a milestone is the firm's universal unit of work. It may
-// be tied to a project, a deal/client, or nothing (firm-level BD/Admin). Has
-// an optional owner + a category (defaulted from scope). Date is optional.
+// be tied to a project, a client, or nothing (firm-level BD/Admin). Has an
+// optional owner + a category (defaulted from scope). Date is optional.
+//
+// Milestones tag ONLY client/project (2c). Pipeline work lives on tasks
+// (Task.dealId), not milestones — so there's no dealId param here anymore.
 // ──────────────────────────────────────────────────────────────────────
 
 export async function createMilestone(input: {
@@ -311,7 +314,6 @@ export async function createMilestone(input: {
   categoryLabel?: string | null;
   projectId?: string | null;
   clientId?: string | null;
-  dealId?: string | null;
 }) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
@@ -355,7 +357,6 @@ export async function createMilestone(input: {
         ownerId: input.ownerId || null,
         projectId: input.projectId || null,
         clientId: input.clientId || null,
-        dealId: input.dealId || null,
       },
     });
 
@@ -386,7 +387,9 @@ export async function createMilestone(input: {
 
 // ──────────────────────────────────────────────────────────────────────
 // updateMilestone — edit a milestone's title / date / status / owner /
-// category. dueDate: null clears the date (drops it off the timeline).
+// category, and re-scope it to a different client/project (NOT a deal —
+// milestones tag client/project only, 2c). dueDate: null clears the date
+// (drops it off the timeline). projectId/clientId "" or null clears the tie.
 // ──────────────────────────────────────────────────────────────────────
 
 export async function updateMilestone(
@@ -398,6 +401,8 @@ export async function updateMilestone(
     ownerId?: string | null;
     category?: string;
     categoryLabel?: string | null;
+    projectId?: string | null;
+    clientId?: string | null;
   },
 ) {
   const session = await auth();
@@ -409,7 +414,7 @@ export async function updateMilestone(
 
   const before = await prisma.milestone.findUnique({
     where: { id: milestoneId },
-    select: { id: true, projectId: true, title: true, status: true, dueDate: true, ownerId: true, category: true },
+    select: { id: true, projectId: true, clientId: true, title: true, status: true, dueDate: true, ownerId: true, category: true },
   });
   if (!before) throw new Error("Milestone not found");
 
@@ -442,6 +447,21 @@ export async function updateMilestone(
     data.category = input.category as WorkCategory;
   }
   if (input.categoryLabel !== undefined) data.categoryLabel = input.categoryLabel?.trim() || null;
+  // Re-scope (2c) — milestones tag client/project only. Validate FKs exist.
+  if (input.projectId !== undefined) {
+    if (input.projectId) {
+      const p = await prisma.project.findUnique({ where: { id: input.projectId }, select: { id: true } });
+      if (!p) throw new Error("Project not found");
+    }
+    data.projectId = input.projectId || null;
+  }
+  if (input.clientId !== undefined) {
+    if (input.clientId) {
+      const c = await prisma.client.findUnique({ where: { id: input.clientId }, select: { id: true } });
+      if (!c) throw new Error("Client not found");
+    }
+    data.clientId = input.clientId || null;
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.milestone.update({ where: { id: milestoneId }, data });
@@ -454,7 +474,12 @@ export async function updateMilestone(
     });
   });
 
+  // Revalidate both the old and the (possibly new) project surface.
   if (before.projectId) revalidatePath(`/projects/${before.projectId}`);
+  if (data.projectId && data.projectId !== before.projectId) {
+    revalidatePath(`/projects/${data.projectId as string}`);
+  }
+  revalidatePath("/projects");
   revalidatePath("/tasks");
   return { id: milestoneId };
 }
@@ -551,6 +576,146 @@ export async function setMilestoneArchived(milestoneId: string, archived: boolea
   revalidatePath("/tasks");
   if (before.projectId) revalidatePath(`/projects/${before.projectId}`);
   return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// deleteMilestone (2e) — remove a milestone. Its child tasks survive: the
+// Task.milestone relation is onDelete: SetNull (M5), so deleting a milestone
+// nulls milestoneId on each child task and the tasks live on as standalone
+// board cards (they are NOT cascade-deleted). Confirmed against the schema —
+// don't switch this relation to Cascade without revisiting this behaviour.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function deleteMilestone(milestoneId: string) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const before = await prisma.milestone.findUnique({
+    where: { id: milestoneId },
+    select: { id: true, title: true, projectId: true, clientId: true, _count: { select: { tasks: true } } },
+  });
+  if (!before) throw new Error("Milestone not found");
+
+  await prisma.$transaction(async (tx) => {
+    // Child tasks survive as standalone tasks — milestoneId is SET NULL by the
+    // FK rule (M5). We don't touch them here; the DB nulls the link on delete.
+    await tx.milestone.delete({ where: { id: milestoneId } });
+    await writeAudit(tx, {
+      actor,
+      action: "delete.milestone",
+      targetType: "Milestone",
+      targetId: milestoneId,
+      changes: {
+        title: before.title,
+        projectId: before.projectId,
+        clientId: before.clientId,
+        // How many child tasks were freed to standalone (SET NULL).
+        orphanedTasks: before._count.tasks,
+      },
+    });
+  });
+
+  revalidatePath("/tasks");
+  revalidatePath("/projects");
+  if (before.projectId) revalidatePath(`/projects/${before.projectId}`);
+  return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// demoteMilestoneToTask (2a) — inverse of promoteTaskToMilestone. Turn a
+// milestone (epic) into a standalone task, carrying title / owner / category /
+// categoryLabel / project / client / board column over, then DELETE the
+// milestone. Any sub-tasks of the milestone are freed to standalone via the
+// onDelete: SetNull rule (same as deleteMilestone) — they do NOT become
+// children of the new task. A task needs a priority + due date the milestone
+// lacks: default priority "medium" and reuse the milestone's dueDate (or today
+// if it was undated, since due is required).
+// ──────────────────────────────────────────────────────────────────────
+
+export async function demoteMilestoneToTask(milestoneId: string) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const milestone = await prisma.milestone.findUnique({
+    where: { id: milestoneId },
+    select: {
+      id: true,
+      title: true,
+      ownerId: true,
+      category: true,
+      categoryLabel: true,
+      projectId: true,
+      clientId: true,
+      dueDate: true,
+      boardStatus: true,
+    },
+  });
+  if (!milestone) throw new Error("Milestone not found");
+
+  const project = milestone.projectId
+    ? await prisma.project.findUnique({ where: { id: milestone.projectId }, select: { id: true, name: true } })
+    : null;
+
+  const boardStatus = milestone.boardStatus;
+
+  const task = await prisma.$transaction(async (tx) => {
+    const created = await tx.task.create({
+      data: {
+        title: milestone.title,
+        priority: "medium",
+        // due is required on Task; reuse the milestone date or default to now.
+        due: milestone.dueDate ?? new Date(),
+        status: boardStatus,
+        done: boardStatus === "done",
+        category: milestone.category,
+        categoryLabel: milestone.categoryLabel,
+        ownerId: milestone.ownerId,
+        projectId: milestone.projectId,
+        clientId: milestone.clientId,
+      },
+    });
+
+    // Remove the source milestone; its child tasks go standalone via SET NULL.
+    await tx.milestone.delete({ where: { id: milestoneId } });
+
+    await writeAudit(tx, {
+      actor,
+      action: "demote.milestone.task",
+      targetType: "Task",
+      targetId: created.id,
+      changes: {
+        fromMilestoneId: milestoneId,
+        title: milestone.title,
+        projectId: milestone.projectId,
+        clientId: milestone.clientId,
+        status: boardStatus,
+      },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: project?.name ?? milestone.title,
+      detail: `Demoted milestone to task — ${milestone.title}`,
+      link: project ? `/projects/${project.id}` : "/tasks",
+    });
+
+    return created;
+  });
+
+  revalidatePath("/tasks");
+  revalidatePath("/dashboard");
+  revalidatePath("/projects");
+  if (milestone.projectId) revalidatePath(`/projects/${milestone.projectId}`);
+  return { id: task.id };
 }
 
 // ──────────────────────────────────────────────────────────────────────

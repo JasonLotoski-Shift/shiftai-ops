@@ -14,7 +14,7 @@ export default async function TasksPage() {
   // The firm-wide board. Milestones are the universal parent (epics with
   // sub-tasks); orphan tasks (no milestone) ride alongside them. Filtering
   // happens client-side in TasksBoard.
-  const [milestones, orphanTasks, partners, projects, clients, deals] = await Promise.all([
+  const [milestones, orphanTasks, partners, projects, clients, deals, contacts] = await Promise.all([
     // Every milestone with its owner, sub-tasks (+ each task's owner), and the
     // record it's tied to. The board groups by boardStatus, not status. Skip
     // milestones archived more than 7 days ago (the Archive column auto-hide).
@@ -30,17 +30,22 @@ export default async function TasksPage() {
         },
         project: { select: { id: true, name: true } },
         client: { select: { id: true, company: true } },
-        deal: { select: { id: true, company: true } },
       },
       orderBy: { createdAt: "desc" },
     }),
-    // Orphan tasks — no milestone. These render as flat cards on the board.
+    // Orphan tasks — no milestone, and not archived (archived tasks ride in the
+    // Archive column alongside archived milestones). These render as flat cards.
     prisma.task.findMany({
-      where: { milestoneId: null },
+      where: {
+        milestoneId: null,
+        OR: [{ archivedAt: null }, { archivedAt: { gte: archiveCutoff } }],
+      },
       include: {
         owner: { select: { id: true, name: true, initials: true } },
         project: { select: { id: true, name: true } },
         client: { select: { id: true, company: true } },
+        deal: { select: { id: true, company: true } },
+        contact: { select: { id: true, name: true } },
       },
       orderBy: [{ done: "asc" }, { due: "asc" }],
     }),
@@ -60,6 +65,11 @@ export default async function TasksPage() {
       select: { id: true, company: true },
       orderBy: { company: "asc" },
     }),
+    // Contacts for the task scope picker (2b) — a task can hang off a person.
+    prisma.contact.findMany({
+      select: { id: true, name: true, company: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   // Coerce nullable display fields to safe values the board can render.
@@ -76,10 +86,8 @@ export default async function TasksPage() {
     archivedAt: m.archivedAt ? m.archivedAt.toISOString() : null,
     projectId: m.projectId,
     clientId: m.clientId,
-    dealId: m.dealId,
     project: m.project ? { id: m.project.id, name: m.project.name } : null,
     client: m.client ? { id: m.client.id, company: m.client.company ?? "Untitled client" } : null,
-    deal: m.deal ? { id: m.deal.id, company: m.deal.company ?? "Untitled deal" } : null,
     tasks: m.tasks.map((t) => ({
       id: t.id,
       title: t.title,
@@ -103,21 +111,31 @@ export default async function TasksPage() {
     context: t.context,
     category: t.category ?? "other",
     categoryLabel: t.categoryLabel,
+    archivedAt: t.archivedAt ? t.archivedAt.toISOString() : null,
     ownerId: t.ownerId,
     owner: t.owner ? { id: t.owner.id, name: t.owner.name, initials: t.owner.initials } : null,
     projectId: t.projectId,
     clientId: t.clientId,
+    dealId: t.dealId,
+    contactId: t.contactId,
     project: t.project ? { id: t.project.id, name: t.project.name } : null,
     client: t.client ? { id: t.client.id, company: t.client.company ?? "Untitled client" } : null,
+    deal: t.deal ? { id: t.deal.id, company: t.deal.company ?? "Untitled deal" } : null,
+    contact: t.contact ? { id: t.contact.id, name: t.contact.name } : null,
   }));
 
   const boardClients = clients.map((c) => ({ id: c.id, company: c.company ?? "Untitled client" }));
   const boardDeals = deals.map((d) => ({ id: d.id, company: d.company ?? "Untitled deal" }));
+  const boardContacts = contacts.map((c) => ({
+    id: c.id,
+    name: c.name,
+    company: c.company ?? "",
+  }));
 
   // Stats over orphan tasks + every active milestone's sub-tasks (archived
   // milestones drop out of the open/high/mine counts).
   const allTasks = [
-    ...boardOrphans,
+    ...boardOrphans.filter((t) => !t.archivedAt),
     ...boardMilestones.filter((m) => !m.archivedAt).flatMap((m) => m.tasks),
   ];
   const openTasks = allTasks.filter((t) => !t.done);
@@ -125,7 +143,12 @@ export default async function TasksPage() {
   const mine = openTasks.filter((t) => t.ownerId === currentPartnerId).length;
 
   return (
-    <>
+    // Pin the whole page to the viewport so the board below can own an internal
+    // vertical scroll region (its `flex-1 min-h-0 overflow-auto` needs a parent
+    // with a *definite* height to scroll instead of growing the document, which
+    // is what makes the sticky column headers actually stick). Scoped to this
+    // page only — the app shell stays unbounded so other routes scroll normally.
+    <div className="h-screen flex flex-col overflow-hidden">
       <Header eyebrow="The firm · Do" title="Task Board." />
 
       <div className="flex flex-col flex-1 min-h-0">
@@ -150,9 +173,10 @@ export default async function TasksPage() {
           projects={projects}
           clients={boardClients}
           deals={boardDeals}
+          contacts={boardContacts}
           currentPartnerId={currentPartnerId}
         />
       </div>
-    </>
+    </div>
   );
 }

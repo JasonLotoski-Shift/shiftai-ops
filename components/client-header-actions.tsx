@@ -16,14 +16,22 @@ export function ClientActionsPanel({
   company,
   driveFolderUrl,
   workspacePath,
+  ranAt = {},
+  savedAt = {},
 }: {
   clientId: string;
   company: string;
   driveFolderUrl: string;
   workspacePath: string;
+  /** box key → last run date (green "last ran" state). */
+  ranAt?: Record<string, Date | undefined>;
+  /** box key → saved step-1 draft date (orange "step 1 of 2 saved" state). */
+  savedAt?: Record<string, Date | undefined>;
 }) {
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState<"discovery-report" | "sow" | "upload" | null>(null);
+  // Which two-step box is being reopened from a saved draft.
+  const [reopen, setReopen] = useState<Record<string, boolean>>({});
 
   // Auto-open from the dashboard Quick Action (routes here with ?qa=upload).
   const searchParams = useSearchParams();
@@ -31,6 +39,12 @@ export function ClientActionsPanel({
   useEffect(() => {
     if (qa === "discovery-report" || qa === "sow" || qa === "upload") setOpen(qa);
   }, [qa]);
+
+  // Open a two-step box; if it has a saved draft, reopen the editor preloaded.
+  function openBox(key: "discovery-report" | "sow") {
+    if (savedAt[key]) setReopen((r) => ({ ...r, [key]: true }));
+    setOpen(key);
+  }
 
   async function copyWorkspacePath() {
     try {
@@ -64,14 +78,18 @@ export function ClientActionsPanel({
       icon: Presentation,
       title: "Discovery report",
       description: "Draft the client-facing discovery deck: findings, build plan, time back.",
-      onClick: () => setOpen("discovery-report"),
+      onClick: () => openBox("discovery-report"),
+      ranAt: ranAt["discovery-report"],
+      stepOneSavedAt: savedAt["discovery-report"],
     },
     {
       key: "sow",
       icon: FileSignature,
       title: "Statement of Work",
       description: "Draft a contract-grade SOW as a Google Doc, for partner + counsel review.",
-      onClick: () => setOpen("sow"),
+      onClick: () => openBox("sow"),
+      ranAt: ranAt["sow"],
+      stepOneSavedAt: savedAt["sow"],
     },
     {
       key: "upload",
@@ -97,10 +115,26 @@ export function ClientActionsPanel({
       />
 
       {open === "discovery-report" && (
-        <DiscoveryReportModal clientId={clientId} company={company} onClose={() => setOpen(null)} />
+        <DiscoveryReportModal
+          clientId={clientId}
+          company={company}
+          reopenDraft={!!reopen["discovery-report"]}
+          onClose={() => {
+            setOpen(null);
+            setReopen((r) => ({ ...r, "discovery-report": false }));
+          }}
+        />
       )}
       {open === "sow" && (
-        <SowModal clientId={clientId} company={company} onClose={() => setOpen(null)} />
+        <SowModal
+          clientId={clientId}
+          company={company}
+          reopenDraft={!!reopen["sow"]}
+          onClose={() => {
+            setOpen(null);
+            setReopen((r) => ({ ...r, sow: false }));
+          }}
+        />
       )}
       {open === "upload" && (
         <UploadFileModal clientId={clientId} company={company} onClose={() => setOpen(null)} />

@@ -6,6 +6,7 @@ import { ClientActionsPanel } from "@/components/client-header-actions";
 import { NewProjectButton } from "@/components/new-project-modal";
 import { DiscoverySurveyCard } from "@/components/discovery-survey-card";
 import { prisma } from "@/lib/prisma";
+import { ranAtBySkill, savedAtBySkill } from "@/lib/action-status";
 import { industryLabels } from "@/lib/data/seed";
 import { ArrowLeft } from "lucide-react";
 
@@ -37,6 +38,21 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     orderBy: { name: "asc" },
   });
 
+  // Actions panel run-status (green) + saved step-1 drafts (orange). Box keys
+  // map to generatedFromSkill: discovery-report → "discovery-report", sow → "sow".
+  const [clientRanAt, clientSavedAt] = await Promise.all([
+    ranAtBySkill({ clientId: id }),
+    savedAtBySkill({ clientId: id }),
+  ]);
+  const actionRanAt: Record<string, Date | undefined> = {
+    "discovery-report": clientRanAt["discovery-report"],
+    sow: clientRanAt["sow"],
+  };
+  const actionSavedAt: Record<string, Date | undefined> = {
+    "discovery-report": clientSavedAt["discovery-report"],
+    sow: clientSavedAt["sow"],
+  };
+
   const survey = client.discoverySurveys[0];
   const surveyCard = survey
     ? {
@@ -65,6 +81,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           company={client.company}
           driveFolderUrl={client.driveFolderUrl}
           workspacePath={client.workspacePath}
+          ranAt={actionRanAt}
+          savedAt={actionSavedAt}
         />
 
         <Link href="/clients" className="label hover:text-bone flex items-center gap-2 w-fit">

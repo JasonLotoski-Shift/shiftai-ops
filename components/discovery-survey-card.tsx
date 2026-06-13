@@ -24,10 +24,13 @@ export function DiscoverySurveyCard({
   survey,
   dealId,
   company,
+  reportDraftSaved = false,
 }: {
   survey: SurveyCardData;
   dealId: string | null; // the survey's deal (retained after conversion) — gates the report build
   company: string;
+  /** A step-1 discovery-report draft is parked for this deal — reopen preloaded. */
+  reportDraftSaved?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -87,11 +90,14 @@ export function DiscoverySurveyCard({
             </div>
 
             {dealId && (
-              <div className="pt-1">
+              <div className="pt-1 flex items-center gap-3">
                 <Button variant="primary" size="sm" onClick={() => setReportOpen(true)}>
                   <Sparkles size={13} strokeWidth={1.5} />
-                  Build discovery report
+                  {reportDraftSaved ? "Finish discovery report" : "Build discovery report"}
                 </Button>
+                {reportDraftSaved && (
+                  <span className="text-[11px] text-signal-warming">Step 1 of 2 saved</span>
+                )}
               </div>
             )}
           </>
@@ -99,7 +105,12 @@ export function DiscoverySurveyCard({
       </CardBody>
 
       {reportOpen && dealId && (
-        <DiscoveryReportDealModal dealId={dealId} company={company} onClose={() => setReportOpen(false)} />
+        <DiscoveryReportDealModal
+          dealId={dealId}
+          company={company}
+          reopenDraft={reportDraftSaved}
+          onClose={() => setReportOpen(false)}
+        />
       )}
     </Card>
   );

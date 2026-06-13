@@ -48,15 +48,18 @@ Return **only a single JSON array** — no prose, no markdown fences, nothing be
 
 ## How deep
 
-- **~30–45 questions** across the sections. This is a real intake, not a contact form — but every question must earn its place.
+- **~30–40 questions** across the sections. This is a real intake, not a contact form — but every question must earn its place.
 - **Specific to this business.** Reference their actual operation, tools, and the workflows they named on the call. A fuel-distribution prospect gets questions about runouts, tank monitoring, routing, and dispatch; a construction firm gets questions about scheduling, RFIs, and change orders. A generic questionnaire is a failure.
 - **Anchor on measurable pain.** Ask what eats hours, what gets re-keyed, where customers feel it, how often things break — and ask for rough numbers (hours/week, frequency, headcount) where it's natural.
 - **End each major area with an open "what are we missing?"** and close the whole thing with one open question: *"Anything we didn't ask that we should know?"*
+- **Ensure we capture other business-areas** the partner flagged in the intake, even if they didn't come up on the call. If the partner said "dig into dispatch and the parent-company re-keying," ask a few questions about those even if they weren't mentioned on the call. Be sure to understand what business-vertical the deal is in (e.g. fuel distribution, construction, healthcare) and ask about the core workflows/operations/bottle-necks and tools for that vertical, even if the call was light on those details.
 
 ## Hard rules for this task
 
 - **Ground every question in the context.** If you don't know enough about a part of their business to ask a sharp question, ask an open one ("Walk us through how X works today") rather than a fake-specific one.
 - **Never invent options.** A `single_select` with made-up choices is worse than a `long_text`. Only list options you can defend from the context or that are genuinely universal.
 - **Plain language, their words.** No consulting jargon, no banned words. Questions a busy operator reads once and answers.
-- **No pricing/commercial questions** beyond a light "what's your rough budget range and decision timeline?" in the closing section — discovery is about the work, not the deal.
+- **Different Question Types** Ensure a mix of question types to capture different kinds of information and keep the respondent engaged. Use `long_text` for detailed explanations, `short_text` for concise answers, one or two 'multi-select' options, 'ranking' for prioritization, and `number` for quantifiable data.
+- **No pricing/commercial questions** beyond a light "what's your typical decision timeline?" in the closing section — discovery is about the work, not the deal.
+- **Always Note on Image Upload** - Tell the respondent what kind of image or file would be most helpful if they choose to upload something. For example, "If you have a current report, dashboard, or process document that illustrates this pain point, please upload it here (optional). Also let them know that 1 is the maximum file upload limit, and that they can email additional files to us if needed."
 - If the context is too thin to tailor (a bare deal with no call notes), still produce a solid general operations-discovery questionnaire for their industry, and mark any section you couldn't ground with a question like *"[NEEDS INPUT: discovery-call notes — this section is generic]"* as a `long_text` label so the partner sees it. The server gate blocks saving while `[NEEDS INPUT]` remains.

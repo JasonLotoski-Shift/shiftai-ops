@@ -18,6 +18,7 @@ import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { buildDealContext } from "@/lib/deal-context";
 import { linkContact, repointDealLinksToClient } from "@/lib/contact-links";
 import { normalizeDomain } from "@/lib/apollo";
+import { validateIndustry, validateSubIndustry } from "@/lib/industries";
 import type { DealStage, Industry, ArtifactType } from "@/lib/generated/prisma/enums";
 
 /**
@@ -320,7 +321,6 @@ export async function convertDeal(
 // ──────────────────────────────────────────────────────────────────────
 
 const VALID_STAGES_EDIT: DealStage[] = ["lead", "qualified", "discovery", "discussion", "proposal", "negotiation"];
-const VALID_INDUSTRIES_EDIT: Industry[] = ["automotive", "motorsport", "engineering", "construction", "other"];
 
 export async function updateDeal(
   dealId: string,
@@ -329,6 +329,7 @@ export async function updateDeal(
     valueEstimate?: number;
     stage?: string;
     industry?: string;
+    subIndustry?: string | null;
     closeTargetDate?: string; // YYYY-MM-DD
     notes?: string | null;
     website?: string | null;
@@ -353,6 +354,7 @@ export async function updateDeal(
       valueEstimate: true,
       stage: true,
       industry: true,
+      subIndustry: true,
       closeTargetDate: true,
       notes: true,
       website: true,
@@ -374,6 +376,7 @@ export async function updateDeal(
     valueEstimate?: number;
     stage?: DealStage;
     industry?: Industry;
+    subIndustry?: string | null;
     closeTargetDate?: Date;
     notes?: string | null;
     website?: string | null;
@@ -421,11 +424,26 @@ export async function updateDeal(
   }
 
   if (input.industry !== undefined && input.industry !== deal.industry) {
-    if (!VALID_INDUSTRIES_EDIT.includes(input.industry as Industry)) {
+    if (!validateIndustry(input.industry)) {
       throw new Error(`Invalid industry: ${input.industry}`);
     }
     data.industry = input.industry as Industry;
     changes.industry = { before: deal.industry, after: input.industry };
+  }
+
+  // Sub-industry validated against the EFFECTIVE vertical (the new one if the
+  // industry is also changing in this same edit, else the deal's current one).
+  // "" clears; an off-list value is rejected so the field stays controlled.
+  if (input.subIndustry !== undefined) {
+    const effectiveIndustry = (data.industry ?? deal.industry) as Industry;
+    const subIndustry = input.subIndustry?.trim() || null;
+    if (subIndustry && !validateSubIndustry(effectiveIndustry, subIndustry)) {
+      throw new Error(`Invalid sub-industry for ${effectiveIndustry}: ${subIndustry}`);
+    }
+    if (subIndustry !== (deal.subIndustry ?? null)) {
+      data.subIndustry = subIndustry;
+      changes.subIndustry = { before: deal.subIndustry ?? null, after: subIndustry };
+    }
   }
 
   if (input.closeTargetDate !== undefined) {

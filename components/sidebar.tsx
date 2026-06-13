@@ -18,7 +18,6 @@ import {
   MessageSquare,
   Import,
   Target,
-  Waypoints,
   BrainCircuit,
   Sparkles,
   ChevronDown,
@@ -40,9 +39,9 @@ type NavItem = {
 // Day-to-day work, top of the rail.
 const operate: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/tasks", label: "Task Board", icon: CheckSquare },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/tasks", label: "Task Board", icon: CheckSquare },
 ];
 
 // The three ways leads come into the firm — collapsible group.
@@ -65,7 +64,6 @@ const firm: NavItem[] = [
 const other: NavItem[] = [
   { href: "/whats-new", label: "What's new", icon: Sparkles },
   { href: "/how-it-works", label: "How it works", icon: BookOpen },
-  { href: "/deal-process", label: "Deal Process", icon: Waypoints },
   { href: "/agents", label: "Agents & MCPs", icon: Bot },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -124,7 +122,10 @@ export function Sidebar({
     const showDot =
       (item.href === "/messages" && totalUnreadMessages > 0) ||
       (item.href === "/whats-new" && whatsNewUnread);
-    const emphasize = item.href === "/whats-new" && whatsNewUnread;
+    // Task Board is a primary surface — keep it visually loud (bold + near-white)
+    // at all times. What's-new only emphasizes while there's an unread update.
+    const emphasize =
+      item.href === "/tasks" || (item.href === "/whats-new" && whatsNewUnread);
     // Nudge partners to connect Gmail for email logging until they have.
     const showGmailTag = item.href === "/settings" && !gmailConnected;
 

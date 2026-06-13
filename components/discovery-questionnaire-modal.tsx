@@ -6,12 +6,20 @@
 // Copy. The server actions live in pipeline/[id]/tally-actions.ts; the Tally
 // form is created on "Create form".
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { X, Sparkles, Plus, Trash2, Check, Copy, ShieldAlert, ClipboardList } from "lucide-react";
 import { Button, Label, Input, Textarea, Select, Badge } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
+import { useActionDraft } from "@/components/use-action-draft";
 import { generateQuestionnaire, createDiscoveryQuestionnaireForm } from "@/app/(app)/pipeline/[id]/tally-actions";
 import type { SurveyQuestion, SurveyQuestionType } from "@/lib/tally";
+
+type QuestionnaireDraft = {
+  focus: string;
+  notes: string;
+  title: string;
+  questions: SurveyQuestion[];
+};
 
 const TYPE_LABELS: Record<SurveyQuestionType, string> = {
   short_text: "Short text",
@@ -31,10 +39,12 @@ const OPTION_TYPES = new Set<SurveyQuestionType>(["single_select", "multi_select
 export function DiscoveryQuestionnaireModal({
   dealId,
   company,
+  reopenDraft = false,
   onClose,
 }: {
   dealId: string;
   company: string;
+  reopenDraft?: boolean;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"gen" | "edit" | "done">("gen");
@@ -46,6 +56,31 @@ export function DiscoveryQuestionnaireModal({
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
+
+  // The questionnaire's editable step (the reviewed question list) parks here.
+  const draft = useActionDraft<QuestionnaireDraft>("discovery-questionnaire", { dealId });
+
+  useEffect(() => {
+    if (!reopenDraft) return;
+    let active = true;
+    draft.load().then((c) => {
+      if (!active || !c) return;
+      setFocus(c.focus ?? "");
+      setNotes(c.notes ?? "");
+      if (c.title) setTitle(c.title);
+      setQuestions(Array.isArray(c.questions) ? c.questions : []);
+      setStep("edit");
+    });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reopenDraft]);
+
+  useEffect(() => {
+    if (step === "edit") draft.track({ focus, notes, title, questions });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, focus, notes, title, questions]);
 
   function gen() {
     setErr(null);
@@ -65,12 +100,19 @@ export function DiscoveryQuestionnaireModal({
     start(async () => {
       try {
         const res = await createDiscoveryQuestionnaireForm(dealId, { title, questions });
+        await draft.clear();
         setFormUrl(res.tallyFormUrl);
         setStep("done");
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Couldn't create the form.");
       }
     });
+  }
+
+  const onEditable = step === "edit";
+  function handleClose() {
+    if (onEditable) void draft.autoSave();
+    onClose();
   }
 
   function patch(i: number, p: Partial<SurveyQuestion>) {
@@ -84,14 +126,14 @@ export function DiscoveryQuestionnaireModal({
   }
 
   return (
-    <ModalShell onClose={onClose} guard={step !== "done"} positionClassName="items-start justify-center pt-12 px-4">
+    <ModalShell onClose={handleClose} guard={!onEditable && step !== "done"} positionClassName="items-start justify-center pt-12 px-4">
       <div className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <ClipboardList size={14} strokeWidth={1.5} className="text-track-gold" />
             <Label gold>Discovery questionnaire · {company}</Label>
           </div>
-          <button onClick={onClose} className="text-bone-mute hover:text-bone"><X size={16} strokeWidth={1.5} /></button>
+          <button onClick={handleClose} className="text-bone-mute hover:text-bone"><X size={16} strokeWidth={1.5} /></button>
         </div>
 
         {err && (
@@ -115,7 +157,7 @@ export function DiscoveryQuestionnaireModal({
               <Input placeholder="Anything else to weave in" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={busy} />
             </div>
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+              <Button variant="ghost" size="sm" onClick={handleClose} disabled={busy}>Cancel</Button>
               <Button variant="primary" size="sm" onClick={gen} disabled={busy}>
                 <Sparkles size={13} strokeWidth={1.5} />
                 {busy ? "Generating…" : "Generate questions"}
@@ -174,6 +216,17 @@ export function DiscoveryQuestionnaireModal({
 
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={() => setStep("gen")} disabled={busy}>Back</Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={busy || draft.busy || questions.length === 0}
+                onClick={() => {
+                  void draft.save({ focus, notes, title, questions }).then(onClose);
+                }}
+                title="Park this for later — finish it from the orange box on the deal"
+              >
+                {draft.busy ? "Saving…" : "Save draft"}
+              </Button>
               <Button variant="primary" size="sm" onClick={createForm} disabled={busy || questions.length === 0}>
                 {busy ? "Creating form…" : "Create Tally form"}
               </Button>

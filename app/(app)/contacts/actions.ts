@@ -12,20 +12,13 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { createContactTx } from "@/lib/contacts";
 import { resolveContact } from "@/lib/resolve-entity";
+import { validateIndustry, validateSubIndustry } from "@/lib/industries";
 import type {
   Industry,
   LeadSource,
   PreferredChannel,
   RelationshipStrength,
 } from "@/lib/generated/prisma/enums";
-
-const VALID_INDUSTRIES: Industry[] = [
-  "automotive",
-  "motorsport",
-  "engineering",
-  "construction",
-  "other",
-];
 
 const VALID_LEAD_SOURCES: LeadSource[] = [
   "intro",
@@ -50,6 +43,8 @@ export type CreateContactInput = {
   email: string;
   phone?: string;
   industry: string;
+  /** Tier-2 sub-industry (controlled vocabulary for the chosen vertical). */
+  subIndustry?: string;
   source: string;
   /** Structured bucket for color-coding lead cards (optional). */
   sourceCategory?: string;
@@ -104,9 +99,15 @@ export async function createContact(input: CreateContactInput): Promise<CreateCo
   if (!EMAIL_RE.test(email)) {
     throw new Error(`Invalid email: ${email}`);
   }
-  if (!VALID_INDUSTRIES.includes(input.industry as Industry)) {
+  if (!validateIndustry(input.industry)) {
     throw new Error(`Invalid industry: ${input.industry}`);
   }
+  // Optional Tier-2 sub-industry — validated against the chosen vertical's
+  // vocabulary; an off-list value is dropped (never guessed) rather than thrown.
+  const subIndustry =
+    input.subIndustry && validateSubIndustry(input.industry, input.subIndustry)
+      ? input.subIndustry.trim()
+      : null;
   // Optional structured source bucket — validated if supplied, else left null.
   const sourceCategory =
     input.sourceCategory && VALID_LEAD_SOURCES.includes(input.sourceCategory as LeadSource)
@@ -163,6 +164,7 @@ export async function createContact(input: CreateContactInput): Promise<CreateCo
         company,
         phone: input.phone,
         industry: input.industry as Industry,
+        subIndustry,
         source: input.source.trim() || "Manual entry",
         sourceCategory,
         notes: input.notes,

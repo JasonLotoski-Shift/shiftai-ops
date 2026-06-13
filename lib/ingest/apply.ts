@@ -28,7 +28,7 @@ export const CONTACT_LIST_FIELDS = ["keyFacts", "hobbies", "networkAffiliations"
 // behind explicit per-item replace approval.
 export const CONTACT_SCALAR_FIELDS = [
   "persona", "communicationStyle", "background", "title", "company", "phone", "notes",
-  "linkedinUrl", "location", "timezone", "mobilePhone", "preferredChannel",
+  "linkedinUrl", "location", "timezone", "mobilePhone", "preferredChannel", "subIndustry",
 ] as const;
 
 export const CLIENT_LIST_FIELDS = [
@@ -218,6 +218,7 @@ export async function applyContactChanges(
       persona: true, communicationStyle: true, background: true, title: true,
       company: true, phone: true, notes: true,
       linkedinUrl: true, location: true, timezone: true, mobilePhone: true, preferredChannel: true,
+      subIndustry: true,
       keyFacts: true, hobbies: true, networkAffiliations: true, importantDates: true,
     },
   });

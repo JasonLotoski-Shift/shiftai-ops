@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { X, Sparkles, ShieldAlert, type LucideIcon } from "lucide-react";
 import { Button, Label, Textarea } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
+import { useActionDraft } from "@/components/use-action-draft";
 import { generateDealDoc, saveDealDoc } from "@/app/(app)/pipeline/[id]/actions";
 
 // Generic generative deal-doc modal — drives Discovery prep and the
 // Book-a-meeting note. Same shape as the proposal modals: intake → generate
 // (skill) → editable draft → save. The [NEEDS INPUT] gate blocks saving.
 export type DealDocSkill = "discovery-prep" | "book-meeting";
+
+type DealDocDraft = { focus: string; notes: string; body: string };
 
 export function DealDocModal({
   dealId,
@@ -19,6 +22,7 @@ export function DealDocModal({
   icon: Icon,
   focusLabel,
   focusPlaceholder,
+  reopenDraft = false,
   onClose,
 }: {
   dealId: string;
@@ -28,6 +32,7 @@ export function DealDocModal({
   icon: LucideIcon;
   focusLabel: string;
   focusPlaceholder: string;
+  reopenDraft?: boolean;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"inputs" | "draft" | "saved">("inputs");
@@ -39,7 +44,31 @@ export function DealDocModal({
   const [isGenerating, startGenerate] = useTransition();
   const [isSaving, startSave] = useTransition();
 
+  // The saved draft is keyed on the real skill ("discovery-prep" / "book-meeting").
+  const draft = useActionDraft<DealDocDraft>(skill, { dealId });
+
   const needsInputCount = (draftBody.match(/\[NEEDS INPUT/g) || []).length;
+
+  useEffect(() => {
+    if (!reopenDraft) return;
+    let active = true;
+    draft.load().then((c) => {
+      if (!active || !c) return;
+      setFocus(c.focus ?? "");
+      setNotes(c.notes ?? "");
+      setDraftBody(c.body ?? "");
+      setStep("draft");
+    });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reopenDraft]);
+
+  useEffect(() => {
+    if (step === "draft") draft.track({ focus, notes, body: draftBody });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, focus, notes, draftBody]);
 
   function runGenerate() {
     setGenErr(null);
@@ -54,15 +83,21 @@ export function DealDocModal({
     });
   }
 
+  const onEditable = step === "draft";
+  function handleClose() {
+    if (onEditable) void draft.autoSave();
+    onClose();
+  }
+
   return (
-    <ModalShell onClose={onClose} guard={step !== "saved"}>
+    <ModalShell onClose={handleClose} guard={!onEditable && step !== "saved"}>
       <div className="w-full max-w-[760px] bg-asphalt rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden mb-20" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <Icon size={14} strokeWidth={1.5} className="text-track-gold" />
             <Label gold>{title} · {company}</Label>
           </div>
-          <button onClick={onClose} className="text-bone-mute hover:text-bone">
+          <button onClick={handleClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
           </button>
         </div>
@@ -97,7 +132,7 @@ export function DealDocModal({
               </div>
             )}
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={onClose} disabled={isGenerating}>Cancel</Button>
+              <Button variant="ghost" size="sm" onClick={handleClose} disabled={isGenerating}>Cancel</Button>
               <Button variant="primary" size="sm" disabled={!focus.trim() || isGenerating} onClick={runGenerate}>
                 {isGenerating ? "Generating…" : `Generate ${title.toLowerCase()}`}
               </Button>
@@ -129,24 +164,38 @@ export function DealDocModal({
                   {isGenerating ? "Regenerating…" : "↻ Regenerate"}
                 </Button>
               </div>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={needsInputCount > 0 || isSaving || !draftBody.trim()}
-                onClick={() => {
-                  setSaveErr(null);
-                  startSave(async () => {
-                    try {
-                      await saveDealDoc(dealId, { skill, body: draftBody });
-                      setStep("saved");
-                    } catch (err) {
-                      setSaveErr(err instanceof Error ? err.message : "Failed to save");
-                    }
-                  });
-                }}
-              >
-                {isSaving ? "Saving…" : `Save ${title.toLowerCase()}`}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={isSaving || isGenerating || draft.busy || !draftBody.trim()}
+                  onClick={() => {
+                    void draft.save({ focus, notes, body: draftBody }).then(onClose);
+                  }}
+                  title="Park this for later — finish it from the orange box on the deal"
+                >
+                  {draft.busy ? "Saving…" : "Save draft"}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={needsInputCount > 0 || isSaving || !draftBody.trim()}
+                  onClick={() => {
+                    setSaveErr(null);
+                    startSave(async () => {
+                      try {
+                        await saveDealDoc(dealId, { skill, body: draftBody });
+                        await draft.clear();
+                        setStep("saved");
+                      } catch (err) {
+                        setSaveErr(err instanceof Error ? err.message : "Failed to save");
+                      }
+                    });
+                  }}
+                >
+                  {isSaving ? "Saving…" : `Save ${title.toLowerCase()}`}
+                </Button>
+              </div>
             </div>
           </div>
         ) : (

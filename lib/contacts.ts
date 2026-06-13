@@ -40,6 +40,7 @@ export type CreateContactTxInput = {
   company?: string;
   phone?: string | null;
   industry?: Industry;
+  subIndustry?: string | null; // Tier-2 controlled-vocabulary string (optional)
   source?: string;
   sourceCategory?: LeadSource | null;
   notes?: string | null;
@@ -84,6 +85,7 @@ export async function createContactTx(
       email,
       phone: input.phone?.trim() || null,
       industry,
+      subIndustry: input.subIndustry?.trim() || null,
       source: input.source?.trim() || "Ingest",
       sourceCategory: input.sourceCategory ?? null,
       notes: input.notes?.trim() || null,

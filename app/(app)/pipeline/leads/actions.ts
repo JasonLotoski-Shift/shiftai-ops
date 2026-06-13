@@ -15,11 +15,10 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { generate } from "@/lib/ai";
 import { apolloMatchPerson, normalizeDomain } from "@/lib/apollo";
+import { validateIndustry } from "@/lib/industries";
 import type { Industry } from "@/lib/generated/prisma/enums";
 import type { ProspectLead as ProspectLeadModel } from "@/lib/generated/prisma/client";
 import type { ProspectPerson } from "@/lib/types";
-
-const VALID_INDUSTRIES: Industry[] = ["automotive", "motorsport", "engineering", "construction", "other"];
 
 // ──────────────────────────────────────────────────────────────────────
 // Profile fields an enriched lead carries onto the Deal it becomes, so the
@@ -83,7 +82,7 @@ export async function addToFunnel(
   const email = person.email?.trim();
   if (!email) throw new Error("That person has no email — pick someone with an email to add them as a contact");
 
-  if (!VALID_INDUSTRIES.includes(input.industry as Industry)) throw new Error("Pick a valid industry");
+  if (!validateIndustry(input.industry)) throw new Error("Pick a valid industry");
   const industry = input.industry as Industry;
 
   // Default the lead owner to whoever's signed in; allow an explicit override.
@@ -669,7 +668,7 @@ export async function markContactedLeadReplied(leadId: string): Promise<{ dealId
   const email = person.email?.trim();
   if (!email) throw new Error("That person has no email on record");
 
-  const matchedTag = lead.industryTags.find((t) => VALID_INDUSTRIES.includes(t.toLowerCase() as Industry));
+  const matchedTag = lead.industryTags.find((t) => validateIndustry(t.toLowerCase()));
   const industry: Industry = (matchedTag?.toLowerCase() as Industry) ?? "other";
 
   // The claimer owns the deal; fall back to whoever marks it replied. A stale
@@ -972,7 +971,7 @@ export async function sendColdEmail(leadId: string): Promise<{ dealId: string }>
   if (!email) throw new Error("That person has no email — pick someone with an email to add them as a contact");
 
   // Best-match industry from the lead's free-form tags; fall back to "other".
-  const matchedTag = lead.industryTags.find((t) => VALID_INDUSTRIES.includes(t.toLowerCase() as Industry));
+  const matchedTag = lead.industryTags.find((t) => validateIndustry(t.toLowerCase()));
   const industry: Industry = (matchedTag?.toLowerCase() as Industry) ?? "other";
 
   const partnerLeadId = session.user.partnerId;

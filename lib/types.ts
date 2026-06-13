@@ -3,7 +3,21 @@
  * Keep these flat and explicit. Will mirror the production DB schema.
  */
 
-export type Industry = "automotive" | "motorsport" | "engineering" | "construction" | "other";
+export type Industry =
+  | "automotive"
+  | "motorsport"
+  | "engineering"
+  | "construction"
+  | "architecture"
+  | "real_estate"
+  | "manufacturing"
+  | "heavy_equipment"
+  | "distribution"
+  | "logistics"
+  | "professional_services"
+  | "healthcare"
+  | "beverage"
+  | "other";
 
 export type Partner = {
   id: string;
@@ -22,6 +36,7 @@ export type Contact = {
   phone?: string;
   partnerLeadId: string;
   industry: Industry;
+  subIndustry?: string; // finer than Industry — controlled-vocabulary string
   lastTouchAt: string; // ISO date
   source: string; // free-text "where exactly" note
   sourceCategory?: LeadSource; // structured bucket — color-codes lead cards
@@ -285,7 +300,6 @@ export type Milestone = {
   // Universal parent — any scope FK may be null (firm-level milestone).
   projectId?: string;
   clientId?: string;
-  dealId?: string;
   ownerId?: string; // assigned partner
   title: string;
   dueDate?: string; // optional — undated milestones don't show on the timeline
@@ -349,16 +363,20 @@ export type Task = {
   priority: "high" | "medium" | "low";
   ownerId: string; // partner.id — the owner IS the assignee
   assignedById?: string; // partner.id who assigned it (null = self/firm task)
+  reviewerId?: string; // partner.id asked to review this task's output (optional)
   relatedTo?: string; // contact / client / project name (legacy free-text)
   context?: string; // manual + suggested context; the payload agents read
   // Scope FKs — nullable; firm-wide tasks have neither.
   clientId?: string;
   projectId?: string;
+  dealId?: string; // deal this task hangs off, if any
+  contactId?: string; // contact this task hangs off, if any
   artifactId?: string; // deliverable this task hangs off, if any
   milestoneId?: string; // milestone (epic) this task is a sub-task of, if any
   status?: TaskStatus; // board column (DB-defaulted; optional in the fixture subset)
   category?: WorkCategory; // card colour/tag (DB-defaulted)
   categoryLabel?: string;
+  archivedAt?: string; // ISO date — set when moved to the board's Archive column
   done: boolean; // kept in sync with status === "done"
 };
 
@@ -390,6 +408,25 @@ export type Artifact = {
   projectId?: string;
   dealId?: string;
   createdAt: string;
+};
+
+/* ActionDraft — the editable step-1 output of a Quick Action, saved before it's
+ * run into a finished deliverable. `content` is the editable payload (shape
+ * varies by skill); scope FKs are nullable (one expected at write time). */
+
+export type ActionDraft = {
+  id: string;
+  skill: string; // the generatedFromSkill value
+  content: Record<string, unknown>; // editable step-1 output (Prisma Json)
+  status: string; // "draft" by default
+  createdBy: string; // partner name or "AGENT · CLAUDE"
+  // Scope — exactly one expected at write time
+  clientId?: string;
+  dealId?: string;
+  contactId?: string;
+  projectId?: string;
+  createdAt: string; // ISO date
+  updatedAt: string; // ISO date
 };
 
 /* Dashboard — view B (know) */

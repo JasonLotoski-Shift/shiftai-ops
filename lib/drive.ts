@@ -191,6 +191,20 @@ export function fileIdFromUrl(url: string): string | null {
   return m ? m[1] : null;
 }
 
+// Permanently delete a Drive file (Shared-Drive items skip the trash and are
+// gone for good). Best-effort: a 404 means it's already gone, which we treat as
+// success so a stale DB row can still be cleaned up. Other errors propagate.
+export async function deleteFile(fileId: string): Promise<{ deleted: boolean }> {
+  try {
+    await drive.files.delete({ fileId, supportsAllDrives: true });
+    return { deleted: true };
+  } catch (err: unknown) {
+    const code = (err as { code?: number; status?: number })?.code ?? (err as { status?: number })?.status;
+    if (code === 404) return { deleted: false }; // already gone — not an error
+    throw err;
+  }
+}
+
 // Upload a binary PDF Buffer to a Drive folder (e.g. a rendered invoice). Same
 // shape as uploadFile, but takes a Buffer and fixes the mime to application/pdf.
 export async function uploadPdf(

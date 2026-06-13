@@ -37,6 +37,10 @@ interface DeliveryTimelineProps {
   startDate: string | Date;
   targetEndDate: string | Date;
   markers: TimelineMarker[];
+  // Compact mode (list rows): drops the date heading + kind legend, keeps the
+  // axis, today-marker, dots and hover tooltips. The full detail-page view
+  // omits this prop and renders everything.
+  compact?: boolean;
 }
 
 // ── geometry ───────────────────────────────────────────────────────────
@@ -109,7 +113,7 @@ function placeMarkers(markers: TimelineMarker[], start: number, end: number): { 
   return { placed: sorted, maxStack };
 }
 
-export function DeliveryTimeline({ startDate, targetEndDate, markers }: DeliveryTimelineProps) {
+export function DeliveryTimeline({ startDate, targetEndDate, markers, compact = false }: DeliveryTimelineProps) {
   const start = toTime(startDate);
   const end = toTime(targetEndDate);
   const now = Date.now();
@@ -122,13 +126,15 @@ export function DeliveryTimeline({ startDate, targetEndDate, markers }: Delivery
   const bandHeight = BASE_BAND + maxStack * ROW_HEIGHT;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={compact ? "flex flex-col gap-2" : "flex flex-col gap-4"}>
       {/* Heading row: dates + elapsed */}
-      <div className="flex items-center justify-between">
-        <span className="label">{formatDate(startDate)}</span>
-        <span className="mono text-[11px] text-bone-mute tabular-nums">{elapsed}% elapsed</span>
-        <span className="label">{formatDate(targetEndDate)}</span>
-      </div>
+      {!compact && (
+        <div className="flex items-center justify-between">
+          <span className="label">{formatDate(startDate)}</span>
+          <span className="mono text-[11px] text-bone-mute tabular-nums">{elapsed}% elapsed</span>
+          <span className="label">{formatDate(targetEndDate)}</span>
+        </div>
+      )}
 
       {/* Marker band — markers float above a thin axis line */}
       <div className="relative w-full" style={{ height: bandHeight }}>
@@ -205,26 +211,28 @@ export function DeliveryTimeline({ startDate, targetEndDate, markers }: Delivery
         {/* Marker-kind legend */}
       </div>
 
-      <div className="flex items-center gap-4 flex-wrap">
-        <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
-          <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] border bg-track-gold border-track-gold" />
-          milestone
-        </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
-          <span className="w-[3px] h-3 rounded-[var(--radius-pill)] bg-signal-warming" />
-          installment
-        </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
-          <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] border-2 border-invoice-sent" />
-          invoice sent
-        </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
-          <span className="flex items-center justify-center w-3.5 h-3.5 rounded-[var(--radius-pill)] bg-invoice-paid text-bone">
-            <Check size={9} strokeWidth={2.5} />
+      {!compact && (
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
+            <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] border bg-track-gold border-track-gold" />
+            milestone
           </span>
-          invoice paid
-        </span>
-      </div>
+          <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
+            <span className="w-[3px] h-3 rounded-[var(--radius-pill)] bg-signal-warming" />
+            installment
+          </span>
+          <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
+            <span className="w-2.5 h-2.5 rounded-[var(--radius-pill)] border-2 border-invoice-sent" />
+            invoice sent
+          </span>
+          <span className="flex items-center gap-1.5 text-[11px] text-bone-mute">
+            <span className="flex items-center justify-center w-3.5 h-3.5 rounded-[var(--radius-pill)] bg-invoice-paid text-bone">
+              <Check size={9} strokeWidth={2.5} />
+            </span>
+            invoice paid
+          </span>
+        </div>
+      )}
     </div>
   );
 }

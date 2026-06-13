@@ -7,9 +7,11 @@ import { Button, Label, Input, Textarea, Select, SearchInput } from "@/component
 import { ModalShell } from "@/components/modal-shell";
 import { createDeal } from "@/app/(app)/pipeline/actions";
 import { createContact } from "@/app/(app)/contacts/actions";
-import { industryLabels, stageLabels, stageOrder, leadSourceLabels } from "@/lib/data/seed";
+import { stageLabels, stageOrder, leadSourceLabels } from "@/lib/data/seed";
+import { INDUSTRY_VERTICALS, industryLabels } from "@/lib/industries";
+import { SubIndustrySelect, reconcileSubIndustry } from "@/components/sub-industry-select";
 
-type ContactOption = { id: string; name: string; company: string; industry: string };
+type ContactOption = { id: string; name: string; company: string; industry: string; subIndustry?: string };
 type PartnerOption = { id: string; name: string };
 
 // Add deal/lead — manual funnel entry. A Deal needs a Contact, so you pick an
@@ -66,6 +68,7 @@ function AddDealModal({
   const [stage, setStage] = useState("lead");
   const [value, setValue] = useState("");
   const [industry, setIndustry] = useState("automotive");
+  const [subIndustry, setSubIndustry] = useState("");
   const [closeDate, setCloseDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
@@ -97,17 +100,19 @@ function AddDealModal({
     setContactId(c.id);
     if (!company.trim()) setCompany(c.company);
     setIndustry(c.industry);
+    setSubIndustry(reconcileSubIndustry(c.industry, c.subIndustry ?? ""));
     setError(null);
   }
 
   // A contact just created inline: stash it locally, then auto-select it into
-  // the deal (populating company + industry from it) and collapse the form.
+  // the deal (populating company + industry + sub-industry from it) and collapse.
   function onContactCreated(c: ContactOption) {
     setAdHocContacts((prev) => [c, ...prev]);
     setAddingContact(false);
     setContactId(c.id);
     if (!company.trim()) setCompany(c.company);
     setIndustry(c.industry);
+    setSubIndustry(reconcileSubIndustry(c.industry, c.subIndustry ?? ""));
     setError(null);
   }
 
@@ -126,6 +131,7 @@ function AddDealModal({
           stage,
           valueEstimate: Number(value || 0),
           industry,
+          subIndustry: subIndustry || undefined,
           closeTargetDate: closeDate,
           partnerLeadId,
           notes,
@@ -230,12 +236,26 @@ function AddDealModal({
             </div>
             <div className="flex flex-col gap-2">
               <Label>Industry</Label>
-              <Select value={industry} onChange={(e) => setIndustry(e.target.value)} disabled={isPending}>
-                {Object.entries(industryLabels).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
+              <Select
+                value={industry}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setIndustry(next);
+                  setSubIndustry((cur) => reconcileSubIndustry(next, cur));
+                }}
+                disabled={isPending}
+              >
+                {INDUSTRY_VERTICALS.map((k) => (
+                  <option key={k} value={k}>{industryLabels[k]}</option>
                 ))}
               </Select>
             </div>
+            <SubIndustrySelect
+              vertical={industry}
+              value={subIndustry}
+              onChange={setSubIndustry}
+              disabled={isPending}
+            />
             <div className="flex flex-col gap-2">
               <Label>Target close</Label>
               <Input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} disabled={isPending} />
@@ -298,6 +318,7 @@ function InlineAddContact({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [industry, setIndustry] = useState("automotive");
+  const [subIndustry, setSubIndustry] = useState("");
   const [source, setSource] = useState("");
   const [sourceCategory, setSourceCategory] = useState("intro");
   const [partnerLeadId, setPartnerLeadId] = useState(
@@ -324,13 +345,14 @@ function InlineAddContact({
           email,
           phone,
           industry,
+          subIndustry: subIndustry || undefined,
           source,
           sourceCategory,
           partnerLeadId,
           force,
         });
         if ("id" in res) {
-          onCreated({ id: res.id, name: name.trim(), company: company.trim(), industry });
+          onCreated({ id: res.id, name: name.trim(), company: company.trim(), industry, subIndustry: subIndustry || undefined });
         } else {
           // Possible duplicate — name the match and let the partner add anyway.
           const hit = res.match ?? res.candidates[0];
@@ -376,12 +398,26 @@ function InlineAddContact({
         </div>
         <div className="flex flex-col gap-2">
           <Label>Industry</Label>
-          <Select value={industry} onChange={(e) => setIndustry(e.target.value)} disabled={isPending}>
-            {Object.entries(industryLabels).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
+          <Select
+            value={industry}
+            onChange={(e) => {
+              const next = e.target.value;
+              setIndustry(next);
+              setSubIndustry((cur) => reconcileSubIndustry(next, cur));
+            }}
+            disabled={isPending}
+          >
+            {INDUSTRY_VERTICALS.map((k) => (
+              <option key={k} value={k}>{industryLabels[k]}</option>
             ))}
           </Select>
         </div>
+        <SubIndustrySelect
+          vertical={industry}
+          value={subIndustry}
+          onChange={setSubIndustry}
+          disabled={isPending}
+        />
         <div className="flex flex-col gap-2">
           <Label>Source category</Label>
           <Select value={sourceCategory} onChange={(e) => setSourceCategory(e.target.value)} disabled={isPending}>

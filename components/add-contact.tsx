@@ -6,7 +6,9 @@ import { UserPlus, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { createContact, type DuplicateContactFlag } from "@/app/(app)/contacts/actions";
-import { industryLabels, leadSourceLabels } from "@/lib/data/seed";
+import { leadSourceLabels } from "@/lib/data/seed";
+import { INDUSTRY_VERTICALS, industryLabels } from "@/lib/industries";
+import { SubIndustrySelect, reconcileSubIndustry } from "@/components/sub-industry-select";
 
 type PartnerOption = { id: string; name: string };
 
@@ -60,6 +62,7 @@ function AddContactModal({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [industry, setIndustry] = useState("automotive");
+  const [subIndustry, setSubIndustry] = useState("");
   const [source, setSource] = useState("");
   const [sourceCategory, setSourceCategory] = useState("intro");
   const [notes, setNotes] = useState("");
@@ -87,6 +90,7 @@ function AddContactModal({
           email,
           phone,
           industry,
+          subIndustry: subIndustry || undefined,
           source,
           sourceCategory,
           notes,
@@ -146,14 +150,24 @@ function AddContactModal({
               <Label>Industry</Label>
               <Select
                 value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setIndustry(next);
+                  setSubIndustry((cur) => reconcileSubIndustry(next, cur));
+                }}
                 disabled={isPending}
               >
-                {Object.entries(industryLabels).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
+                {INDUSTRY_VERTICALS.map((k) => (
+                  <option key={k} value={k}>{industryLabels[k]}</option>
                 ))}
               </Select>
             </div>
+            <SubIndustrySelect
+              vertical={industry}
+              value={subIndustry}
+              onChange={setSubIndustry}
+              disabled={isPending}
+            />
             <div className="flex flex-col gap-2">
               <Label>Source category</Label>
               <Select value={sourceCategory} onChange={(e) => setSourceCategory(e.target.value)} disabled={isPending}>

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Label, Badge, Button, Textarea, Input, Avatar } from "@/components/ui";
 import { formatCAD, daysSince, stageAgeTier, type StageAgeTier } from "@/lib/format";
-import { industryLabels, stageOrder, stageLabels } from "@/lib/data/seed";
+import { stageOrder, stageLabels } from "@/lib/data/seed";
+import { industryLabels, INDUSTRY_VERTICALS } from "@/lib/industries";
+import type { Industry } from "@/lib/types";
 import { updateDealStage } from "@/app/(app)/pipeline/actions";
 import { createTask } from "@/app/(app)/tasks/actions";
 import { cn } from "@/lib/cn";
@@ -113,10 +115,44 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Vertical / sub-industry filter chips (refine the board without touching the
+  // drag flow — filtering is purely a render concern over `deals`).
+  const [vertical, setVertical] = useState<Industry | "all">("all");
+  const [sub, setSub] = useState<string | "all">("all");
+
   // Resync when the server component re-renders (after a move revalidates).
   useEffect(() => {
     setDeals(initialDeals);
   }, [initialDeals]);
+
+  const verticalsPresent = useMemo(() => {
+    const seen = new Set(deals.map((d) => d.industry));
+    return INDUSTRY_VERTICALS.filter((v) => seen.has(v));
+  }, [deals]);
+
+  const subsPresent = useMemo(() => {
+    if (vertical === "all") return [];
+    const seen = new Set<string>();
+    for (const d of deals) {
+      if (d.industry === vertical && d.subIndustry) seen.add(d.subIndustry);
+    }
+    return [...seen].sort();
+  }, [deals, vertical]);
+
+  const visibleDeals = useMemo(
+    () =>
+      deals.filter((d) => {
+        if (vertical !== "all" && d.industry !== vertical) return false;
+        if (sub !== "all" && d.subIndustry !== sub) return false;
+        return true;
+      }),
+    [deals, vertical, sub],
+  );
+
+  function pickVertical(v: Industry | "all") {
+    setVertical(v);
+    setSub("all");
+  }
 
   function onDragStart(e: DragEvent, dealId: string) {
     setDraggingId(dealId);
@@ -213,12 +249,39 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
         ))}
       </div>
 
+      {/* Vertical / sub-industry filter chips. */}
+      {verticalsPresent.length > 1 && (
+        <div className="px-8 pt-3 flex flex-col gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="label text-[10px] text-bone-mute mr-1">Industry</span>
+            <FilterChip label="All" active={vertical === "all"} onClick={() => pickVertical("all")} />
+            {verticalsPresent.map((v) => (
+              <FilterChip
+                key={v}
+                label={industryLabels[v]}
+                active={vertical === v}
+                onClick={() => pickVertical(v)}
+              />
+            ))}
+          </div>
+          {subsPresent.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="label text-[10px] text-bone-mute mr-1">Sub</span>
+              <FilterChip label="All" active={sub === "all"} onClick={() => setSub("all")} small />
+              {subsPresent.map((s) => (
+                <FilterChip key={s} label={s} active={sub === s} onClick={() => setSub(s)} small />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex-1 overflow-x-auto px-8 py-6">
         {/* Fixed-width, content-height lanes: empty lanes stay short instead of
             stretching into tall channels. Only the deal cards float. */}
         <div className="flex gap-5 items-start">
           {DROP_STAGES.map((stage) => {
-            const stageDeals = deals.filter((d) => d.stage === stage);
+            const stageDeals = visibleDeals.filter((d) => d.stage === stage);
             const stageValue = stageDeals.reduce((s, d) => s + d.valueEstimate, 0);
             const isOver = dragOverStage === stage;
             return (
@@ -283,8 +346,13 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                             {formatCAD(deal.valueEstimate).replace("CA$", "$").replace(",000", "k")}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
                           <Badge tone="bone">{industryLabels[deal.industry]}</Badge>
+                          {deal.subIndustry && (
+                            <span className="text-[10px] text-bone-mute truncate max-w-[140px]">
+                              {deal.subIndustry}
+                            </span>
+                          )}
                           {tier !== "fresh" && (
                             <span
                               className={cn(
@@ -377,5 +445,34 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
         </div>
       )}
     </>
+  );
+}
+
+// Pill toggle for the board's industry / sub-industry filters.
+function FilterChip({
+  label,
+  active,
+  onClick,
+  small,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  small?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-[var(--radius-pill)] border transition-colors",
+        small ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]",
+        active
+          ? "border-track-gold/40 text-track-gold bg-track-gold-dim/10"
+          : "border-graphite-2 text-bone-mute hover:text-bone-dim",
+      )}
+    >
+      {label}
+    </button>
   );
 }

@@ -23,6 +23,48 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-13",
+    tag: "new",
+    title: "You can delete a document now",
+    detail:
+      "Hover any document on a deal, project or client and a trash icon appears. Click it, confirm once, and the document is removed — including the underlying file in Drive. Deletion is permanent, so the confirm is there on purpose. Any tasks hanging off that deliverable go with it.",
+  },
+  {
+    date: "2026-06-13",
+    tag: "new",
+    title: "Industries got wider — and a sub-industry on every record",
+    detail:
+      "The industry list now covers all the firm's verticals — automotive, motorsport, engineering, construction, architecture, heavy equipment, distribution, logistics, professional services, wineries & beverage, plus real estate, manufacturing and healthcare — with the primary beachheads listed first. Every contact, deal and client also gets a sub-industry (e.g. Dealership Groups under Automotive, Heavy Civil under Construction): pick the vertical and the matching sub-types appear. Contacts, Clients and the pipeline board show the sub-industry next to the industry tag and have quick filter chips to narrow by vertical or sub-type.",
+  },
+  {
+    date: "2026-06-13",
+    tag: "improved",
+    title: "How it works is now a training manual, and the deal process moved inside it",
+    detail:
+      "How it works opens on a new Start here tab: a guided walkthrough of the three phases an engagement runs (Discovery, Build, Run), each one opening to why it matters, what you do, how the tool does its part, and what every record is for. The deal-process track (the racing line from finding a lead to a signed deal) is now a tab in the same page, so the whole picture lives in one place. The separate Deal Process page is retired; its link now lands you here.",
+  },
+  {
+    date: "2026-06-12",
+    tag: "improved",
+    title: "Task Board does a lot more — and moved up the menu",
+    detail:
+      "Task Board now sits right under Dashboard, where you'll reach for it. On the board you can assign a milestone to a partner and promote a loose task into a milestone, tag a task with the deal or contact it belongs to, and delete a task or a milestone (with a confirm first). Drop a task into In Review and you're asked who should review it. Drag is easier — a card now drops anywhere over a column, not just onto another card — and the column headers stay put while the cards scroll. You can also archive a task (it drops off the board after 7 days but stays in the system), the same way milestones already archive.",
+  },
+  {
+    date: "2026-06-12",
+    tag: "improved",
+    title: "Actions show when they last ran — and let you finish a two-step action later",
+    detail:
+      "On a deal, contact, or client, each action in the Actions panel now shows when it last produced something (\"last ran\" with the date, in green) so you can see at a glance what's already been done. For the two-step actions — the ones where you review and edit a draft first, then build the finished piece — you can now save step 1 and come back to it. A saved step shows in orange and reopens with your edits already in place.",
+  },
+  {
+    date: "2026-06-12",
+    tag: "improved",
+    title: "A fuller picture on the Projects page",
+    detail:
+      "The Projects list now shows more on each project: a compact timeline with the next milestones plotted on it, the next milestones spelled out so you know what's coming, and any documents created back at the deal stage (discovery prep, the proposal, the discovery report) carried onto the project — so the work that led into the engagement is right there, not left behind on the deal.",
+  },
+  {
     date: "2026-06-12",
     tag: "improved",
     title: "Discovery questionnaire now reads the whole deal folder — and replaces the old survey",

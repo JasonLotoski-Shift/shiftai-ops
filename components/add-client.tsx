@@ -6,7 +6,8 @@ import { Plus, X, ShieldAlert } from "lucide-react";
 import { Button, Label, Input, Select, SearchInput } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { createClient } from "@/app/(app)/clients/actions";
-import { industryLabels } from "@/lib/data/seed";
+import { INDUSTRY_VERTICALS, industryLabels } from "@/lib/industries";
+import { SubIndustrySelect, reconcileSubIndustry } from "@/components/sub-industry-select";
 
 type ContactOption = { id: string; name: string; company: string; industry: string };
 type PartnerOption = { id: string; name: string };
@@ -59,6 +60,7 @@ function AddClientModal({
   const [contactId, setContactId] = useState("");
   const [company, setCompany] = useState("");
   const [industry, setIndustry] = useState("automotive");
+  const [subIndustry, setSubIndustry] = useState("");
   const [contractValue, setContractValue] = useState("");
   const [contractSignedAt, setContractSignedAt] = useState(() =>
     new Date().toISOString().slice(0, 10),
@@ -90,6 +92,7 @@ function AddClientModal({
     setContactId(c.id);
     if (!company.trim()) setCompany(c.company);
     setIndustry(c.industry);
+    setSubIndustry((cur) => reconcileSubIndustry(c.industry, cur));
     setError(null);
   }
 
@@ -109,6 +112,7 @@ function AddClientModal({
         const { id } = await createClient({
           company,
           industry,
+          subIndustry: subIndustry || undefined,
           revenue,
           contractValue: Number(contractValue || 0),
           contractSignedAt,
@@ -201,12 +205,26 @@ function AddClientModal({
             </div>
             <div className="flex flex-col gap-2">
               <Label>Industry</Label>
-              <Select value={industry} onChange={(e) => setIndustry(e.target.value)} disabled={isPending}>
-                {Object.entries(industryLabels).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
+              <Select
+                value={industry}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setIndustry(next);
+                  setSubIndustry((cur) => reconcileSubIndustry(next, cur));
+                }}
+                disabled={isPending}
+              >
+                {INDUSTRY_VERTICALS.map((k) => (
+                  <option key={k} value={k}>{industryLabels[k]}</option>
                 ))}
               </Select>
             </div>
+            <SubIndustrySelect
+              vertical={industry}
+              value={subIndustry}
+              onChange={setSubIndustry}
+              disabled={isPending}
+            />
             <div className="flex flex-col gap-2">
               <Label>Contract value (CAD)</Label>
               <Input

@@ -17,7 +17,8 @@ import {
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
-import { industryLabels } from "@/lib/data/seed";
+import { INDUSTRY_VERTICALS, industryLabels } from "@/lib/industries";
+import { SubIndustrySelect, reconcileSubIndustry } from "@/components/sub-industry-select";
 import { INGEST_TYPES, type IngestType, type IngestTargetKind } from "@/lib/ingest/types";
 import {
   detectTargets,
@@ -619,6 +620,7 @@ function InlineAddContact({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [industry, setIndustry] = useState("automotive");
+  const [subIndustry, setSubIndustry] = useState("");
   const [source, setSource] = useState("");
   const [notes, setNotes] = useState("");
   const [partnerLeadId, setPartnerLeadId] = useState(currentPartnerId || partners[0]?.id || "");
@@ -652,6 +654,7 @@ function InlineAddContact({
           email: email.trim(),
           phone: phone.trim() || undefined,
           industry,
+          subIndustry: subIndustry || undefined,
           source: source.trim() || undefined,
           notes: notes.trim() || undefined,
           partnerLeadId,
@@ -698,12 +701,28 @@ function InlineAddContact({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>Industry</Label>
-          <Select value={industry} onChange={(e) => setIndustry(e.target.value)} disabled={busy} className="h-8 text-[12px]">
-            {Object.entries(industryLabels).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
+          <Select
+            value={industry}
+            onChange={(e) => {
+              const next = e.target.value;
+              setIndustry(next);
+              setSubIndustry((cur) => reconcileSubIndustry(next, cur));
+            }}
+            disabled={busy}
+            className="h-8 text-[12px]"
+          >
+            {INDUSTRY_VERTICALS.map((k) => (
+              <option key={k} value={k}>{industryLabels[k]}</option>
             ))}
           </Select>
         </div>
+        <SubIndustrySelect
+          vertical={industry}
+          value={subIndustry}
+          onChange={setSubIndustry}
+          disabled={busy}
+          className="h-8 text-[12px]"
+        />
         <div className="flex flex-col gap-1.5">
           <Label>Source</Label>
           <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Referral, event…" className="h-8" disabled={busy} />

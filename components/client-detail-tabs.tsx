@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardBody, Label, Badge, Button, Tabs, Avatar, EmptyState, Stat } from "@/components/ui";
 import { industryLabels } from "@/lib/data/seed";
 import { formatCAD, formatDate } from "@/lib/format";
+import { ArtifactDeleteControl } from "@/components/artifact-delete-control";
 import {
   generateCompanyEnrichment,
   applyCompanyEnrichment,
@@ -679,12 +680,12 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
           const Icon = artifactIcon[ar.type] ?? FileText;
           const isAgent = ar.createdBy.startsWith("AGENT");
           return (
+            <div key={ar.id} className="flex items-stretch group/doc">
             <a
               href={ar.driveUrl}
               target="_blank"
               rel="noreferrer"
-              key={ar.id}
-              className="grid grid-cols-[28px_1fr_180px_100px_20px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors group"
+              className="flex-1 grid grid-cols-[28px_1fr_180px_100px_20px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors group"
             >
               <div className="self-center text-bone-mute group-hover:text-track-gold transition-colors">
                 <Icon size={16} strokeWidth={1.5} />
@@ -725,6 +726,11 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
                 <ExternalLink size={12} strokeWidth={1.5} />
               </div>
             </a>
+            <ArtifactDeleteControl
+              artifactId={ar.id}
+              className="self-center pl-3 pr-4 opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
+            />
+            </div>
           );
         })}
       </Card>

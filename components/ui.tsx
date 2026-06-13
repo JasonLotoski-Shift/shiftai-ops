@@ -109,7 +109,7 @@ export function Label({
    Badge — pill-rounded status chip
    ────────────────────────────────────────────────────────────────────── */
 
-type BadgeTone = "neutral" | "gold" | "steel" | "red" | "bone";
+type BadgeTone = "neutral" | "gold" | "steel" | "red" | "bone" | "green" | "orange";
 
 const badgeTones: Record<BadgeTone, string> = {
   neutral: "bg-graphite text-bone-dim border-graphite-2",
@@ -117,6 +117,11 @@ const badgeTones: Record<BadgeTone, string> = {
   steel: "bg-diagnostic-steel/15 text-diagnostic-steel border-diagnostic-steel/40",
   red: "bg-flag-red/15 text-flag-red border-flag-red/40",
   bone: "bg-bone/10 text-bone border-bone/30",
+  // green = "ran on DATE" run-status; orange = "step 1 of 2 saved" draft state.
+  // Both reuse functional status tokens already in globals.css (signal-fresh /
+  // signal-warming) so they read consistently in dark + light.
+  green: "bg-signal-fresh/15 text-signal-fresh border-signal-fresh/40",
+  orange: "bg-signal-warming/15 text-signal-warming border-signal-warming/40",
 };
 
 export function Badge({

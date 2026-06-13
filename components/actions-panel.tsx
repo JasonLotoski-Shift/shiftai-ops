@@ -29,19 +29,42 @@ export type ActionBox = {
   disabledReason?: string;
   /** Gold-emphasised box for the headline action on this page. */
   gold?: boolean;
+  /** The generatedFromSkill value this box maps to (for run-status lookup). */
+  skill?: string;
+  /** When set, the box shows a GREEN "ran on DATE" line — the last time this
+   *  action produced a real deliverable for this entity. */
+  ranAt?: Date;
+  /** When set, the box shows an ORANGE "step 1 of 2 saved" state — a saved
+   *  ActionDraft is waiting to be finished. Clicking reopens it preloaded. */
+  stepOneSavedAt?: Date;
 };
 
+// Short "Jun 12" style date for the run/saved lines — matches the compact
+// status labels used elsewhere; avoids importing the heavier formatDate here.
+function shortDate(d: Date): string {
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function Box({ action }: { action: ActionBox }) {
-  const { icon: Icon, title, description, disabled, disabledReason, gold } = action;
+  const { icon: Icon, title, description, disabled, disabledReason, gold, ranAt, stepOneSavedAt } = action;
+
+  // Orange (step 1 saved) takes visual priority over green (ran) — a saved draft
+  // is an open loop the partner is mid-way through; surface it loudest.
+  const saved = !disabled && !!stepOneSavedAt;
+  const ran = !disabled && !saved && !!ranAt;
 
   const inner = (
     <>
       <span
         className={cn(
           "w-7 h-7 shrink-0 flex items-center justify-center rounded-[var(--radius-sm)] border",
-          gold
-            ? "bg-track-gold-dim/30 border-track-gold/40 text-track-gold"
-            : "bg-bitumen border-graphite text-bone-mute group-hover:text-track-gold",
+          saved
+            ? "bg-signal-warming/15 border-signal-warming/40 text-signal-warming"
+            : ran
+              ? "bg-signal-fresh/15 border-signal-fresh/40 text-signal-fresh"
+              : gold
+                ? "bg-track-gold-dim/30 border-track-gold/40 text-track-gold"
+                : "bg-bitumen border-graphite text-bone-mute group-hover:text-track-gold",
         )}
       >
         <Icon size={14} strokeWidth={1.5} />
@@ -49,6 +72,15 @@ function Box({ action }: { action: ActionBox }) {
       <span className="min-w-0 flex flex-col gap-0.5">
         <span className="text-[13px] text-bone leading-tight">{title}</span>
         <span className="text-[11px] text-bone-mute leading-snug">{description}</span>
+        {saved ? (
+          <span className="text-[11px] text-signal-warming leading-snug mt-0.5">
+            Step 1 of 2 saved · {shortDate(stepOneSavedAt!)}
+          </span>
+        ) : ran ? (
+          <span className="text-[11px] text-signal-fresh leading-snug mt-0.5">
+            Last ran {shortDate(ranAt!)}
+          </span>
+        ) : null}
       </span>
     </>
   );
@@ -57,7 +89,11 @@ function Box({ action }: { action: ActionBox }) {
     "group flex items-start gap-3 px-3.5 py-3 text-left rounded-[var(--radius)] border transition-colors",
     disabled
       ? "border-graphite/60 opacity-50 cursor-not-allowed"
-      : "border-graphite bg-asphalt hover:border-bone-mute hover:bg-[var(--color-row-hover)]",
+      : saved
+        ? "border-signal-warming/50 bg-signal-warming/5 hover:border-signal-warming hover:bg-signal-warming/10"
+        : ran
+          ? "border-signal-fresh/40 bg-asphalt hover:border-signal-fresh hover:bg-[var(--color-row-hover)]"
+          : "border-graphite bg-asphalt hover:border-bone-mute hover:bg-[var(--color-row-hover)]",
   );
 
   if (action.href && !disabled) {

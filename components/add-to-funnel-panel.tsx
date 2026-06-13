@@ -9,16 +9,27 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Label, Select, Input, Button, Badge } from "@/components/ui";
-import { industryLabels } from "@/lib/data/seed";
+import { INDUSTRY_VERTICALS, industryLabels } from "@/lib/industries";
 import { addToFunnel, declineLead } from "@/app/(app)/pipeline/leads/actions";
 import type { Industry, ProspectLead, ProspectPerson } from "@/lib/types";
 
 // Cheap keyword → Industry heuristic over the lead's free-form industryTags.
+// Ordered most-specific-first: e.g. an "auto-parts distributor" tag should land
+// on distribution before the generic "auto" rule fires.
 const INDUSTRY_KEYWORDS: { match: RegExp; industry: Industry }[] = [
   { match: /motorsport|racing|race|track/i, industry: "motorsport" },
+  { match: /winery|wineries|vineyard|brewery|breweries|distiller|beverage/i, industry: "beverage" },
+  { match: /architect|interior design|urban planning/i, industry: "architecture" },
+  { match: /legal|law firm|insurance|financ|investment|accounting|advisory|consult|marketing|creative/i, industry: "professional_services" },
+  { match: /warehous|freight|trucking|3pl|logistic|supply chain|last-mile|courier/i, industry: "logistics" },
+  { match: /wholesal|distribut/i, industry: "distribution" },
+  { match: /equipment|machinery|heavy equipment|rental fleet/i, industry: "heavy_equipment" },
+  { match: /clinic|medical|dental|veterinar|health|pharma|hospital/i, industry: "healthcare" },
+  { match: /propert|realty|real estate|reit/i, industry: "real_estate" },
   { match: /auto|vehicle|car|mobility|ev\b|dealership/i, industry: "automotive" },
   { match: /construct|build|contractor|infrastructure/i, industry: "construction" },
-  { match: /engineer|machin|fabricat|manufactur|industrial/i, industry: "engineering" },
+  { match: /factory|manufactur/i, industry: "manufacturing" },
+  { match: /engineer|machin|fabricat|industrial/i, industry: "engineering" },
 ];
 
 function guessIndustry(tags: string[]): Industry {
@@ -133,9 +144,9 @@ export function AddToFunnelPanel({
       <div className="flex flex-col gap-1.5">
         <span className="text-[11px] text-bone-mute uppercase tracking-wide">Industry</span>
         <Select value={industry} onChange={(e) => setIndustry(e.target.value as Industry)} disabled={pending}>
-          {Object.entries(industryLabels).map(([k, v]) => (
+          {INDUSTRY_VERTICALS.map((k) => (
             <option key={k} value={k}>
-              {v}
+              {industryLabels[k]}
             </option>
           ))}
         </Select>
