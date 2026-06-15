@@ -1,17 +1,17 @@
 # Ops tool — Business Model v2 plan
 
-**Status:** Planning doc. **Nothing here is applied yet.** Two parts, two gates:
-- **Part A — Positioning / AI-context** (the firm brain + scope skill copy). ⏳ Gated on the **3-of-3 partner vote** (same gate as the firm positioning docs). Apply in lockstep with `../shiftai-firm/planning/business-model-v2-ratification-package.md`.
-- **Part B — Schema + data model** (ProjectType / ProjectPhase / terminology). 🔒 Gated on **Jason's approval of this migration design**. It runs a Postgres migration against **live prod** (`ops.shiftai.partners`, auto-deploys from `main`) — do not execute until Jason signs off here.
+**Status:** Two parts, two gates:
+- **Part A — Positioning / AI-context** (the firm brain + scope skill copy). ✅ **Applied 2026-06-14** to `skills/_firm/context.md` and `skills/scope/SKILL.md`, alongside the firm positioning docs. Section A below is the record of what was applied.
+- **Part B — Schema + data model** (ProjectType / ProjectPhase / terminology). 🔒 **Not applied.** Gated on **Jason's approval of this migration design**. It runs a Postgres migration against **live prod** (`ops.shiftai.partners`, auto-deploys from `main`): do not execute until Jason signs off here.
 
 **Date:** 2026-06-04.
 **Why:** the firm moved to a managed-service model — one-time **build** + monthly **subscription** (the core, replacing the old "retainer = continuation only") + a premium **buy-out**; engagement phase **Run → Operate**; firm keeps a reusable pattern library; client keeps a runnable version of their instance. Canonical model: `../shiftai-firm/planning/business-model-v2.md`.
 
 ---
 
-# Part A — Positioning / AI-context  (⏳ apply after the 3/3 vote)
+# Part A — Positioning / AI-context  (✅ applied 2026-06-14)
 
-These files are the **runtime firm brain** + the proposal-drafting skill. They distill the firm positioning, so they're brand/positioning = unanimous partner vote. The `_firm/context.md` header already says "Edit by PR only — humans approve." Apply with the ratification package.
+These files are the **runtime firm brain** + the proposal-drafting skill. They distill the firm positioning. Applied 2026-06-14 with the firm positioning docs; the edits below are the record of what was applied (rendered to comply with the 13 June writing guardrails: em dashes removed). The `_firm/context.md` header notes "Edit by PR only, humans approve."
 
 ### A1. `skills/_firm/context.md`
 

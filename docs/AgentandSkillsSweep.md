@@ -38,7 +38,7 @@
 
 ## 2. Coverage map
 
-37 items: 30 ops-runtime skills · 2 cc/firm-cc skills · 5 agents. **Audited (rubric v1): 18 pass, 14 pass-with-notes, 0 fail/stale/blocked.** Status column: P = pass, PN = pass-with-notes; agents show readiness. Full scores + open fixes in §2a; per-record detail in §3-5.
+38 items: 30 ops-runtime skills · 3 cc/firm-cc skills · 5 agents. **Audited (rubric v1): 19 pass, 14 pass-with-notes, 0 fail/stale/blocked.** Status column: P = pass, PN = pass-with-notes; agents show readiness. Full scores + open fixes in §2a; per-record detail in §3-5.
 
 | # | Name | Plane | Type | What it does (short) | Audit |
 |---|---|---|---|---|---|
@@ -82,6 +82,7 @@
 | | **- Claude Code skills -** | | | | |
 | 29 | scope (firm) | firm-cc | html | Branded client HTML proposal + pricing | PN |
 | 30 | html-brief-jason | cc | html | General editorial HTML brief (multi-brand) | PN |
+| 33 | website-copy | cc | copy | Public marketing copy for shiftai.partners (repo-local) | P |
 | | **- Agents -** | | | | |
 | A1 | Lead Scout | agent | partial | Discover + enrich + rate prospect leads | partial |
 | A2 | Harvest Engagement | agent | skill-exists, trigger-missing | IP lift on engagement.closed | blocked |
@@ -129,6 +130,7 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 | harvest-engagement | 5·n·5·5·5·5 | PN | ✓ final-summary output contract added (was F 4/5) |
 | scope (firm) | 4·5·5·5·5·5 | PN | ✓ "locked"→"set", "Shift AI Consulting"→"Shift AI Partners", save path → `shiftai-firm/deliverables/` (confirm). "Run" pending vote. Brand is on Edition 06. |
 | html-brief-jason | 5·n·n·5·5·5 | PN | house-style only by design; B/A n/a (multi-brand personal tool) |
+| website-copy | 5·5·5·5·5·5 | P | NEW 2026-06-14: repo-local site-copy skill (shift-ai-site/.claude/skills); born-audited via the pipeline, independent Gate-4 re-check |
 
 **Agents (reviewed, not 6-axis scored):** A1 Lead Scout — strongest design; live discovery gated on Firecrawl + Apollo keys; 240s run may exceed Vercel free-tier. A2 Harvest / A3 Onboard — skills clean, blocked on the unbuilt event bridge (Phase-4 infra); A2 needs an `ipHarvestStatus` re-run guard, A3 needs the `engagementCharterMd` field. A4 Pipeline Hygiene / A5 Status Sync — design-first (no SKILL.md yet); A5's open unknown is the workspace-side status format (couple to A3's scaffold).
 
@@ -387,6 +389,14 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 - **Baseline refs:** **voice · brand only** (general-purpose, multi-brand - NOT audited on Shift-specific brand/persona/bmv2). **Audit:** not-audited · - · -.
 - **Notes:** Out-of-scope drifts to flag, not "fix to Shift": (a) output path `/mnt/user-data/outputs/` is Linux-style - needs a Windows path; (b) presets are JIRAH/listingbox (legacy client brands), by design since this is Jason's general multi-brand tool. Audit only on house-style voice, goal clarity, format, no-hallucination.
 
+#### 33. website-copy · cc (repo-local: shift-ai-site) · copy
+- **Goal:** Write and edit the public marketing copy for shiftai.partners (headlines, heroes, section copy, About + partner bios, case studies in `src/data/projects.ts`, CTAs, titles/meta) on-voice, on-brand, and inside the firm's 6 hard content rules.
+- **Audience:** Jason/Jack edit the site; the copy is read by the firm's buyer (COO/CTO/VP Ops/owner-operator, $25-200M, automotive/motorsport/engineering/construction). **Produces:** site copy returned in chat by section, or written into `src/pages/*.astro` / `src/components/sections/*.astro` / `src/data/projects.ts`.
+- **Where it works:** Claude Code chat in the `shift-ai-site` repo ("write the copy for", "is this on-voice", "rewrite this section", "draft a hero", "write a case study"). **How it works:** detect Mode A (clean/judge supplied copy) vs Mode B (generate); read the binding specs + the page framework; draft against the voice profile; check every claim against the proof library; run the pre-publish checklist.
+- **Inputs:** the page/section + intent (Mode B) or pasted copy (Mode A). **Dependencies:** `shift-ai-site/CLAUDE.md` (authoritative), `DESIGN.md`, `WEBSITE-DIRECTION.md`, `src/data/projects.ts`, plus its own 4 reference files (voice · proof-library · page-frameworks · sitemap). **Does NOT use `_firm/context.md`** (cc plane gets no runtime injection; voice/brand rules carried inline).
+- **Baseline refs:** voice · **brand** · audience · personas · bmv2-vocab. **Audit:** pass · 2026-06-14 · T5 B5 A5 G5 F5 H5.
+- **Notes:** NEW 2026-06-14, born-audited via the pipeline (Gate 0-5), independent Gate-4 re-check. Lives in a **4th skill dir** (`shift-ai-site/.claude/skills/`), co-located with the site it writes for so it versions with the redesign; this dir is OUT of the periodic skill-audit glob unless that list is extended (see §7.7). The pre-revenue editorial law ("say we build, never imply a past delivery"), the [NEEDS INPUT]/[VERIFY] guards, the anonymization + do-not-publish lists, and the open flags (Jay patent count, TONIT figures, Jack on the roster, "the floor") live in `references/proof-library.md`. Pairs with `scope` (client proposals) and `html-brief-jason` (editorial HTML); its description routes those out.
+
 ---
 
 ## 5. Agents
@@ -445,6 +455,7 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 | 2026-06-05 | Full sweep: all 30 skills scored on rubric v1; 5 agents reviewed. Baselines filled (personas + ICP). 7 fixes applied + AGENTLEADPLAN "locked" cleanup. | v1 | 16 pass · 14 pass-with-notes · 0 fail/stale/blocked. H = 5 on every skill. Only open drift is the vote-gated Run→Operate rename. |
 | 2026-06-05 | New skill `discovery-report` authored via the pipeline (Gate 0-5): client-facing Discovery build-plan deck, light mode + client-brand match. | v1 | pass · T5 B5 A5 G5 F5 H5. Gate 6 (wiring) + the brand-capture chain pending. |
 | 2026-06-06 | New skill `sow` authored via the pipeline (Gate 0-5): contract-grade Statement of Work draft, HTML to Google Doc, v2 IP model + escrow, counsel-flagged. | v1 | pass · T5 B(n/a) A5 G5 F5 H5. Gate 6 (wiring + Google-Doc save helper) next. |
+| 2026-06-14 | New skill `website-copy` authored via the pipeline (Gate 0-5): public marketing-copy skill for shiftai.partners, repo-local in `shift-ai-site/.claude/skills` (a 4th skill dir). Independent Gate-4 re-audit. | v1 | pass · T5 B5 A5 G5 F5 H5. Out of the periodic sweep glob unless extended (§7.7). |
 
 ---
 
@@ -458,3 +469,4 @@ Findings that span many skills, or need a partner decision:
 4. **Skill fixes applied 2026-06-05 (this sweep).** proposal-deck (Edition-06 brand block), `scope` (firm) ("locked"→"set", "Shift AI Consulting"→"Shift AI Partners", save path → `shiftai-firm/deliverables/` - **confirm the folder**), cold-outreach ("small" dropped), lead-discovery-firecrawl (output contract), lead-discovery-apollo ("locked"→"withheld"), html-prototype (brand-floor backstop), harvest-engagement (summary contract); AGENTLEADPLAN "locked"→"set".
 5. **`html-brief-jason` portability (low, by design).** Linux output path `/mnt/user-data/outputs/` won't resolve on Windows; presets are legacy JIRAH/listingbox. It's a general multi-brand personal tool - audited on house-style only.
 6. **Agent infrastructure (A2–A5, OPEN).** The event bridge (status-change → agent), the scheduled-agent runtime, and MCP remote transport+auth are unbuilt and block every autonomous agent. A2 needs an `ipHarvestStatus` re-run guard; A3 needs the `engagementCharterMd` field; A4/A5 need a SKILL.md authored via the pipeline (A5's open unknown: the workspace-side status format - couple to A3's scaffold). Decision owner: Jason (Phase 4–5 sequencing).
+7. **`website-copy` skill dir not in the audit glob (low, OPEN).** The new `website-copy` skill lives in `shift-ai-site/.claude/skills/`, a 4th skill dir the periodic `skill-audit` sweep (Process step 1) does not glob (it reads the 3 existing dirs). It was born-audited manually at authoring (Gate 4, pass 2026-06-14) but will not be re-audited automatically when `DESIGN.md` / `shift-ai-site/CLAUDE.md` move. Fix: add `shift-ai-site/.claude/skills/*/SKILL.md` to the skill-audit glob list (`skill-audit/SKILL.md` Process step 1). Decision owner: Jason.

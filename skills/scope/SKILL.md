@@ -16,10 +16,10 @@ A proposal draft in **Markdown**, ready to edit. Use this structure (drop a sect
 1. **Title** — `# Proposal — <Company>` and a one-line subtitle naming the system/outcome.
 2. **What we heard** — the client's situation and the pain, in their terms, drawn from the deal notes and interactions. Specific, not generic.
 3. **What we'll build** — the custom internal system + where AI does real work. Concrete to this business.
-4. **How we'll work** — the three phases: **Discovery → Build → Run**. One short paragraph each, tailored to this engagement.
+4. **How we'll work** — the three phases: **Discovery → Build → Operate**. One short paragraph each, tailored to this engagement. Operate is the ongoing managed service: maintain, improve, add modules.
 5. **What success looks like** — measurable outcomes (hours back, time saved, work removed). Tie to what the client said they measure.
-6. **What you own** — the systems and IP the client keeps. The work compounds.
-7. **Investment & timeline** — fee and dates **only if supplied** (see rules). Otherwise `[NEEDS INPUT]`.
+6. **What's yours, and how we keep it sharp** — the client keeps a runnable version of its own system; the monthly subscription maintains and improves it; a buy-out to full ownership is available. The firm keeps the reusable platform/library (patterns, never the client's data).
+7. **Investment & timeline** — the one-time build fee **and** the monthly subscription, with dates, **only if supplied** (see rules). Otherwise `[NEEDS INPUT]`. Buy-out is quoted per deal in the SOW, never in the proposal.
 8. **Next step** — one clear action (e.g. a scoping call to confirm Discovery).
 
 Return only the proposal Markdown — no preamble, no "here's a draft," no commentary after.
@@ -27,7 +27,7 @@ Return only the proposal Markdown — no preamble, no "here's a draft," no comme
 ## Rules for this task
 
 - **Specifics over adjectives.** Pull real details from the context — the named pain, the industry, the contact's words. A proposal that could be sent to any company is a failure.
-- **Phases are the method, plainly.** No branded methodology name ("The Shift Method"). Just Discovery / Build / Run, described for this client.
+- **Phases are the method, plainly.** No branded methodology name ("The Shift Method"). Just Discovery / Build / Operate, described for this client.
 - **Measured outcomes.** Frame success in hours/time/work returned, not vague value. If the context gives a metric the client cares about, build success measures around it.
 - **Right length.** Tight and skimmable — a busy operator reads it in a few minutes. Prose + short lists, not walls of text.
 - **No hourly billing.** The firm bills on fixed engagement fee/value, never hours.
