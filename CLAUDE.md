@@ -4,7 +4,7 @@
 >
 > **This CLAUDE.md inherits from `Shift/CLAUDE.md`** (firm-wide invariants — read both).
 
-> ⏳ **Business Model v2 pivot in flight (2026-06-04).** The firm moved to a managed-service model (build + monthly **subscription** + **buy-out**; engagement phase **Run → Operate**). Two changes are planned but **not yet applied**: (A) the AI firm-brain + scope-skill copy (`skills/_firm/context.md`, `skills/scope/SKILL.md`) — gated on a 3-of-3 partner vote; (B) the `ProjectType` / `ProjectPhase` enums + terminology — a **live-prod Postgres migration that needs Jason's approval before running**. Both are specced in [docs/business-model-v2-plan.md](docs/business-model-v2-plan.md). Canonical model: `../shiftai-firm/planning/business-model-v2.md`. Until then, the old engagement vocabulary (`monthly_project`, `run`, "systems they own and run") is intentionally still live.
+> ⏳ **Business Model v2 + 13 June strategy adopted (2026-06-14).** The firm runs a managed service (build + monthly **subscription** + **buy-out**; engagement phase **Run → Operate**; sell governance as the security layer, never an owned model; multi-buyer acquisition on a 36 to 48 month window). **Part A applied:** the AI firm-brain + scope-skill copy (`skills/_firm/context.md`, `skills/scope/SKILL.md`). **Part B NOT applied:** the `ProjectType` / `ProjectPhase` enums + terminology, a **live-prod Postgres migration that needs Jason's approval before running**. The DB still stores `monthly_project` and `run`; the UI vocabulary follows once that migration runs, so old enum literals are intentionally still live. Both parts are specced in [docs/business-model-v2-plan.md](docs/business-model-v2-plan.md). Canonical model: `../shiftai-firm/planning/business-model-v2.md`; strategy: `../shiftai-firm/planning/strategy-2026-06-13.md`.
 
 ---
 
@@ -17,7 +17,7 @@
 | DB | **Supabase Postgres** | Project `tqtpglnbotaguiirodou`, region `us-west-2` (Oregon) |
 | ORM | **Prisma 7** | Schema in `prisma/schema.prisma`; client generated to `lib/generated/prisma/` (gitignored). New convention: import as `<Name>Model` (e.g. `import type { PartnerModel as Partner }`) |
 | Adapter | **`@prisma/adapter-pg`** | Required by Prisma 7 for direct Postgres; singleton client in `lib/prisma.ts` |
-| Hosting | **Vercel** (free tier on plan "SHIFT AI CONSULTING" — stale team name, will rename) | Auto-deploys from `main`; custom domain `ops.shiftai.partners` |
+| Hosting | **Vercel** (Pro plan "SHIFT AI CONSULTING" — stale team name, will rename) | Auto-deploys from `main`; custom domain `ops.shiftai.partners`. Pro = `maxDuration` up to 300s (Claude-heavy routes set it; e.g. `/ingest`, prototype build) |
 | Styling | **Tailwind v4** + custom design tokens | Brand palette in `app/globals.css` (Bitumen / Bone / Track Gold / etc.) |
 
 ---

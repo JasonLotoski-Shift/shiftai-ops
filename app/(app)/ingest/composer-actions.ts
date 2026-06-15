@@ -284,7 +284,12 @@ export async function extractUnified(input: {
     ? `## Content\n${content}\n\n## Email block\n${input.emailBlock.trim()}`
     : `## Content\n${content}`;
 
-  const raw = await generate({ skill: "ingest", context, intake, maxTokens: 3500, images: images.length ? images : undefined });
+  // 8000 (not 3500): a large multi-record document (e.g. a full SOP walkthrough)
+  // emits a long structured proposal. At 3500 the JSON truncated mid-structure,
+  // parseUnified couldn't JSON.parse it, and the throw surfaced in prod as the
+  // redacted "Server Components render" error. The headroom for the longer call
+  // comes from the ingest route's maxDuration (Vercel Pro) — see page.tsx.
+  const raw = await generate({ skill: "ingest", context, intake, maxTokens: 8000, images: images.length ? images : undefined });
   const parsed = parseUnified(raw);
 
   // Build the set of valid open-task ids (project targets only) for reassign validation.

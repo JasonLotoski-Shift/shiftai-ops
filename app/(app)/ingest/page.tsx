@@ -5,6 +5,12 @@ import { IngestView, type ProposalProp } from "@/components/ingest-view";
 import type { ExtractedProposal } from "@/app/(app)/ingest/actions";
 import { isUnifiedProposal, type IngestTargetKind, type UnifiedProposal } from "@/lib/ingest/types";
 
+// The extractUnified server action (composer-actions.ts) runs under this route.
+// A large document's ingest Claude call takes ~55-120s; the default 60s function
+// ceiling killed it. Lift it to 300s (active on our Vercel Pro plan — Hobby would
+// clamp this to 60s). Matches the prototype-engine fix.
+export const maxDuration = 300;
+
 const TARGET_KINDS: IngestTargetKind[] = ["contact", "client", "project", "deal"];
 
 export default async function IngestPage({

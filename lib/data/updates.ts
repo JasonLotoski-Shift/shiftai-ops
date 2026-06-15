@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-15",
+    tag: "fixed",
+    title: "Ingesting a long document works now",
+    detail:
+      "Dropping a big, detailed file into the ingest composer (like a full SOP walkthrough) used to fail with a vague error. The extraction was getting cut short on long documents. It now has the room to read the whole thing.",
+  },
+  {
     date: "2026-06-13",
     tag: "new",
     title: "You can delete a document now",
