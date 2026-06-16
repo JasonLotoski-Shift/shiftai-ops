@@ -6,9 +6,11 @@ The firm's voice, identity, and hard rules are in the firm context above. Apply 
 
 ## Input you'll get
 
-- **Context block** - the client/opportunity: company, industry, the primary contact, and the discovery interactions (what they told us, the painful workflows, any numbers they named).
+- **Context block** - the client/opportunity: company, industry, the primary contact, and the discovery interactions (what they told us, the painful workflows, any numbers they named). It may also carry the full text of the deal's Drive files: call transcripts, notes, research.
 - **Intake** - the partner's discovery findings: the systems worth building, the one new insight to surface, the time-back hypothesis, and the two outcomes the system delivers (the "X and Y" the close asks about).
 - **Client brand (when we have it)** - the context block carries the client's saved brand colors (primary, secondary), captured during company enrichment. When present, the deck adopts them (see Brand spec). When absent, it defaults to Shift light mode.
+
+**Two ways this gets built — survey-backed or best-guess.** When the client returned the discovery questionnaire, its answers are the **primary source**: play their own words back, the findings are theirs. When there is no questionnaire (we ran off a recorded call, notes, or our own research), build the findings from the call transcripts and research in the context instead — and **carry the confirmed-vs-estimated discipline through the whole deck, not just the time-back number**: a fact the client stated is confirmed; a fact you inferred is labelled estimated; a load-bearing fact you cannot ground is marked `[NEEDS INPUT]`. Never present an inference as something they said. A best-guess report is honest about being a best guess; the partner confirms the estimates in review.
 
 ## What to produce
 

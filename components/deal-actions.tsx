@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, FileText, Pencil, ClipboardList, CalendarPlus, FlaskConical, Presentation, FileQuestion, type LucideIcon } from "lucide-react";
+import { Mail, FileText, FileSearch, Pencil, ClipboardList, CalendarPlus, FlaskConical, Presentation, FileQuestion, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
@@ -12,6 +12,7 @@ import { DealDocModal, type DealDocSkill } from "@/components/deal-doc-modal";
 import { DraftEmailModal } from "@/components/draft-email-modal";
 import { ProposalEngineModal } from "@/components/proposal-engine-modal";
 import { DiscoveryQuestionnaireModal } from "@/components/discovery-questionnaire-modal";
+import { DiscoveryReportDealModal } from "@/components/discovery-report-deal-modal";
 import type {
   DealModel as Deal,
   PartnerModel as Partner,
@@ -101,6 +102,7 @@ export function DealActionsPanel({
   contact,
   hasPrototype = false,
   surveyUrl,
+  surveyResponded = false,
   ranAt = {},
   savedAt = {},
 }: {
@@ -111,6 +113,9 @@ export function DealActionsPanel({
   hasPrototype?: boolean;
   /** Latest sent discovery-questionnaire URL — injected into the follow-up email. */
   surveyUrl?: string;
+  /** Whether a completed questionnaire backs the deal — drives the discovery
+   *  report modal's copy (answers-primary vs best-guess-from-call). */
+  surveyResponded?: boolean;
   /** box key → last run date (green "last ran" state). */
   ranAt?: Record<string, Date | undefined>;
   /** box key → saved step-1 draft date (orange "step 1 of 2 saved" state). */
@@ -121,6 +126,7 @@ export function DealActionsPanel({
   const [emailOpen, setEmailOpen] = useState(false);
   const [engineMode, setEngineMode] = useState<"prototype" | "deck" | null>(null);
   const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   // Which boxes are being reopened from a saved draft (preload + jump to editor).
   const [reopen, setReopen] = useState<Record<string, boolean>>({});
 
@@ -164,6 +170,16 @@ export function DealActionsPanel({
       description: "Generate a client-specific Tally form to send after the call.",
       onClick: openReopen("questionnaire", () => setQuestionnaireOpen(true)),
       ...status("questionnaire"),
+    },
+    {
+      key: "discovery-report",
+      icon: FileSearch,
+      title: "Discovery report",
+      description: surveyResponded
+        ? "Client-facing report from the questionnaire answers."
+        : "Client-facing report from the call, notes + research (no survey needed).",
+      onClick: openReopen("discovery-report", () => setReportOpen(true)),
+      ...status("discovery-report"),
     },
     ...(contact
       ? [
@@ -277,6 +293,19 @@ export function DealActionsPanel({
           onClose={() => {
             setQuestionnaireOpen(false);
             setReopen((r) => ({ ...r, questionnaire: false }));
+          }}
+        />
+      )}
+
+      {reportOpen && (
+        <DiscoveryReportDealModal
+          dealId={deal.id}
+          company={deal.company}
+          surveyResponded={surveyResponded}
+          reopenDraft={!!reopen["discovery-report"]}
+          onClose={() => {
+            setReportOpen(false);
+            setReopen((r) => ({ ...r, "discovery-report": false }));
           }}
         />
       )}

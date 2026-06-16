@@ -102,6 +102,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   const actionRanAt: Record<string, Date | undefined> = {
     "discovery-prep": ranAt["discovery-prep"],
     questionnaire: surveyRaw?.createdAt,
+    "discovery-report": ranAt["discovery-report"],
     "book-meeting": ranAt["book-meeting"],
     "draft-proposal": ranAt["scope"],
     "build-prototype": ranAt["html-prototype"],
@@ -110,6 +111,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   const actionSavedAt: Record<string, Date | undefined> = {
     "discovery-prep": savedAt["discovery-prep"],
     questionnaire: savedAt["discovery-questionnaire"],
+    "discovery-report": savedAt["discovery-report"],
     "draft-proposal": savedAt["scope"],
     "book-meeting": savedAt["book-meeting"],
   };
@@ -168,6 +170,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           contact={contact}
           hasPrototype={hasPrototype}
           surveyUrl={surveyUrl}
+          surveyResponded={surveyRaw?.status === "responded"}
           ranAt={actionRanAt}
           savedAt={actionSavedAt}
         />

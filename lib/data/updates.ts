@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-15",
+    tag: "new",
+    title: "Build a discovery report any time — no questionnaire required",
+    detail:
+      "The discovery report is now its own button on a deal, alongside Discovery prep and the questionnaire. If the client filled out the questionnaire, it builds from their answers. If they didn't — you ran off a recorded call, your notes, or research — it reads the whole deal Drive folder (transcripts, notes, files) and builds a best guess instead. Anything it infers is labelled estimated, and you review the draft before it goes anywhere.",
+  },
+  {
+    date: "2026-06-15",
     tag: "fixed",
     title: "Ingesting a long document works now",
     detail:

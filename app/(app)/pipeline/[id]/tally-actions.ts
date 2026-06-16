@@ -21,7 +21,6 @@ import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { buildDealContext } from "@/lib/deal-context";
 import { loadDealDriveFiles } from "@/lib/deal-drive-context";
-import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import { createTallyForm, parseQuestions, type SurveyQuestion } from "@/lib/tally";
 import type { ArtifactType } from "@/lib/generated/prisma/enums";
 
@@ -130,8 +129,12 @@ function renderAnswersForContext(answers: unknown): string {
     .join("\n");
 }
 
-/** Build the client-facing Discovery Report for a DEAL (prospect), seeded from
- *  the returned questionnaire answers + the partner's framing. Read-only. */
+/** Build the client-facing Discovery Report for a DEAL (prospect). The
+ *  questionnaire answers are the PRIMARY source when the client has filled the
+ *  form in — but they're optional: a call (Fireflies transcript), uploaded notes,
+ *  and our own research carry the report on their own when there's no survey yet.
+ *  Reads the whole deal Drive folder for that grounding (full transcripts/docs),
+ *  on top of the Prisma context + the partner's framing. Read-only. */
 export async function generateDiscoveryReportForDeal(
   dealId: string,
   input: { findings?: string; timeBack?: string; outcomes?: string },
@@ -146,27 +149,42 @@ export async function generateDiscoveryReportForDeal(
     select: { answers: true },
   });
 
-  const fullContext = survey?.answers
-    ? `${context}\n\n## Discovery questionnaire responses (from the client)\n${renderAnswersForContext(survey.answers)}`
-    : context;
+  // Read the WHOLE deal Drive folder (call transcripts, notes, research, docs +
+  // screenshots → vision) so the report grounds in what was actually said, not
+  // just the one-line interaction summaries in the Prisma context. This is what
+  // makes the no-questionnaire path strong; it also enriches the survey path with
+  // the full call. Best-effort — a Drive hiccup degrades to record data only.
+  const driveCtx = await loadDealDriveFiles(dealId);
+
+  const parts = [context];
+  if (survey?.answers) {
+    parts.push(`## Discovery questionnaire responses (from the client — primary source)\n${renderAnswersForContext(survey.answers)}`);
+  }
+  if (driveCtx.text) {
+    parts.push(`## Files from the deal's Drive folder (call transcripts, notes, research, docs)\n${driveCtx.text}`);
+  }
+  const fullContext = parts.join("\n\n");
+
+  // The default findings instruction adapts to what we have: lean on the client's
+  // own answers when present, else build the findings from the call + research and
+  // be explicit about what's inferred (the skill marks confirmed vs estimated).
+  const findingsDefault = survey?.answers
+    ? "(Use the questionnaire responses above as the findings — pull the pains, systems, and numbers from their own answers.)"
+    : "(No questionnaire back yet — build the findings from the call transcripts, notes, and research in the context above. Label anything you infer as estimated, mark missing load-bearing facts [NEEDS INPUT], and never invent a number, quote, or system.)";
 
   const intake = [
     "## Discovery findings",
-    input.findings?.trim() || "(Use the questionnaire responses above as the findings — pull the pains, systems, and numbers from their own answers.)",
+    input.findings?.trim() || findingsDefault,
     `Time-back target: ${input.timeBack?.trim() || "[NEEDS INPUT: time-back target]"}`,
     `The two outcomes the close confirms (X and Y): ${input.outcomes?.trim() || "[NEEDS INPUT: the two outcomes]"}`,
   ].join("\n");
-
-  // Screenshots the prospect shared via Ingest become visual evidence of their
-  // current tools/workflows — pass them to vision alongside the written context.
-  const images = await loadScreenshotImages({ dealId });
 
   const body = await generate({
     skill: "discovery-report",
     context: fullContext,
     intake,
     maxTokens: 10000,
-    images: images.length ? images : undefined,
+    images: driveCtx.images.length ? driveCtx.images : undefined,
   });
   return { body: body.trim() };
 }

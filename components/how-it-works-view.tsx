@@ -907,8 +907,8 @@ const flows: Flow[] = [
     title: "Work a deal through the stages",
     blurb: "Each stage from Discovery Call to Proposal has a one-click draft, reviewed before it leaves.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "On the deal header: Discovery prep · Discovery questionnaire · Follow-up email · Book meeting · Draft proposal" },
-      { tone: "claude", kind: "Claude", label: "Drafts from the deal's history — internal prep, a follow-up, or a proposal. The questionnaire goes deeper: it reads every file in the deal's Drive folder (transcripts, notes) and becomes a live Tally form whose answers land back on the deal" },
+      { tone: "trigger", kind: "You do", label: "On the deal header: Discovery prep · Discovery questionnaire · Discovery report · Follow-up email · Book meeting · Draft proposal" },
+      { tone: "claude", kind: "Claude", label: "Drafts from the deal's history — internal prep, a follow-up, or a proposal. The questionnaire goes deeper: it reads every file in the deal's Drive folder (transcripts, notes) and becomes a live Tally form whose answers land back on the deal. The discovery report (below) is its own one-click draft too" },
       { tone: "review", kind: "You review", label: "Edit freely; [NEEDS INPUT] blocks save until you fill real facts in" },
       { tone: "write", kind: "Saved", label: "Filed to Drive + an Artifact on the deal (a sent email also logs an interaction)" },
     ],
@@ -927,12 +927,12 @@ const flows: Flow[] = [
   {
     icon: <Presentation size={16} strokeWidth={1.5} />,
     title: "Draft a discovery report",
-    blurb: "After discovery, a client-facing deck that plays back the findings, lays out the build as an idea, and confirms the value. Rendered in the client's brand colors when we have them.",
+    blurb: "After discovery, a client-facing deck that plays back the findings, lays out the build as an idea, and confirms the value. Works from the questionnaire answers when they're in, or from the call and your research when they're not. Rendered in the client's brand colors when we have them.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Client → Discovery report · give the findings, the time-back number, and the two outcomes" },
-      { tone: "claude", kind: "Claude", label: "Builds a light-mode HTML deck: Shift type + layout, the client's accent colors; no pricing (that's the proposal)" },
-      { tone: "review", kind: "You review", label: "Preview in the browser, edit the HTML; [NEEDS INPUT] blocks save until the number + outcomes are real" },
-      { tone: "write", kind: "Saved", label: "Filed to Drive as a .html + an Artifact on the client" },
+      { tone: "trigger", kind: "You do", label: "On a deal or a client → Discovery report · add the time-back number and the two outcomes (and any framing)" },
+      { tone: "claude", kind: "Claude", label: "Uses the questionnaire answers when present; otherwise reads the deal's whole Drive folder (call transcripts, notes, research) for a best-guess grounded in what was actually said. Builds a light-mode HTML deck: Shift type + layout, the client's accent colors; no pricing (that's the proposal)" },
+      { tone: "review", kind: "You review", label: "Preview in the browser, edit the HTML; anything inferred is labelled estimated and [NEEDS INPUT] blocks save until the number + outcomes are real" },
+      { tone: "write", kind: "Saved", label: "Filed to Drive as a .html + an Artifact on the deal (or client)" },
     ],
   },
   {

@@ -17,11 +17,16 @@ export function DiscoveryReportDealModal({
   dealId,
   company,
   reopenDraft = false,
+  surveyResponded = true,
   onClose,
 }: {
   dealId: string;
   company: string;
   reopenDraft?: boolean;
+  /** Whether a completed questionnaire backs this report. true → built from the
+   *  client's answers (primary). false → best-guess from the call + research, so
+   *  the intake copy tells the partner what it's actually building from. */
+  surveyResponded?: boolean;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"in" | "edit" | "done">("in");
@@ -107,7 +112,11 @@ export function DiscoveryReportDealModal({
 
         {step === "in" && (
           <div className="px-5 py-5 flex flex-col gap-4">
-            <p className="text-[12px] text-bone-dim leading-snug">Built from the questionnaire answers. Add your framing — leave blank to let the answers carry it. Fill in the time-back and the two outcomes the close confirms (or mark them in the draft).</p>
+            <p className="text-[12px] text-bone-dim leading-snug">
+              {surveyResponded
+                ? "Built from the questionnaire answers. Add your framing — leave blank to let the answers carry it. Fill in the time-back and the two outcomes the close confirms (or mark them in the draft)."
+                : "No questionnaire back yet — this builds from the call, your notes, and any research in the deal's Drive folder. Add your framing to steer it, and fill in the time-back and the two outcomes (anything you can't confirm gets marked in the draft, never guessed)."}
+            </p>
             <div className="flex flex-col gap-2">
               <Label>Findings / your framing (optional)</Label>
               <Textarea rows={3} placeholder="The system worth building, the one new insight to surface, anything the answers don't say." value={findings} onChange={(e) => setFindings(e.target.value)} disabled={busy} />
