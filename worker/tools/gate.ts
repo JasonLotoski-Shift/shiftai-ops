@@ -16,9 +16,38 @@ export type GateRecord = {
   remainingIssues: string[];
   satisfied: boolean;
   stop: boolean;
+  // The HTML + screenshot the agent was looking at when it scored this round
+  // (from Eyes). Used by the loop to persist each round to Storage + the DB.
+  screenshotPath: string | null;
+  htmlPath: string | null;
 };
 
-export function createGateServer(opts: { maxIterations: number; threshold: number }) {
+// Rubric weights — must sum to 1. Tuned so the prototype is judged first as a
+// believable DEMO: the key interaction actually working (interactivity) and matching
+// what was discussed (fidelity) carry the most, design is close behind because the
+// output is client-facing, and structure is the table-stakes baseline.
+const WEIGHTS = {
+  structure: 0.2,
+  fidelity: 0.3,
+  design: 0.25,
+  interactivity: 0.25,
+} as const;
+
+// Floors that gate "satisfied" independently of the weighted overall. A high
+// average must not paper over a fatal weakness: a demo whose key interaction is
+// broken, or that ignores the brief, is not done however polished it looks.
+// Every dimension must clear DIMENSION_FLOOR, and the two demo-critical dimensions
+// must clear the higher CRITICAL_FLOOR, before the gate will STOP on quality.
+const DIMENSION_FLOOR = 60;
+const CRITICAL_FLOOR = 75; // applies to interactivity + fidelity
+
+export function createGateServer(opts: {
+  maxIterations: number;
+  threshold: number;
+  // Optional: what the agent is currently looking at (Eyes' last screenshot/HTML),
+  // captured onto each record so the loop can persist the round afterwards.
+  currentArtifacts?: () => { screenshotPath: string | null; htmlPath: string | null };
+}) {
   const history: GateRecord[] = [];
 
   const server = createSdkMcpServer({
@@ -62,13 +91,28 @@ export function createGateServer(opts: { maxIterations: number; threshold: numbe
         async (args) => {
           const round = history.length + 1;
           const overall = Math.round(
-            args.structure * 0.25 +
-              args.fidelity * 0.3 +
-              args.design * 0.3 +
-              args.interactivity * 0.15
+            args.structure * WEIGHTS.structure +
+              args.fidelity * WEIGHTS.fidelity +
+              args.design * WEIGHTS.design +
+              args.interactivity * WEIGHTS.interactivity
           );
-          const satisfied = overall >= opts.threshold;
+
+          // Identify any floor failures — these block "satisfied" even at a high overall.
+          const floorFailures: string[] = [];
+          if (args.interactivity < CRITICAL_FLOOR)
+            floorFailures.push(`interactivity ${args.interactivity} < ${CRITICAL_FLOOR} (the key interaction must actually work)`);
+          if (args.fidelity < CRITICAL_FLOOR)
+            floorFailures.push(`fidelity ${args.fidelity} < ${CRITICAL_FLOOR} (it must match the brief)`);
+          if (args.structure < DIMENSION_FLOOR)
+            floorFailures.push(`structure ${args.structure} < ${DIMENSION_FLOOR}`);
+          if (args.design < DIMENSION_FLOOR)
+            floorFailures.push(`design ${args.design} < ${DIMENSION_FLOOR}`);
+
+          const satisfied = overall >= opts.threshold && floorFailures.length === 0;
+          // The round cap is the HARD backstop — it stops the loop regardless of quality.
           const stop = satisfied || round >= opts.maxIterations;
+
+          const artifacts = opts.currentArtifacts?.() ?? { screenshotPath: null, htmlPath: null };
 
           history.push({
             round,
@@ -81,13 +125,18 @@ export function createGateServer(opts: { maxIterations: number; threshold: numbe
             remainingIssues: args.remaining_issues ?? [],
             satisfied,
             stop,
+            screenshotPath: artifacts.screenshotPath,
+            htmlPath: artifacts.htmlPath,
           });
 
           let verdict: string;
           if (stop && satisfied) {
-            verdict = `STOP. Overall ${overall} >= ${opts.threshold}. The prototype is good enough. Take one final screenshot to confirm, ensure no [NEEDS INPUT] markers or banned words remain, then finish without further edits.`;
+            verdict = `STOP. Overall ${overall} >= ${opts.threshold} and every dimension clears its floor. The prototype is good enough. Take one final screenshot to confirm, ensure no [NEEDS INPUT] markers or banned words remain, then finish without further edits.`;
           } else if (stop) {
             verdict = `STOP. You have reached the round cap (${round}/${opts.maxIterations}). Make no further edits. Leave prototype.html in its best current state and finish.`;
+          } else if (floorFailures.length > 0) {
+            // Overall may even clear the threshold, but a critical weakness remains.
+            verdict = `CONTINUE. Round ${round}/${opts.maxIterations}, overall ${overall}. Not done despite the average — fix these first: ${floorFailures.join("; ")}. Edit prototype.html, screenshot again, then score again.`;
           } else {
             verdict = `CONTINUE. Round ${round}/${opts.maxIterations}, overall ${overall} (need ${opts.threshold}). Address the remaining issues, edit prototype.html, screenshot again, then score again.`;
           }

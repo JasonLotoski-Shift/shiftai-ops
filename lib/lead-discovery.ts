@@ -482,6 +482,12 @@ export async function runDiscovery(opts: {
           console.error(`[lead-discovery] scrape failed for ${domain}:`, err);
         }
 
+        // Firecrawl genuinely contributed iff the scrape returned signal text.
+        // Drives the foundBy label below (apollo+firecrawl vs apollo-only) so the
+        // UI stops mislabeling enriched leads as Apollo-only.
+        const firecrawlHit = signals.trim().length > 0;
+        const foundBy = firecrawlHit ? ["apollo", "firecrawl"] : ["apollo"];
+
         // c) Find people scoped to the domain + personas.
         let people: ApolloPerson[] = [];
         try {
@@ -606,7 +612,7 @@ export async function runDiscovery(opts: {
               data: {
                 ...data,
                 domain,
-                foundBy: ["apollo"],
+                foundBy,
                 origin: "discovery",
                 createdBy: "AGENT · CLAUDE",
                 generatedFromSkill: "lead-discovery",
@@ -616,8 +622,13 @@ export async function runDiscovery(opts: {
             else ghost++;
           } else {
             // Re-admit update: bumps updatedAt (the "one look per optimization"
-            // guard). NEVER touch origin / reviewedBy / createdAt.
-            await prisma.prospectLead.update({ where: { domain }, data });
+            // guard). NEVER touch origin / reviewedBy / createdAt. Only stamp
+            // foundBy when this pass actually got firecrawl signals, so a transient
+            // scrape miss never downgrades a previously firecrawl-enriched lead.
+            await prisma.prospectLead.update({
+              where: { domain },
+              data: firecrawlHit ? { ...data, foundBy } : data,
+            });
             if (passes) rescued++;
             else rejudged++;
           }

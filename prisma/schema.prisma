@@ -595,6 +595,7 @@ model Deal {
   contactLinks ContactLink[]
   tasks      Task[]
   actionDrafts ActionDraft[]
+  prototypeRuns PrototypeRun[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -706,6 +707,7 @@ model Client {
   discoverySurveys DiscoverySurvey[]
   contactLinks ContactLink[]
   actionDrafts ActionDraft[]
+  prototypeRuns PrototypeRun[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1915,4 +1917,78 @@ model OpsEvent {
   @@index([ts])
   @@index([kind, ts])
   @@index([kind, status, ts])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Prototype builder (Phase B) — the autonomous Agent SDK worker (worker/) writes
+// one PrototypeRun per build and one PrototypeIteration per build⇄critique round.
+// Scope FKs to Deal/Client are nullable (the loose-coupling convention Artifact
+// uses) so a run can be anchored to whichever the kickoff knew about. Big blobs
+// (HTML, screenshots) live in Supabase Storage; only their URLs are stored here —
+// never blobs in Postgres. The worker writes these rows DIRECTLY via lib/prisma
+// (it is plain Node, not Next — no server action / revalidatePath).
+// ──────────────────────────────────────────────────────────────────────
+enum PrototypeRunStatus {
+  running
+  done
+  error
+}
+
+model PrototypeRun {
+  id     String             @id @default(cuid())
+  status PrototypeRunStatus @default(running)
+
+  // What was built — the brief's client name + industry, denormalized so a run is
+  // legible without the originating Deal/Client (which may be null for dev runs).
+  clientName String
+  industry   String?
+
+  // The SDK session for this run (resume / audit). Null until the loop starts.
+  sessionId String?
+  model     String?
+
+  // Outcome rollup, filled when the loop finishes.
+  rounds       Int     @default(0)
+  finalScore   Int? // the last round's overall (0–100)
+  finalHtmlUrl String? // Supabase Storage URL of the final prototype.html
+  error        String? // truncated message when status = error
+
+  createdBy String @default("AGENT · CLAUDE")
+
+  // Loose scope links — exactly one expected at kickoff, both nullable.
+  deal     Deal?   @relation(fields: [dealId], references: [id])
+  dealId   String?
+  client   Client? @relation(fields: [clientId], references: [id])
+  clientId String?
+
+  iterations PrototypeIteration[]
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([dealId, startedAt])
+  @@index([clientId, startedAt])
+  @@index([status, startedAt])
+}
+
+model PrototypeIteration {
+  id    String       @id @default(cuid())
+  run   PrototypeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId String
+
+  round         Int
+  htmlUrl       String? // Supabase Storage URL of this round's HTML snapshot
+  screenshotUrl String? // Supabase Storage URL of this round's screenshot
+  critique      String? // the round's self-critique (gate summary + open issues)
+  score         Int? // this round's overall (0–100)
+
+  // The gate sub-scores for this round, kept for the run timeline / tuning.
+  structure     Int?
+  fidelity      Int?
+  design        Int?
+  interactivity Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([runId, round])
 }

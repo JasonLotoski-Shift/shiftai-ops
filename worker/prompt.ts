@@ -16,12 +16,21 @@ const LOOP_PROTOCOL = `
 
 You build the prototype as ONE self-contained file named \`prototype.html\` in your working
 directory, then improve it by LOOKING at your own work and critiquing it, round after round,
-until it is good enough. You have three tools beyond Write/Read/Edit:
+until it is good enough. You have these tools beyond Write/Read/Edit:
 
 - \`mcp__eyes__screenshot\` — renders the current \`prototype.html\` in a real headless browser at
   1440px and returns an image of the page so you can SEE it. Call it after every change.
 - \`mcp__gate__score\` — you submit honest 0–100 sub-scores; it returns the round number and tells
   you to STOP or CONTINUE. The gate enforces a hard cap on rounds.
+- \`mcp__library__list_projects\` / \`mcp__library__get_project\` — the firm's library of past
+  prototypes. \`get_project\` returns a project's overview, reuse notes, and screenshots of its
+  finished UI so you can SEE proven work. Borrow structure, layout patterns, and copy ideas;
+  never copy another client's data.
+
+Before you write the first version: call \`mcp__library__list_projects\`, and if a past project is
+close to this brief's shape (same kind of board, same interaction), \`get_project\` it and study its
+screenshots. Lift what works — don't reinvent a layout the firm already proved. If the library is
+empty or unavailable, just proceed from the brief.
 
 Each round:
 1. Write or edit \`prototype.html\` (Write/Edit). It must obey the "Build HTML prototype" rules
