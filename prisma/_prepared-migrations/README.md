@@ -27,6 +27,17 @@ Apply in numeric order — later steps assume earlier ones:
 | 005 | `005_task_milestone_on_delete_setnull.sql` | Task→Milestone FK = `ON DELETE SET NULL` | no (likely no-op) |
 | 006 | `006_action_draft.sql` | Creates the `ActionDraft` table | no |
 
+## 007 — prototype builder (separate, independent changeset)
+
+`007_prototype_run_iteration.sql` is **not part of the 001–006 batch.** It adds two
+new tables (`PrototypeRun`, `PrototypeIteration`) + the `PrototypeRunStatus` enum for
+the Phase B prototype-builder worker (`worker/`). Purely additive, depends on nothing
+in 001–006, and applies on its own. The schema edits are already in
+`prisma/schema.prisma` and the client is regenerated. Apply with
+`npx prisma migrate dev --name add_prototype_run_iteration` (emits exactly 007's SQL,
+since 001–006 are already applied) or paste the file into the Supabase SQL editor.
+**Still needs Jason's approval — the shared Supabase is prod.**
+
 ## How to apply (recommended path)
 
 The clean way is to let Prisma generate the migration from the edited schema and

@@ -36,6 +36,10 @@ export async function closeEyes(): Promise<void> {
  */
 export function createEyesServer(runDir: string) {
   let round = 0;
+  // The files written for the most recent screenshot. The gate reads these at
+  // score time so each round's persisted row points at the right HTML + image.
+  let lastImagePath: string | null = null;
+  let lastHtmlPath: string | null = null;
 
   const server = createSdkMcpServer({
     name: "eyes",
@@ -87,10 +91,13 @@ export function createEyesServer(runDir: string) {
             const buf = await page.screenshot({ fullPage: true, type: "jpeg", quality: 85 });
             const outImg = path.join(runDir, `round-${round}.jpg`);
             fs.writeFileSync(outImg, buf);
+            lastImagePath = outImg;
+            const outHtml = path.join(runDir, `round-${round}.html`);
             try {
-              fs.copyFileSync(file, path.join(runDir, `round-${round}.html`));
+              fs.copyFileSync(file, outHtml);
+              lastHtmlPath = outHtml;
             } catch {
-              /* ignore */
+              lastHtmlPath = null;
             }
 
             return {
@@ -110,5 +117,11 @@ export function createEyesServer(runDir: string) {
     ],
   });
 
-  return { server, getRound: () => round };
+  return {
+    server,
+    getRound: () => round,
+    // The HTML + screenshot files from the most recent screenshot call — used by
+    // the gate to tag each score with the artifacts the agent was looking at.
+    getLastArtifacts: () => ({ screenshotPath: lastImagePath, htmlPath: lastHtmlPath }),
+  };
 }
