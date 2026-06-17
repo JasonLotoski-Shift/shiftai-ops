@@ -1,6 +1,8 @@
 # Prototype-Builder Worker (Claude Agent SDK)
 
-> **Status: Phase A (local proof) — scaffold + Eyes + Gate + the build⇄critique loop run locally.**
+> **Status: Phase A proven — the build⇄critique loop runs end to end locally.** First local run
+> (HVAC dispatch brief, Sonnet 4.6): self-score 77 → the agent saw a real CSS flex-height bug in
+> its own screenshot, fixed it over several rounds → 86, halted at the gate. 39 turns, ~$3.26.
 > Phases B–D (Drive library, DB persistence, Home UI, Railway deploy) are not built yet. See
 > [What's next](#whats-next).
 
@@ -84,8 +86,16 @@ for every iteration, so you can watch it improve.
 - **MCP tools must set `alwaysLoad: true`** on the server, or the agent's first move is a `ToolSearch`
   to find them (they get deferred). With only two tools, always-load them.
 - **Permissions:** headless loop uses `permissionMode: 'acceptEdits'` + a `canUseTool` allowlist
-  (Write/Edit + the two MCP tools + ToolSearch). Do **not** use `bypassPermissions` — the auto-mode
-  classifier blocks it and it's unsafe. The allowlist means no prompt (no hang) and nothing off-list runs.
+  (Write/Edit + the two MCP tools + ToolSearch) **and** `disallowedTools` hard-blocking
+  Bash/WebFetch/WebSearch/Task/etc. Under `acceptEdits`, read-only built-ins (Bash `pwd`/`ls`) can
+  slip past `canUseTool`, so the explicit `disallowedTools` block is what actually keeps them out.
+  Do **not** use `bypassPermissions` — the auto-mode classifier blocks it and it's unsafe.
+- **Tell the agent the exact write path.** With only `cwd` set, the agent guessed an absolute path
+  and wrote `prototype.html` to the repo root on its first turn. The prompt now passes the exact
+  absolute `runDir/prototype.html` path; Eyes reads the same path. Keep them in sync.
+- **Gate cap is soft; maxTurns/maxBudgetUsd are the hard stops.** The agent may take many
+  screenshot/edit cycles between `gate.score` calls, so the round cap counts scores, not edits. The
+  real backstops are `maxTurns` (80) and `maxBudgetUsd` ($8).
 - **Vision image size:** Eyes uses `deviceScaleFactor: 1` + JPEG q85 to stay under the vision size cap.
   Tool-result image block shape is `{ type:'image', data, mimeType }` (no `source` wrapper — that's
   only for streaming *input*).

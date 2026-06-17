@@ -69,7 +69,8 @@ export async function runBuild(input: BuildBrief, runId?: string): Promise<Build
     "PROTOTYPE BRIEF:",
     input.brief,
     "",
-    'Write the prototype to a file named "prototype.html" in your working directory. Begin now: write the first version, screenshot it, critique it honestly, score it, and keep improving until the gate tells you to stop.',
+    `Write the prototype to this EXACT file path (this is your working directory): ${path.join(runDir, config.prototypeFile)}`,
+    "Begin now: write the first version, call mcp__eyes__screenshot to see it, critique it honestly, score it with mcp__gate__score, and keep improving until the gate tells you to stop. Do not write files anywhere else.",
   ].join("\n");
 
   try {
@@ -81,6 +82,9 @@ export async function runBuild(input: BuildBrief, runId?: string): Promise<Build
         model: config.model,
         mcpServers: { eyes: eyes.server, gate: gate.server },
         allowedTools: ALLOWED_TOOLS,
+        // Hard-block tools the loop never needs. Under acceptEdits, read-only built-ins like
+        // Bash can otherwise slip past canUseTool; disallowedTools is an explicit block.
+        disallowedTools: ["Bash", "WebFetch", "WebSearch", "Task", "Agent", "NotebookEdit", "KillShell"],
         // Auto-accept the agent's own file edits; route every other tool call through
         // canUseTool, which allows only the loop's tools and denies the rest (no prompt, no hang).
         permissionMode: "acceptEdits",
