@@ -39,3 +39,6 @@ yarn-error.log*
 next-env.d.ts
 
 /lib/generated/prisma
+
+# Prototype worker run artifacts (per-run HTML + screenshots)
+/worker/.runs/
