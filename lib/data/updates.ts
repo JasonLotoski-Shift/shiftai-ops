@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-17",
+    tag: "new",
+    title: "The firm's architecture map is now a tab",
+    detail:
+      "Architecture (in the sidebar, under Other) opens the whole firm on one canvas — every zone, who owns what, and the rules that hold it together. Click any box with a ＋ to open it and drill in; click a connection to jump to its other end. Same map from the strategy work, now living inside the tool.",
+  },
+  {
     date: "2026-06-15",
     tag: "new",
     title: "Build a discovery report any time — no questionnaire required",

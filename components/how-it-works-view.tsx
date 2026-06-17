@@ -689,6 +689,20 @@ function HowItsBuilt() {
           change.
         </p>
       </section>
+
+      {/* The architecture map */}
+      <section className="flex flex-col gap-4">
+        <SectionTitle eyebrow="See the whole thing" title="The architecture map." />
+        <p className="text-[14px] text-bone-dim leading-relaxed">
+          Everything above — the data model, the four channels, where Claude shows up — is also a
+          live map you can open. The <span className="text-bone">Architecture</span> tab (in the
+          sidebar, under Other) puts the whole firm on one canvas: every zone, who owns each part
+          (gold = Shift owns the IP, steel = the client owns it, grey = bought-in), and the rules
+          that keep one client&apos;s data from ever reaching another. Click any box with a{" "}
+          <span className="mono text-bone">＋</span> to open it and drill in; click a connection to
+          jump to its other end.
+        </p>
+      </section>
     </div>
   );
 }

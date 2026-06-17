@@ -14,6 +14,7 @@ import {
   Settings,
   Bot,
   BookOpen,
+  Network,
   CheckSquare,
   MessageSquare,
   Import,
@@ -64,6 +65,7 @@ const firm: NavItem[] = [
 const other: NavItem[] = [
   { href: "/whats-new", label: "What's new", icon: Sparkles },
   { href: "/how-it-works", label: "How it works", icon: BookOpen },
+  { href: "/architecture", label: "Architecture", icon: Network },
   { href: "/agents", label: "Agents & MCPs", icon: Bot },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
