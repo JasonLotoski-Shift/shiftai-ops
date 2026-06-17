@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import type { Source } from '../lib/types'
 import { ownerColor, ownerLabel } from '../lib/tokens'
 import { byId, childrenOf, ancestorsOf, connsOf, isContainer } from '../model'
 import { useMapActions } from '../lib/actions'
+import { useNotes, relTime } from '../lib/notes'
 
 interface Props {
   selectedId: string | null
@@ -183,6 +185,75 @@ export function InfoPanel({ selectedId, open, onClose }: Props) {
       )}
 
       {node.note && <p className="sp-note">{node.note}</p>}
+
+      <NotesSection nodeId={node.id} />
     </aside>
+  )
+}
+
+// Team notes for one card. A thread anyone can add to; anyone can delete any
+// note. Optimistic via the NotesContext — the list updates the moment the
+// server action resolves, without re-rendering the page or resetting the map.
+function NotesSection({ nodeId }: { nodeId: string }) {
+  const { notesByNode, addNote, deleteNote, busy } = useNotes()
+  const [draft, setDraft] = useState('')
+  const notes = notesByNode[nodeId] ?? []
+
+  const submit = async () => {
+    const body = draft.trim()
+    if (!body || busy) return
+    setDraft('')
+    await addNote(nodeId, body)
+  }
+
+  return (
+    <div className="sp-block sp-notes-block">
+      <div className="sp-label">Team notes · {notes.length}</div>
+
+      {notes.length > 0 ? (
+        <div className="sp-notes">
+          {notes.map((n) => (
+            <div key={n.id} className="sp-note-item">
+              <div className="sp-note-head">
+                <span className="sp-note-author">{n.authorName}</span>
+                <span className="sp-note-time">{relTime(n.createdAt)}</span>
+                <button
+                  className="sp-note-del"
+                  title="Delete note"
+                  disabled={busy}
+                  onClick={() => deleteNote(nodeId, n.id)}
+                >
+                  ×
+                </button>
+              </div>
+              <p className="sp-note-body">{n.body}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="sp-note-empty">No notes yet — add the first.</p>
+      )}
+
+      <textarea
+        className="sp-note-input"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="Add a note for the team…"
+        rows={2}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault()
+            void submit()
+          }
+        }}
+      />
+      <button
+        className="sp-note-add"
+        disabled={busy || draft.trim().length === 0}
+        onClick={() => void submit()}
+      >
+        {busy ? 'Saving…' : 'Add note'}
+      </button>
+    </div>
   )
 }

@@ -4,6 +4,7 @@ import type { RFNode } from '../lib/types'
 import { ownerColor } from '../lib/tokens'
 import { FloatHandles } from './handles'
 import { useMapActions } from '../lib/actions'
+import { NoteBadge } from './NoteBadge'
 
 // Data-store node — Drives, databases, the library, the vault.
 function StoreNodeImpl({ id, data, selected }: NodeProps<RFNode>) {
@@ -30,6 +31,7 @@ function StoreNodeImpl({ id, data, selected }: NodeProps<RFNode>) {
         <span className="node-title">{data.title}</span>
         {data.isNew && <span className="tag tag-new">NEW</span>}
         {data.revised && <span className="tag tag-rev">REVISED</span>}
+        <NoteBadge n={data.noteCount} />
       </div>
       {data.subtitle && <div className="node-sub">{data.subtitle}</div>}
       {data.expandable && (

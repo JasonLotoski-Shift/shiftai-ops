@@ -4,6 +4,7 @@ import type { RFNode } from '../lib/types'
 import { ownerColor } from '../lib/tokens'
 import { FloatHandles } from './handles'
 import { useMapActions } from '../lib/actions'
+import { NoteBadge } from './NoteBadge'
 
 // A governed point — a person or a rule clears it. The harvest gate, the tier
 // engine, the sanitization gate, the security gateway, the review gate.
@@ -33,6 +34,7 @@ function GateNodeImpl({ id, data, selected }: NodeProps<RFNode>) {
         <div className="node-head">
           <span className="node-title">{data.title}</span>
           {data.isNew && <span className="tag tag-new">NEW</span>}
+          <NoteBadge n={data.noteCount} />
         </div>
         {data.subtitle && <div className="node-sub">{data.subtitle}</div>}
       </div>

@@ -700,7 +700,8 @@ function HowItsBuilt() {
           (gold = Shift owns the IP, steel = the client owns it, grey = bought-in), and the rules
           that keep one client&apos;s data from ever reaching another. Click any box with a{" "}
           <span className="mono text-bone">＋</span> to open it and drill in; click a connection to
-          jump to its other end.
+          jump to its other end. Every card also has a <span className="text-bone">Team notes</span>{" "}
+          section, so anyone can leave context for the rest of the firm right on the map.
         </p>
       </section>
     </div>

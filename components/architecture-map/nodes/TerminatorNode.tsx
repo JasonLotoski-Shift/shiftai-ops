@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react'
 import type { RFNode } from '../lib/types'
 import { ownerColor } from '../lib/tokens'
 import { FloatHandles } from './handles'
+import { NoteBadge } from './NoteBadge'
 
 // Terminator node — an external endpoint, bought not owned. Pill-shaped.
 function TerminatorNodeImpl({ data, selected }: NodeProps<RFNode>) {
@@ -23,6 +24,7 @@ function TerminatorNodeImpl({ data, selected }: NodeProps<RFNode>) {
       <FloatHandles />
       <div className="node-head">
         <span className="node-title">{data.title}</span>
+        <NoteBadge n={data.noteCount} />
       </div>
       {data.subtitle && <div className="node-sub">{data.subtitle}</div>}
     </div>

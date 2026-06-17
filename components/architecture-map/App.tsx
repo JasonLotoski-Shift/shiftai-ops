@@ -9,6 +9,15 @@ import { Map } from './Map'
 import { MapActionsContext, type MapActions } from './lib/actions'
 import { computeVisible } from './lib/graph'
 import { roots, isContainer, ancestorsOf, byId } from './model'
+import {
+  NotesContext,
+  type ArchitectureNoteDTO,
+  type NotesApi,
+} from './lib/notes'
+import {
+  addArchitectureNote,
+  deleteArchitectureNote,
+} from '@/app/(app)/architecture/actions'
 // Stylesheet imported last so it overrides React Flow's base styles (which are
 // imported inside Map.tsx). Every rule is scoped under .arch-map — see index.css.
 import './index.css'
@@ -22,7 +31,11 @@ function initialState(): { open: Set<string>; selected: string | null } {
   return { open: new Set(), selected: null }
 }
 
-export default function App() {
+export default function App({
+  initialNotes = {},
+}: {
+  initialNotes?: Record<string, ArchitectureNoteDTO[]>
+}) {
   const init = useMemo(initialState, [])
   const [open, setOpen] = useState<Set<string>>(init.open)
   const [selectedId, setSelectedId] = useState<string | null>(init.selected)
@@ -95,49 +108,87 @@ export default function App() {
 
   const reset = useCallback(() => bumpFocus(null), [bumpFocus])
 
+  // ── Team notes — server-backed, kept in local state so adding or removing a
+  // note never re-runs the server component (which would reset the map view).
+  const [notesByNode, setNotesByNode] = useState(initialNotes)
+  const [notesBusy, setNotesBusy] = useState(false)
+
+  const addNote = useCallback(async (nodeId: string, body: string) => {
+    setNotesBusy(true)
+    try {
+      const dto = await addArchitectureNote(nodeId, body)
+      setNotesByNode((prev) => ({
+        ...prev,
+        [nodeId]: [...(prev[nodeId] ?? []), dto],
+      }))
+    } finally {
+      setNotesBusy(false)
+    }
+  }, [])
+
+  const deleteNote = useCallback(async (nodeId: string, id: string) => {
+    setNotesBusy(true)
+    try {
+      await deleteArchitectureNote(id)
+      setNotesByNode((prev) => ({
+        ...prev,
+        [nodeId]: (prev[nodeId] ?? []).filter((n) => n.id !== id),
+      }))
+    } finally {
+      setNotesBusy(false)
+    }
+  }, [])
+
+  const notesApi = useMemo<NotesApi>(
+    () => ({ notesByNode, addNote, deleteNote, busy: notesBusy }),
+    [notesByNode, addNote, deleteNote, notesBusy],
+  )
+
   return (
     <MapActionsContext.Provider value={actions}>
-      <div className="arch-map">
-        <Header />
+      <NotesContext.Provider value={notesApi}>
+        <div className="arch-map">
+          <Header />
 
-        <div className="subbar">
-          <div className="subbar-left">
-            <div className="view-meta">
-              <span className="view-eyebrow">Systems architecture</span>
-              <span className="view-title">The whole firm, one map</span>
+          <div className="subbar">
+            <div className="subbar-left">
+              <div className="view-meta">
+                <span className="view-eyebrow">Systems architecture</span>
+                <span className="view-title">The whole firm, one map</span>
+              </div>
             </div>
-          </div>
-          <Toolbar
-            search={search}
-            onSearch={setSearch}
-            valveOnly={valveOnly}
-            onToggleValve={() => setValveOnly((v) => !v)}
-            onExpandZones={expandZones}
-            onCollapseAll={collapseAll}
-            onReset={reset}
-            anyOpen={open.size > 0}
-          />
-        </div>
-
-        <div className="canvas">
-          <div className="flow-wrap">
-            <Map
-              open={open}
-              visible={visible}
-              selectedId={selectedId}
+            <Toolbar
               search={search}
+              onSearch={setSearch}
               valveOnly={valveOnly}
-              focus={focus}
+              onToggleValve={() => setValveOnly((v) => !v)}
+              onExpandZones={expandZones}
+              onCollapseAll={collapseAll}
+              onReset={reset}
+              anyOpen={open.size > 0}
             />
-            <Legend />
           </div>
-          <InfoPanel
-            selectedId={selectedId}
-            open={open}
-            onClose={() => setSelectedId(null)}
-          />
+
+          <div className="canvas">
+            <div className="flow-wrap">
+              <Map
+                open={open}
+                visible={visible}
+                selectedId={selectedId}
+                search={search}
+                valveOnly={valveOnly}
+                focus={focus}
+              />
+              <Legend />
+            </div>
+            <InfoPanel
+              selectedId={selectedId}
+              open={open}
+              onClose={() => setSelectedId(null)}
+            />
+          </div>
         </div>
-      </div>
+      </NotesContext.Provider>
     </MapActionsContext.Provider>
   )
 }

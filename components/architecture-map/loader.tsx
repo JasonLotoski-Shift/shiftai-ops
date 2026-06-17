@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { ArchitectureNoteDTO } from "./lib/notes";
 
 // The map reads window.location at init and React Flow measures the DOM to lay
 // out, so it must render client-side only — no SSR. A dynamic import with
@@ -15,6 +16,10 @@ const ArchitectureMap = dynamic(() => import("./App"), {
   ),
 });
 
-export function ArchitectureMapLoader() {
-  return <ArchitectureMap />;
+export function ArchitectureMapLoader({
+  initialNotes,
+}: {
+  initialNotes: Record<string, ArchitectureNoteDTO[]>;
+}) {
+  return <ArchitectureMap initialNotes={initialNotes} />;
 }

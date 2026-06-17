@@ -392,6 +392,9 @@ model Partner {
   messagesAuthored   Message[]
   originations       Origination[]
 
+  // Team notes left on architecture-map cards (the /architecture tab).
+  architectureNotes  ArchitectureNote[]
+
   // Gmail ingest — per-partner OAuth connection + incremental poll cursors.
   gmailAuth        PartnerGmailAuth?
   ingestSyncStates IngestSyncState[]
@@ -1846,6 +1849,25 @@ model AuditLog {
 
   @@index([ts])
   @@index([targetType, targetId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ArchitectureNote — team notes left on a node of the architecture map
+// (the /architecture tab). `nodeId` is the map node's slug; it is a loose
+// string, NOT an FK, because the nodes live in code
+// (components/architecture-map/model), not the DB — matching the codebase's
+// loose-coupling convention (Activity.link, matched*Id). Every note is
+// authored by a signed-in partner; any partner can delete any note.
+// ──────────────────────────────────────────────────────────────────────
+model ArchitectureNote {
+  id        String   @id @default(cuid())
+  nodeId    String
+  body      String
+  author    Partner  @relation(fields: [authorId], references: [id])
+  authorId  String
+  createdAt DateTime @default(now())
+
+  @@index([nodeId, createdAt])
 }
 
 // Operational telemetry — every Claude call, cron run, ingest, integration

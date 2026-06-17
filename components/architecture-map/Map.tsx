@@ -20,6 +20,7 @@ import { nodeTypes } from './nodes'
 import { edgeTypes } from './edges'
 import { C, ownerColor, edgeColor } from './lib/tokens'
 import { useMapActions } from './lib/actions'
+import { useNotes } from './lib/notes'
 
 interface Props {
   open: Set<string>
@@ -33,6 +34,7 @@ interface Props {
 function FlowCanvas({ open, visible, selectedId, search, valveOnly, focus }: Props) {
   const rf = useReactFlow()
   const actions = useMapActions()
+  const { notesByNode } = useNotes()
 
   const openKey = useMemo(() => [...open].sort().join(','), [open])
 
@@ -62,10 +64,15 @@ function FlowCanvas({ open, visible, selectedId, search, valveOnly, focus }: Pro
       return {
         ...n,
         selected: n.id === selectedId,
-        data: { ...n.data, dimmed: dimByValve || dimBySearch, matched },
+        data: {
+          ...n.data,
+          dimmed: dimByValve || dimBySearch,
+          matched,
+          noteCount: notesByNode[n.id]?.length ?? 0,
+        },
       }
     })
-  }, [baseNodes, q, valveOnly, valveNodes, selectedId])
+  }, [baseNodes, q, valveOnly, valveNodes, selectedId, notesByNode])
 
   const edges = useMemo<RFEdge[]>(() => {
     const matchedNode = (id: string) => {

@@ -352,6 +352,11 @@
   color: var(--muted);
   border: 1px solid var(--graphite);
 }
+.tag-note {
+  font-family: var(--font-mono);
+  color: var(--steel);
+  border: 1px solid rgba(110, 140, 156, 0.45);
+}
 
 /* chips */
 .node-chips,
@@ -1187,4 +1192,101 @@
   .header-cue {
     display: none;
   }
+}
+
+/* ============ TEAM NOTES (info panel) ============ */
+.sp-notes-block {
+  border-top: 1px solid var(--graphite);
+  padding-top: 16px;
+}
+.sp-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.sp-note-item {
+  background: var(--asphalt2);
+  border: 1px solid var(--graphite);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.sp-note-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.sp-note-author {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bone);
+}
+.sp-note-time {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--muted);
+}
+.sp-note-del {
+  margin-left: auto;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.sp-note-del:hover:not(:disabled) {
+  color: var(--red-soft);
+}
+.sp-note-del:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.sp-note-body {
+  font-size: 12.5px;
+  color: #d8d4cb;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sp-note-empty {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.sp-note-input {
+  width: 100%;
+  background: var(--asphalt2);
+  border: 1px solid var(--graphite);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--bone);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.45;
+  resize: vertical;
+  outline: none;
+}
+.sp-note-input:focus {
+  border-color: var(--muted2);
+}
+.sp-note-input::placeholder {
+  color: var(--muted2);
+}
+.sp-note-add {
+  margin-top: 8px;
+  width: 100%;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--bitumen);
+  background: var(--gold);
+  border-radius: 8px;
+  padding: 8px 14px;
+  transition: filter 0.18s, opacity 0.18s;
+}
+.sp-note-add:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.sp-note-add:disabled {
+  opacity: 0.45;
+  cursor: default;
 }

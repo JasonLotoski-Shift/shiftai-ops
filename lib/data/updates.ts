@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-17",
     tag: "new",
+    title: "Leave team notes on any architecture card",
+    detail:
+      "Open a card in the Architecture map and the panel now has a Team notes section — add a note, see who wrote it and when, and delete any note. Cards that have notes show a small count, so you can see where the conversation is at a glance. Notes are shared across the whole team.",
+  },
+  {
+    date: "2026-06-17",
+    tag: "new",
     title: "The firm's architecture map is now a tab",
     detail:
       "Architecture (in the sidebar, under Other) opens the whole firm on one canvas — every zone, who owns what, and the rules that hold it together. Click any box with a ＋ to open it and drill in; click a connection to jump to its other end. Same map from the strategy work, now living inside the tool.",

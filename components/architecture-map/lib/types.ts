@@ -113,6 +113,7 @@ export type RFNodeData = Entity & {
   depth?: number // distance from root, for subtle styling
   dimmed?: boolean
   matched?: boolean
+  noteCount?: number // team notes on this card — drives the head badge
   [key: string]: unknown
 }
 
