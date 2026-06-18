@@ -47,7 +47,7 @@ const ALLOWED_TOOLS = [
   "Edit",
   "MultiEdit",
   "ToolSearch",
-  "mcp__eyes__screenshot",
+  "mcp__eyes__*",
   "mcp__gate__score",
   "mcp__library__*",
 ];
@@ -65,7 +65,7 @@ const canUseTool: CanUseTool = async (toolName, input) => {
   if (toolAllowed(toolName)) return { behavior: "allow", updatedInput: input };
   return {
     behavior: "deny",
-    message: `Tool ${toolName} is not allowed in the prototype build loop. Use Write/Edit, mcp__eyes__screenshot, mcp__gate__score, and mcp__library__* only.`,
+    message: `Tool ${toolName} is not allowed in the prototype build loop. Use Write/Edit, mcp__eyes__screenshot, mcp__eyes__interact, mcp__gate__score, and mcp__library__* only.`,
   };
 };
 

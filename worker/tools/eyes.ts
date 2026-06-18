@@ -114,6 +114,57 @@ export function createEyesServer(runDir: string) {
           }
         }
       ),
+      tool(
+        "interact",
+        "Drive REAL clicks/typing in your current prototype.html (headless browser) to VERIFY the key interaction works in the DOM — not just how it looks. Give the exact CSS selectors from the markup you wrote. Returns which steps hit/missed plus an after-screenshot. Use it each round to confirm the interaction before you score.",
+        {
+          steps: z
+            .array(
+              z.object({
+                action: z.enum(["click", "fill", "hover", "press"]),
+                selector: z.string().describe("CSS selector (or, for press, the key e.g. 'Enter')"),
+                value: z.string().optional().describe("text for fill; key for press"),
+              }),
+            )
+            .describe("ordered interaction steps"),
+          note: z.string().optional(),
+        },
+        async (args) => {
+          const file = path.join(runDir, "prototype.html");
+          if (!fs.existsSync(file)) {
+            return { content: [{ type: "text", text: "No prototype.html yet — write it first." }], isError: true };
+          }
+          const browser = await getBrowser();
+          const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+          const results: string[] = [];
+          try {
+            await page.goto("file:///" + file.replace(/\\/g, "/"), { waitUntil: "networkidle" });
+            try { await page.evaluate(() => (document as any).fonts?.ready); } catch { /* ignore */ }
+            for (const [i, s] of args.steps.entries()) {
+              try {
+                if (s.action === "click") await page.click(s.selector, { timeout: 3000 });
+                else if (s.action === "hover") await page.hover(s.selector, { timeout: 3000 });
+                else if (s.action === "fill") await page.fill(s.selector, s.value ?? "", { timeout: 3000 });
+                else if (s.action === "press") await page.press(s.selector || "body", s.value ?? "Enter", { timeout: 3000 });
+                results.push(`✓ step ${i + 1} ${s.action} ${s.selector}`);
+                await page.waitForTimeout(200);
+              } catch (e) {
+                results.push(`✗ step ${i + 1} ${s.action} ${s.selector} — FAILED: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
+              }
+            }
+            await page.waitForTimeout(300);
+            const buf = await page.screenshot({ fullPage: true, type: "jpeg", quality: 85 });
+            return {
+              content: [
+                { type: "text", text: `Interaction result:\n${results.join("\n")}\n\nAfter-state screenshot below — confirm the interaction did what you intended (panel opened, badge recolored, row moved, etc.). A ✗ means that selector wasn't found — the interaction is broken; fix it.` },
+                { type: "image", data: buf.toString("base64"), mimeType: "image/jpeg" },
+              ],
+            };
+          } finally {
+            await page.close().catch(() => {});
+          }
+        },
+      ),
     ],
   });
 
