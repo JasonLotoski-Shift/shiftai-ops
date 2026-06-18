@@ -2,9 +2,8 @@
 // All overridable by env so prod (Railway) can tune without a code change.
 
 export const config = {
-  // Model for the build/critique reasoning. Default Sonnet for cheap dev runs;
-  // the plan recommends an Opus-class model in prod for client-facing quality.
-  model: process.env.PROTOTYPE_MODEL || "claude-sonnet-4-6",
+  // Build/critique model. Opus by default for client-facing quality; override with PROTOTYPE_MODEL.
+  model: process.env.PROTOTYPE_MODEL || "claude-opus-4-8",
 
   // Gate: stop when the self-score clears the threshold OR we hit the round cap.
   maxIterations: Number(process.env.PROTOTYPE_MAX_ITERATIONS || 5),
