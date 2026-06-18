@@ -105,11 +105,22 @@ warrants it.
 converged on, and **pre-select that winner**. The notes rarely tag a winner explicitly in those
 terms, but it is usually obvious: infer it from the report's own lean (cover headline, day-one
 metric, the most-quoted pain) plus where the discussion call spent its weight. Present the modules
-as a ranked shortlist with the inferred winner pre-selected; each option shows the pain it solves
-and its one-line rationale, pulled from the report. The partner confirms in one click (correcting
-the pre-selection is a one-click override when the inference is off), picks a different module, and
-may add an optional steer note (a nuance, a constraint, a "lean into X"). The pre-selection is a
-strong default, never a lock — the partner always has the final say.
+as a ranked shortlist; each option shows the pain it solves and its one-line rationale, pulled
+from the report. The partner may add an optional steer note (a nuance, a constraint, a "lean into
+X"). The pre-selection is a strong default, never a lock — the partner always has the final say.
+
+**Stage 0 is confidence-aware** — it does not fake certainty it doesn't have:
+
+- **Clear winner** → pre-select it; the partner confirms in one click (or one-click overrides to a
+  different module).
+- **Genuinely torn** between 2–3 close candidates → no pre-selection. Surface just those top
+  candidates and **ask the partner to choose**, with the short rationale for each so the choice is
+  informed. (This is the same instinct as a clarifying question: ask only when the answer changes
+  what gets built and the inference can't settle it.)
+
+The confidence signal comes from how decisively the report leans and how clearly the discussion
+call converged; the implementation decides the threshold, but the principle is fixed: pre-select
+when obvious, ask when torn.
 
 **Output:** a robust, grounded seed object — the selected target (its module title, the pain it
 solves, the rationale from the report) plus the optional steer. This replaces the one-sentence box.
