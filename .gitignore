@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Prototype worker run artifacts (per-run HTML + screenshots)
 /worker/.runs/
+
+# Brainstorming visual-companion scratch
+.superpowers/
