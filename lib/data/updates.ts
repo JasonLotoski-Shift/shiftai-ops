@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-18",
     tag: "improved",
+    title: "Documents open ready to read, not as raw code",
+    detail:
+      "Opening an HTML document from a deal's Documents list now shows the finished page in its own tab, instead of a wall of code. Other files — PDFs, decks, sheets — still open in Drive as before, and nothing about how files are saved changes.",
+  },
+  {
+    date: "2026-06-18",
+    tag: "improved",
     title: "Prototypes now come with a light/dark theme switch",
     detail:
       "Every prototype the builder makes now ships in both a light and a dark version, with a switch in its top bar so you (or the client) can flip between them. It opens in whichever fits the client's brand — dark for deeper, moodier palettes, light for cleaner, brighter ones — and remembers the choice. Handy when you're showing the prototype on a bright screen in a room, or the client just prefers one look.",
