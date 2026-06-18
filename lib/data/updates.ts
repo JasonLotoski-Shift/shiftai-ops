@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-18",
+    tag: "new",
+    title: "Build prototype now builds itself, looks at its own work, and takes your notes",
+    detail:
+      "On a deal, “Build prototype” now hands the approved brief to a builder that writes the prototype, screenshots it in a real browser, clicks through the interaction to check it actually works, and improves it over a few rounds until it's good — opening in its own tab so the tool stays free while it runs. When it's done you can leave one note (e.g. “add a map of the routes, lead with the at-risk sites”) and it does one more pass on that, then you approve. Prototypes that need a map now use a real interactive map.",
+  },
+  {
     date: "2026-06-17",
     tag: "new",
     title: "Leave team notes on any architecture card",

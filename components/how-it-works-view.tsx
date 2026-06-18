@@ -195,7 +195,10 @@ const PHASES: Phase[] = [
         body: (
           <p>
             <Mono>Build prototype</Mono> reads the whole deal folder, drafts a brief you approve, then
-            builds a multi-tab clickable HTML in the client&apos;s colors. <Mono>Build deck</Mono> adds
+            hands it to a builder that writes the prototype, screenshots it, clicks through the
+            interaction to confirm it works, and improves it over a few rounds — opening in its own tab
+            so the tool stays free. When it&apos;s done you can leave one note for a final pass, then
+            approve. <Mono>Build deck</Mono> adds
             the scope / timeline / price. <Mono>Statement of Work</Mono> drafts a contract-grade Google
             Doc, stamped DRAFT for counsel, never signature-ready. <Mono>Convert to client</Mono>
             scaffolds the Drive folder, a starter project, a 50/25/25 schedule, and kickoff tasks; the
@@ -933,10 +936,10 @@ const flows: Flow[] = [
     title: "Build the proposal package",
     blurb: "At the Proposal stage: an interactive prototype and a formal presentation deck.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "On the deal: Build prototype (say what to show) → review the brief → build · then Build deck" },
-      { tone: "claude", kind: "Claude", label: "Reads every file in the deal's Drive folder (transcripts, discovery, survey, notes, screenshots) + looks up the client's brand colors → drafts a prototype brief (user stories, features, tabs) you edit → then builds a multi-tab clickable HTML. Deck = scope/timeline/price + a Demo-prototype link" },
-      { tone: "review", kind: "You review", label: "Approve/edit the brief before the build, then preview the HTML; [NEEDS INPUT] blocks both saves until resolved" },
-      { tone: "write", kind: "Saved", label: "Brief (.md) + prototype (.html) file to a Prototype folder in the deal's Drive + Artifacts on the deal; the deck files to the deal folder" },
+      { tone: "trigger", kind: "You do", label: "On the deal: Build prototype (say what to show) → review the brief → build (opens in its own tab) → optionally leave one note → approve · then Build deck" },
+      { tone: "claude", kind: "Claude", label: "Reads every file in the deal's Drive folder (transcripts, discovery, survey, notes, screenshots) + the client's brand colors → drafts a prototype brief (user stories, features, tabs) you edit → then a builder writes the multi-tab prototype, screenshots it, clicks through the interaction to confirm it works, and improves it over a few rounds. One partner note → one more pass. Deck = scope/timeline/price + a Demo-prototype link" },
+      { tone: "review", kind: "You review", label: "Approve/edit the brief; then in the run tab watch the rounds stream and click through the live prototype — leave a note for one final pass, or Approve. [NEEDS INPUT] still blocks the brief save" },
+      { tone: "write", kind: "Saved", label: "Each round's HTML + screenshot to Supabase Storage; the final prototype to a Prototype folder in the deal's Drive + an Artifact on the deal (approved on your sign-off); the deck files to the deal folder" },
     ],
   },
   {
