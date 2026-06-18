@@ -43,7 +43,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       select: { id: true, name: true, billRateCents: true, payRateCents: true },
     }),
     prisma.artifact.findFirst({
-      where: { dealId: id, generatedFromSkill: "html-prototype" },
+      where: { dealId: id, generatedFromSkill: { in: ["prototype-builder", "html-prototype"] } },
       select: { id: true },
     }),
     // Documents card — every doc generated/filed for this deal, newest first.
@@ -105,7 +105,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     "discovery-report": ranAt["discovery-report"],
     "book-meeting": ranAt["book-meeting"],
     "draft-proposal": ranAt["scope"],
-    "build-prototype": ranAt["html-prototype"],
+    "build-prototype": ranAt["prototype-builder"] ?? ranAt["html-prototype"],
     "build-deck": ranAt["proposal-deck"],
   };
   const actionSavedAt: Record<string, Date | undefined> = {
