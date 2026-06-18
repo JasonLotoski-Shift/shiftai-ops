@@ -4,11 +4,28 @@
 import fs from "node:fs";
 import path from "node:path";
 import { query, type CanUseTool } from "@anthropic-ai/claude-agent-sdk";
-import { config } from "./config";
+import { config, type BuildKind } from "./config";
 import { RUNS_DIR } from "./paths";
 import { buildSystemPrompt } from "./prompt";
 import { createEyesServer, closeEyes } from "./tools/eyes";
-import { createGateServer, type GateRecord } from "./tools/gate";
+import { createGateServer, PROTOTYPE_RUBRIC, DECK_RUBRIC, type GateRecord } from "./tools/gate";
+
+// Per-kind build config: which file the agent writes + Eyes screenshots, the gate
+// rubric, and its round/threshold caps. The prototype values are unchanged from
+// before the generalization, so the prototype path is byte-identical.
+function kindConfig(kind: BuildKind) {
+  if (kind === "deck") {
+    return { file: config.deck.file, rubric: DECK_RUBRIC, maxIterations: config.deck.maxIterations, threshold: config.deck.gateThreshold };
+  }
+  return { file: config.prototypeFile, rubric: PROTOTYPE_RUBRIC, maxIterations: config.maxIterations, threshold: config.gateThreshold };
+}
+
+// The generatedFromSkill tag each kind's Artifact carries (used to re-find the
+// run's Drive file on the refine re-upload).
+const ARTIFACT_SKILL: Record<BuildKind, string> = {
+  prototype: "prototype-builder",
+  deck: "proposal-deck",
+};
 import { createLibraryServer } from "./tools/library";
 import { createPrototypeRun } from "./persistence";
 import { makeSessionStore } from "../lib/agent-session-store";
@@ -25,13 +42,17 @@ export const PROTOTYPE_PROJECT_KEY = "prototype-builder";
 export type BuildBrief = {
   client: string;
   industry: string;
-  /** The prototype brief markdown: the magic moment, problem, user stories, features, tabs,
-   *  sample data, visual mandate, the "after" picture, brand direction. */
+  /** What this run builds. Defaults to "prototype" so older callers are unchanged. */
+  kind?: BuildKind;
+  /** The build source. For a prototype: the approved prototype brief (magic moment,
+   *  problem, user stories, features, tabs, sample data, the "after", brand direction).
+   *  For a deck: the approved scope of work + the PROTOTYPE_URL + what to emphasize. */
   brief: string;
   /** Optional scope FKs — set by the Home kickoff so the run links to its Deal/Client. */
   dealId?: string;
   clientId?: string;
-  /** The deal's Drive /Prototype subfolder id — Home resolves it and passes it in. */
+  /** The Drive folder id the final file is saved into — Home resolves it and passes it
+   *  in (prototype → the deal's /Prototype subfolder; deck → the deal's 00-Pipeline root). */
   drivePrototypeFolderId?: string;
 };
 
@@ -84,15 +105,18 @@ export async function runBuild(
   input: BuildBrief,
   opts: { runId?: string; existingRunId?: string } = {},
 ): Promise<BuildResult> {
+  const kind: BuildKind = input.kind ?? "prototype";
+  const kc = kindConfig(kind);
   const id = opts.runId || `run-${Date.now()}`;
   const runDir = path.join(RUNS_DIR, id);
   fs.mkdirSync(runDir, { recursive: true });
-  console.log(`\n=== prototype run ${id} ===\nclient: ${input.client}\nrunDir: ${runDir}\nmodel: ${config.model}\n`);
+  console.log(`\n=== ${kind} run ${id} ===\nclient: ${input.client}\nrunDir: ${runDir}\nmodel: ${config.model}\n`);
 
-  const eyes = createEyesServer(runDir);
+  const eyes = createEyesServer(runDir, kc.file);
   const gate = createGateServer({
-    maxIterations: config.maxIterations,
-    threshold: config.gateThreshold,
+    rubric: kc.rubric,
+    maxIterations: kc.maxIterations,
+    threshold: kc.threshold,
     // Tag each score with the screenshot/HTML the agent was looking at, so the
     // loop can persist each round's artifacts to Storage afterwards.
     currentArtifacts: () => eyes.getLastArtifacts(),
@@ -104,6 +128,7 @@ export async function runBuild(
   // migrated yet — the build loop still runs and returns its result.
   const recorder = await createPrototypeRun(
     {
+      kind,
       clientName: input.client,
       industry: input.industry,
       model: config.model,
@@ -121,31 +146,48 @@ export async function runBuild(
   const abortController = new AbortController();
   const runTimeout = setTimeout(() => abortController.abort(), config.maxRunMs);
 
-  const prototypePath = path.join(runDir, config.prototypeFile);
-  const userPrompt = [
-    "Build an interactive HTML prototype for this opportunity, following your build ⇄ critique loop protocol.",
-    "",
-    `CLIENT: ${input.client}`,
-    `INDUSTRY: ${input.industry}`,
-    "",
-    "PROTOTYPE BRIEF:",
-    input.brief,
-    "",
-    // Be explicit about the EXACT path and that it's a brand-new file. The agent's cwd is
-    // this dir, but it tends to guess repo-root paths; pinning the absolute path (and saying
-    // it doesn't exist yet) avoids writing to the wrong place and the "must Read before Write"
-    // stumble on a stale file. The screenshot tool reads this same path.
-    `Write the prototype to EXACTLY this path — your working directory — creating it directly with the Write tool (it does not exist yet, no need to read it first): ${prototypePath}`,
-    "Do not write it anywhere else, and do not read or modify any other files in the repository.",
-    "Begin now: write the first version, call mcp__eyes__screenshot to see it, critique it honestly, score it with mcp__gate__score, and keep improving until the gate tells you to stop.",
-  ].join("\n");
+  // The single file the agent builds and Eyes screenshots (prototype.html | deck.html).
+  // Named prototypePath for historical reasons; it is whichever file this kind produces.
+  const prototypePath = path.join(runDir, kc.file);
+  const userPrompt =
+    kind === "deck"
+      ? [
+          "Build a client-facing proposal deck for this opportunity, following your build ⇄ critique loop protocol.",
+          "",
+          `CLIENT: ${input.client}`,
+          `INDUSTRY: ${input.industry}`,
+          "",
+          "DECK SOURCE — the approved scope of work, the prototype link, and what to emphasize:",
+          input.brief,
+          "",
+          `Write the deck to EXACTLY this path — your working directory — creating it directly with the Write tool (it does not exist yet, no need to read it first): ${prototypePath}`,
+          "Do not write it anywhere else, and do not read or modify any other files in the repository.",
+          "Begin now: write the first version, call mcp__eyes__screenshot to see it, critique it honestly, score it with mcp__gate__score, and keep improving until the gate tells you to stop.",
+        ].join("\n")
+      : [
+          "Build an interactive HTML prototype for this opportunity, following your build ⇄ critique loop protocol.",
+          "",
+          `CLIENT: ${input.client}`,
+          `INDUSTRY: ${input.industry}`,
+          "",
+          "PROTOTYPE BRIEF:",
+          input.brief,
+          "",
+          // Be explicit about the EXACT path and that it's a brand-new file. The agent's cwd is
+          // this dir, but it tends to guess repo-root paths; pinning the absolute path (and saying
+          // it doesn't exist yet) avoids writing to the wrong place and the "must Read before Write"
+          // stumble on a stale file. The screenshot tool reads this same path.
+          `Write the prototype to EXACTLY this path — your working directory — creating it directly with the Write tool (it does not exist yet, no need to read it first): ${prototypePath}`,
+          "Do not write it anywhere else, and do not read or modify any other files in the repository.",
+          "Begin now: write the first version, call mcp__eyes__screenshot to see it, critique it honestly, score it with mcp__gate__score, and keep improving until the gate tells you to stop.",
+        ].join("\n");
 
   try {
     const response = query({
       prompt: userPrompt,
       options: {
         cwd: runDir,
-        systemPrompt: buildSystemPrompt(),
+        systemPrompt: buildSystemPrompt(kind),
         model: config.model,
         // SDK isolation: load no filesystem settings, so the worker NEVER picks up the
         // user's global ~/.claude MCP servers / hooks / CLAUDE.md — only eyes/gate/library.
@@ -199,6 +241,7 @@ export async function runBuild(
     // Persist the final deliverable (Drive + Artifact) when this is a real, deal-scoped run.
     if (input.dealId && input.drivePrototypeFolderId && fs.existsSync(prototypePath)) {
       await recorder.recordArtifact({
+        kind,
         dealId: input.dealId,
         company: input.client,
         folderId: input.drivePrototypeFolderId,
@@ -246,6 +289,7 @@ export async function refineBuild(input: { runId: string; comment: string }): Pr
   const run = await prisma.prototypeRun.findUnique({
     where: { id: runId },
     select: {
+      kind: true,
       sessionId: true,
       dealId: true,
       clientName: true,
@@ -263,17 +307,19 @@ export async function refineBuild(input: { runId: string; comment: string }): Pr
   if (!run.sessionId) throw new Error(`refineBuild: run ${runId} has no sessionId to resume`);
   if (!run.finalHtmlUrl) throw new Error(`refineBuild: run ${runId} has no finalHtmlUrl to seed from`);
 
+  const kind: BuildKind = (run.kind as BuildKind) ?? "prototype";
+  const kc = kindConfig(kind);
   const maxRound = run.iterations[0]?.round ?? 0;
 
   // Mark refining at the START so Home's poll reflects the in-flight pass.
   await prisma.prototypeRun.update({ where: { id: runId }, data: { status: "refining" } });
 
   // Resume runs in the SAME runDir the build used (deterministic from the run id) so the
-  // resumed agent's cwd matches and prototype.html sits where Eyes/the prompt expect it.
+  // resumed agent's cwd matches and the build file sits where Eyes/the prompt expect it.
   const runDir = path.join(RUNS_DIR, runId);
   fs.mkdirSync(runDir, { recursive: true });
-  const prototypePath = path.join(runDir, config.prototypeFile);
-  console.log(`\n=== prototype REFINE ${runId} ===\nclient: ${run.clientName}\nrunDir: ${runDir}\nresume: ${run.sessionId}\n`);
+  const prototypePath = path.join(runDir, kc.file);
+  console.log(`\n=== ${kind} REFINE ${runId} ===\nclient: ${run.clientName}\nrunDir: ${runDir}\nresume: ${run.sessionId}\n`);
 
   // (b) Seed the working dir from the final HTML so the resumed agent can Edit the existing
   // file (the runDir may be gone after a worker restart; the durable session is what carries
@@ -291,10 +337,11 @@ export async function refineBuild(input: { runId: string; comment: string }): Pr
   // (c) Build the loop tools. Gate continues round numbering from the auto-loop's last
   // round (roundOffset) and runs exactly ONE pass (maxIterations: 1). Each scored round is
   // written WITH the partner comment so the iteration timeline shows what was asked.
-  const eyes = createEyesServer(runDir);
+  const eyes = createEyesServer(runDir, kc.file);
   const gate = createGateServer({
+    rubric: kc.rubric,
     maxIterations: 1,
-    threshold: config.gateThreshold,
+    threshold: kc.threshold,
     roundOffset: maxRound,
     currentArtifacts: () => eyes.getLastArtifacts(),
     onRound: (rec) => recorder.recordIteration(rec, comment),
@@ -306,6 +353,7 @@ export async function refineBuild(input: { runId: string; comment: string }): Pr
   // in-flight partner pass distinctly from the original build.
   const recorder = await createPrototypeRun(
     {
+      kind,
       clientName: run.clientName,
       industry: run.industry ?? undefined,
       model: config.model,
@@ -320,8 +368,11 @@ export async function refineBuild(input: { runId: string; comment: string }): Pr
   const runTimeout = setTimeout(() => abortController.abort(), config.maxRunMs);
 
   const userPrompt =
-    "A partner reviewed your prototype and asked for these changes. Apply ALL of them to the existing prototype.html, then screenshot, run mcp__eyes__interact to confirm the key interaction still works, score with mcp__gate__score (one pass), and finish.\n\nPARTNER COMMENTS:\n" +
-    comment;
+    kind === "deck"
+      ? "A partner reviewed your proposal deck and asked for these changes. Apply ALL of them to the existing deck.html, then screenshot, score with mcp__gate__score (one pass), and finish.\n\nPARTNER COMMENTS:\n" +
+        comment
+      : "A partner reviewed your prototype and asked for these changes. Apply ALL of them to the existing prototype.html, then screenshot, run mcp__eyes__interact to confirm the key interaction still works, score with mcp__gate__score (one pass), and finish.\n\nPARTNER COMMENTS:\n" +
+        comment;
 
   try {
     const response = query({
@@ -331,7 +382,7 @@ export async function refineBuild(input: { runId: string; comment: string }): Pr
         // Resume the build's own session so the agent has the full prior context and revises
         // intelligently instead of rebuilding. The durable SessionStore replays the transcript.
         resume: run.sessionId,
-        systemPrompt: buildSystemPrompt(),
+        systemPrompt: buildSystemPrompt(kind),
         model: config.model,
         settingSources: [],
         sessionStore: makeSessionStore(),
@@ -374,9 +425,10 @@ export async function refineBuild(input: { runId: string; comment: string }): Pr
       // folder id isn't stored on the run, so Home passes it on build; on refine we rely
       // on recordArtifact's Drive upload only when a folder id is available. The deal id is
       // present, so re-write the Artifact row + Drive file via the run's prototype folder.
-      const folderId = await resolvePrototypeFolderId(run.dealId);
+      const folderId = await resolvePrototypeFolderId(run.dealId, kind);
       if (folderId) {
         await recorder.recordArtifact({
+          kind,
           dealId: run.dealId,
           company: run.clientName,
           folderId,
@@ -419,10 +471,10 @@ export async function refineBuild(input: { runId: string; comment: string }): Pr
 // prototype Artifact's Drive file and read its parent folder. Best-effort — returns null
 // (older/dev runs with no Drive artifact), in which case the refine still finishes (Storage
 // finalHtmlUrl refreshed) without writing a new Drive file.
-async function resolvePrototypeFolderId(dealId: string): Promise<string | null> {
+async function resolvePrototypeFolderId(dealId: string, kind: BuildKind): Promise<string | null> {
   try {
     const artifact = await prisma.artifact.findFirst({
-      where: { dealId, generatedFromSkill: "prototype-builder" },
+      where: { dealId, generatedFromSkill: ARTIFACT_SKILL[kind] },
       orderBy: { createdAt: "desc" },
       select: { driveUrl: true },
     });

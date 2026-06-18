@@ -13,8 +13,8 @@ export default async function PrototypeRunPage({ params }: { params: Promise<{ r
   const { runId } = await params;
   const run = await prisma.prototypeRun.findUnique({
     where: { id: runId },
-    select: { clientName: true, dealId: true },
+    select: { clientName: true, dealId: true, kind: true },
   });
   if (!run || !run.dealId) notFound();
-  return <PrototypeBuildView runId={runId} dealId={run.dealId} clientName={run.clientName} />;
+  return <PrototypeBuildView runId={runId} dealId={run.dealId} clientName={run.clientName} kind={run.kind} />;
 }

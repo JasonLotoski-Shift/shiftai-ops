@@ -31,4 +31,18 @@ export const config = {
 
   // The single file the agent builds and the Eyes tool screenshots.
   prototypeFile: "prototype.html",
+
+  // Proposal-deck builds ride the same worker/loop/gate as the prototype, with
+  // their own file name and gate caps. The deck is more templated than a
+  // prototype (it renders an approved SOW), so it needs fewer rounds — keep
+  // maxIterations low so it doesn't grind. All env-overridable like the rest.
+  deck: {
+    file: "deck.html",
+    maxIterations: Number(process.env.DECK_MAX_ITERATIONS || 3),
+    gateThreshold: Number(process.env.DECK_GATE_THRESHOLD || 85),
+  },
 };
+
+// The build kind a run produces. "prototype" = the interactive HTML demo;
+// "deck" = the proposal deck that renders the approved SOW + links the prototype.
+export type BuildKind = "prototype" | "deck";

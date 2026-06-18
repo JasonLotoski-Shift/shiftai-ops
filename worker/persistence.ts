@@ -12,8 +12,36 @@ import { uploadFileAt } from "./storage";
 import { uploadFile } from "../lib/drive";
 import { writeAudit, writeActivity, agentActor } from "../lib/audit";
 import type { GateRecord } from "./tools/gate";
+import type { BuildKind } from "./config";
+
+// Per-kind Artifact shape — how each build kind files its final deliverable
+// (Drive file name + the Artifact row's type/skill/title + the audit/activity copy).
+const ARTIFACT_CFG: Record<
+  BuildKind,
+  { type: "other" | "deck"; label: string; fileSuffix: string; skill: string; createdBy: string; auditAction: string; activityDetail: string }
+> = {
+  prototype: {
+    type: "other",
+    label: "Prototype",
+    fileSuffix: "prototype",
+    skill: "prototype-builder",
+    createdBy: "AGENT · PROTOTYPE-BUILDER",
+    auditAction: "create.artifact.prototype.draft",
+    activityDetail: "Built an interactive prototype — awaiting review",
+  },
+  deck: {
+    type: "deck",
+    label: "Proposal deck",
+    fileSuffix: "proposal-deck",
+    skill: "proposal-deck",
+    createdBy: "AGENT · PROPOSAL-DECK",
+    auditAction: "create.artifact.deck.draft",
+    activityDetail: "Built a proposal deck — awaiting review",
+  },
+};
 
 export type RunInit = {
+  kind?: BuildKind;
   clientName: string;
   industry?: string;
   model?: string;
@@ -35,7 +63,7 @@ export type PrototypeRecorder = {
   setSession: (sessionId: string) => Promise<void>;
   recordIteration: (rec: GateRecord, partnerComment?: string | null) => Promise<void>;
   finish: (f: RunFinish) => Promise<void>;
-  recordArtifact: (input: { dealId: string; company: string; folderId: string; htmlPath: string }) => Promise<void>;
+  recordArtifact: (input: { kind: BuildKind; dealId: string; company: string; folderId: string; htmlPath: string }) => Promise<void>;
 };
 
 // Create the PrototypeRun row (status=running). Returns a recorder whose methods
@@ -60,6 +88,7 @@ export async function createPrototypeRun(
       const run = await prisma.prototypeRun.create({
         data: {
           status: "running",
+          kind: init.kind ?? "prototype",
           clientName: init.clientName,
           industry: init.industry ?? null,
           model: init.model ?? null,
@@ -118,10 +147,12 @@ export async function createPrototypeRun(
             screenshotUrl,
             critique: critique || null,
             score: rec.overall,
-            structure: rec.structure,
-            fidelity: rec.fidelity,
-            design: rec.design,
-            interactivity: rec.interactivity,
+            // Named sub-score columns are prototype-shaped; a kind only fills the
+            // dimensions in its rubric (deck fills `design`, leaves the rest null).
+            structure: rec.scores.structure ?? null,
+            fidelity: rec.scores.fidelity ?? null,
+            design: rec.scores.design ?? null,
+            interactivity: rec.scores.interactivity ?? null,
           },
         });
       } catch (err) {
@@ -161,12 +192,14 @@ export async function createPrototypeRun(
     },
 
     async recordArtifact(input: {
+      kind: BuildKind;
       dealId: string;
       company: string;
       folderId: string;
       htmlPath: string;
     }) {
       if (!runId) return;
+      const cfg = ARTIFACT_CFG[input.kind];
       let html: string;
       try {
         html = require("node:fs").readFileSync(input.htmlPath, "utf8");
@@ -176,7 +209,7 @@ export async function createPrototypeRun(
       }
       const today = new Date().toISOString().slice(0, 10);
       const slug = input.company.replace(/\s+/g, "-");
-      const fileName = `${today}-${slug}-prototype.html`;
+      const fileName = `${today}-${slug}-${cfg.fileSuffix}.html`;
       let webViewLink: string;
       try {
         ({ webViewLink } = await uploadFile(html, fileName, input.folderId, "text/html"));
@@ -184,43 +217,43 @@ export async function createPrototypeRun(
         console.warn("[persistence] recordArtifact: Drive upload failed:", err);
         return;
       }
-      const actor = agentActor("prototype-builder");
+      const actor = agentActor(cfg.skill);
       // Match the firm convention (CLAUDE.md persistence recipe) + the actorLabel
       // that resolveActor stamps on this same transaction's AuditLog/Activity rows
       // (`AGENT · <SKILL>`), so the artifact card/feed shows a consistent author.
-      const createdBy = "AGENT · PROTOTYPE-BUILDER";
+      const createdBy = cfg.createdBy;
       try {
         const artifact = await prisma.$transaction(async (tx) => {
           const created = await tx.artifact.create({
             data: {
-              type: "other",
-              title: `Prototype · ${input.company} · ${today}`,
+              type: cfg.type,
+              title: `${cfg.label} · ${input.company} · ${today}`,
               driveUrl: webViewLink,
               fileName,
               createdBy,
-              generatedFromSkill: "prototype-builder",
+              generatedFromSkill: cfg.skill,
               reviewStatus: "draft",
               dealId: input.dealId,
             },
           });
           await writeAudit(tx, {
             actor,
-            action: "create.artifact.prototype.draft",
+            action: cfg.auditAction,
             targetType: "Artifact",
             targetId: created.id,
-            changes: { dealId: input.dealId, runId, fileName },
+            changes: { dealId: input.dealId, runId, fileName, kind: input.kind },
           });
           await writeActivity(tx, {
             actor,
             type: "ai",
             target: input.company,
-            detail: "Built an interactive prototype — awaiting review",
+            detail: cfg.activityDetail,
             link: `/pipeline/${input.dealId}`,
           });
           return created;
         });
         await prisma.prototypeRun.update({ where: { id: runId }, data: { artifactId: artifact.id } });
-        console.log(`[persistence] Artifact ${artifact.id} written for run ${runId}`);
+        console.log(`[persistence] Artifact ${artifact.id} written for run ${runId} (${input.kind})`);
       } catch (err) {
         console.warn("[persistence] recordArtifact: DB write failed:", err instanceof Error ? err.message : err);
       }

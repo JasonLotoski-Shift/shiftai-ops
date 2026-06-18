@@ -104,7 +104,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     questionnaire: surveyRaw?.createdAt,
     "discovery-report": ranAt["discovery-report"],
     "book-meeting": ranAt["book-meeting"],
-    "draft-proposal": ranAt["scope"],
+    "draft-sow": ranAt["scope"],
     "build-prototype": ranAt["prototype-builder"] ?? ranAt["html-prototype"],
     "build-deck": ranAt["proposal-deck"],
   };
@@ -112,9 +112,12 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     "discovery-prep": savedAt["discovery-prep"],
     questionnaire: savedAt["discovery-questionnaire"],
     "discovery-report": savedAt["discovery-report"],
-    "draft-proposal": savedAt["scope"],
+    "draft-sow": savedAt["scope"],
     "book-meeting": savedAt["book-meeting"],
   };
+  // The deck is built from the scope of work; gate it on a SOW Artifact existing
+  // (alongside a prototype). ranAt["scope"] is set when a scope Artifact exists.
+  const hasSow = !!ranAt["scope"];
 
   const estimate = estimateRaw
     ? {
@@ -169,6 +172,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           partner={partner}
           contact={contact}
           hasPrototype={hasPrototype}
+          hasSow={hasSow}
           surveyUrl={surveyUrl}
           surveyResponded={surveyRaw?.status === "responded"}
           ranAt={actionRanAt}

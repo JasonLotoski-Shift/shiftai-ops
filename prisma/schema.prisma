@@ -1940,6 +1940,13 @@ model PrototypeRun {
   id     String             @id @default(cuid())
   status PrototypeRunStatus @default(running)
 
+  // What this run builds: "prototype" (the interactive HTML demo) or "deck" (the
+  // proposal deck that renders the approved SOW + links the prototype). Plain
+  // string, not an enum (loose-coupling convention) — default keeps every existing
+  // row and the prototype path byte-identical. The worker branches on it for the
+  // skill, gate rubric, file name, and artifact type. See _prepared-migrations/009.
+  kind String @default("prototype")
+
   // True once the single partner-refine pass has been consumed (one per run).
   refineUsed Boolean @default(false)
 

@@ -30,11 +30,11 @@ export async function closeEyes(): Promise<void> {
 }
 
 /**
- * Build the Eyes MCP server bound to a run directory. The agent writes
- * `prototype.html` into that dir; each screenshot is saved as round-N.jpg alongside
- * a snapshot of the HTML for that round.
+ * Build the Eyes MCP server bound to a run directory. The agent writes the build
+ * file (`fileName` — prototype.html or deck.html) into that dir; each screenshot is
+ * saved as round-N.jpg alongside a snapshot of the HTML for that round.
  */
-export function createEyesServer(runDir: string) {
+export function createEyesServer(runDir: string, fileName: string = "prototype.html") {
   let round = 0;
   // The files written for the most recent screenshot. The gate reads these at
   // score time so each round's persisted row points at the right HTML + image.
@@ -49,7 +49,7 @@ export function createEyesServer(runDir: string) {
     tools: [
       tool(
         "screenshot",
-        "Render the current prototype.html in a headless browser at 1440px wide and return a full-page screenshot image so you can see and critique your own work. Call this after every change to the file, before scoring.",
+        `Render the current ${fileName} in a headless browser at 1440px wide and return a full-page screenshot image so you can see and critique your own work. Call this after every change to the file, before scoring.`,
         {
           note: z
             .string()
@@ -57,13 +57,13 @@ export function createEyesServer(runDir: string) {
             .describe("optional note about what you just changed and want to inspect"),
         },
         async () => {
-          const file = path.join(runDir, "prototype.html");
+          const file = path.join(runDir, fileName);
           if (!fs.existsSync(file)) {
             return {
               content: [
                 {
                   type: "text",
-                  text: "No prototype.html exists yet in the working directory. Write the file first, then screenshot.",
+                  text: `No ${fileName} exists yet in the working directory. Write the file first, then screenshot.`,
                 },
               ],
               isError: true,
@@ -104,7 +104,7 @@ export function createEyesServer(runDir: string) {
               content: [
                 {
                   type: "text",
-                  text: `Screenshot of prototype.html — round ${round}. Saved ${path.basename(outImg)}. Study the layout, hierarchy, spacing, color, density, and whether the tabs and key interaction read as a real product, then name the specific weaknesses.`,
+                  text: `Screenshot of ${fileName} — round ${round}. Saved ${path.basename(outImg)}. Study the layout, hierarchy, spacing, color, density, and whether it reads as a real, finished product, then name the specific weaknesses.`,
                 },
                 { type: "image", data: buf.toString("base64"), mimeType: "image/jpeg" },
               ],
@@ -116,7 +116,7 @@ export function createEyesServer(runDir: string) {
       ),
       tool(
         "interact",
-        "Drive REAL clicks/typing in your current prototype.html (headless browser) to VERIFY the key interaction works in the DOM — not just how it looks. Give the exact CSS selectors from the markup you wrote. Returns which steps hit/missed plus an after-screenshot. Use it each round to confirm the interaction before you score.",
+        `Drive REAL clicks/typing in your current ${fileName} (headless browser) to VERIFY the key interaction works in the DOM — not just how it looks. Give the exact CSS selectors from the markup you wrote. Returns which steps hit/missed plus an after-screenshot. Use it each round to confirm the interaction before you score.`,
         {
           steps: z
             .array(
@@ -130,9 +130,9 @@ export function createEyesServer(runDir: string) {
           note: z.string().optional(),
         },
         async (args) => {
-          const file = path.join(runDir, "prototype.html");
+          const file = path.join(runDir, fileName);
           if (!fs.existsSync(file)) {
-            return { content: [{ type: "text", text: "No prototype.html yet — write it first." }], isError: true };
+            return { content: [{ type: "text", text: `No ${fileName} yet — write it first.` }], isError: true };
           }
           const browser = await getBrowser();
           const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });

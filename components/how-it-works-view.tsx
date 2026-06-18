@@ -182,9 +182,9 @@ const PHASES: Phase[] = [
         icon: <MousePointerClick size={14} strokeWidth={1.5} />,
         body: (
           <ul className="flex flex-col gap-1.5">
-            <PhaseLi>Estimate the contract value from hours-by-tier, then draft the proposal and the deck.</PhaseLi>
-            <PhaseLi>At the proposal stage, build the prototype package: the clickable prototype and the presentation deck.</PhaseLi>
-            <PhaseLi>Settle terms, draft the SOW for counsel, then Convert to client when it&apos;s signed.</PhaseLi>
+            <PhaseLi>Estimate the contract value from hours-by-tier, build the prototype, then draft the scope and the deck.</PhaseLi>
+            <PhaseLi>At the proposal stage, build the package in order: the clickable prototype, the scope of work, then the deck that renders it.</PhaseLi>
+            <PhaseLi>Settle terms, draft the Statement of Work for counsel, then Convert to client when it&apos;s signed.</PhaseLi>
             <PhaseLi>Shape delivery: set the project type, break work into milestones, plan the billing.</PhaseLi>
           </ul>
         ),
@@ -200,9 +200,13 @@ const PHASES: Phase[] = [
             names where visuals carry the value. You approve it, then it hands the brief to a builder
             that writes the prototype, screenshots it, clicks through the interaction to confirm it
             works, and improves it over a few rounds — opening in its own tab so the tool stays free.
-            When it&apos;s done you can leave one note for a final pass, then approve. <Mono>Build deck</Mono> adds
-            the scope / timeline / price. <Mono>Statement of Work</Mono> drafts a contract-grade Google
-            Doc, stamped DRAFT for counsel, never signature-ready. <Mono>Convert to client</Mono>
+            When it&apos;s done you can leave one note for a final pass, then approve. <Mono>Draft scope</Mono> then
+            writes a high-level scope of work from the prototype — what we&apos;ll build, the foundation we set up
+            first (environment, data and API connections, access), the phases, what the client owns, the timeline,
+            and the fixed fee — which you edit and save. <Mono>Build deck</Mono> renders that approved scope plus
+            the prototype into the client-facing deck the same way the prototype builds (drafts, screenshots, improves
+            over a few rounds in its own tab), with a live Demo-prototype button. <Mono>Statement of Work</Mono> drafts a
+            contract-grade Google Doc, stamped DRAFT for counsel, never signature-ready. <Mono>Convert to client</Mono>
             scaffolds the Drive folder, a starter project, a 50/25/25 schedule, and kickoff tasks; the
             deal&apos;s people and company profile carry across.
           </p>
@@ -927,8 +931,8 @@ const flows: Flow[] = [
     title: "Work a deal through the stages",
     blurb: "Each stage from Discovery Call to Proposal has a one-click draft, reviewed before it leaves.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "On the deal header: Discovery prep · Discovery questionnaire · Discovery report · Follow-up email · Book meeting · Draft proposal" },
-      { tone: "claude", kind: "Claude", label: "Drafts from the deal's history — internal prep, a follow-up, or a proposal. The questionnaire goes deeper: it reads every file in the deal's Drive folder (transcripts, notes) and becomes a live Tally form whose answers land back on the deal. The discovery report (below) is its own one-click draft too" },
+      { tone: "trigger", kind: "You do", label: "The deal's actions are laid out as numbered steps — Discovery, Prototype, Proposal. In Discovery: Discovery prep · Discovery questionnaire · Discovery report · Follow-up email · Book meeting. Every action has an (i) you can hover to see what it does and what happens when you run it" },
+      { tone: "claude", kind: "Claude", label: "Drafts from the deal's history — internal prep or a follow-up. The questionnaire goes deeper: it reads every file in the deal's Drive folder (transcripts, notes) and becomes a live Tally form whose answers land back on the deal. The discovery report (below) is its own one-click draft too" },
       { tone: "review", kind: "You review", label: "Edit freely; [NEEDS INPUT] blocks save until you fill real facts in" },
       { tone: "write", kind: "Saved", label: "Filed to Drive + an Artifact on the deal (a sent email also logs an interaction)" },
     ],
@@ -936,12 +940,12 @@ const flows: Flow[] = [
   {
     icon: <Sparkles size={16} strokeWidth={1.5} />,
     title: "Build the proposal package",
-    blurb: "At the Proposal stage: an interactive prototype and a formal presentation deck.",
+    blurb: "At the Proposal stage, in order: the interactive prototype, the scope of work built from it, then the deck that renders the scope.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "On the deal: Build prototype (pick where to start from the proposed targets, add an optional steer) → review the brief → build (opens in its own tab) → optionally leave one note → approve · then Build deck" },
-      { tone: "claude", kind: "Claude", label: "Reads the discovery report + discussion notes to propose where to start (pre-selects the clear winner, or asks when it's a close call) → then reads every file in the deal's Drive folder (transcripts, discovery, survey, notes, screenshots) + the client's brand colors and works in stages (interpret → propose directions → red-team → write) to draft a deeper brief that leads with the one 'magic moment' interaction and names where visuals carry the value (user stories, features, tabs) you edit → then a builder writes the multi-tab prototype, screenshots it, clicks through the interaction to confirm it works, and improves it over a few rounds. One partner note → one more pass. Deck = scope/timeline/price + a Demo-prototype link" },
-      { tone: "review", kind: "You review", label: "Approve/edit the brief; then in the run tab watch the rounds stream and click through the live prototype — leave a note for one final pass, or Approve. [NEEDS INPUT] still blocks the brief save" },
-      { tone: "write", kind: "Saved", label: "Each round's HTML + screenshot to Supabase Storage; the final prototype to a Prototype folder in the deal's Drive + an Artifact on the deal (approved on your sign-off); the deck files to the deal folder" },
+      { tone: "trigger", kind: "You do", label: "On the deal, step by step: Build prototype (pick where to start, optional steer) → review the brief → build (opens in its own tab) → leave one note → approve. Then Draft scope (review/edit the scope of work) → save. Then Build deck (waits until both a prototype and a scope exist)" },
+      { tone: "claude", kind: "Claude", label: "Prototype: proposes where to start, drafts a brief you edit, then a builder writes the multi-tab prototype, screenshots it, confirms the interaction works, and improves it over a few rounds (one partner note → one more pass). Scope: reads the prototype + deal history and writes a high-level scope of work — what we'll build, the foundation we set up first (environment, data and API connections, access), phases, what the client owns, timeline, fixed fee. Deck: renders the approved scope + the prototype into a client-facing HTML deck the same way the prototype builds (draft → screenshot → improve, a few rounds), with a live Demo-prototype button" },
+      { tone: "review", kind: "You review", label: "Approve/edit the brief; edit the scope (it won't save while it's guessing a fee or date — those show as [NEEDS INPUT]); then in the run tab watch the deck's rounds stream — leave a note for one final pass, or Approve" },
+      { tone: "write", kind: "Saved", label: "Each round's HTML + screenshot to Supabase Storage; the prototype to a Prototype folder + an Artifact; the scope of work to the deal folder as a Markdown Artifact; the deck to the deal folder as an Artifact (each approved on your sign-off)" },
     ],
   },
   {

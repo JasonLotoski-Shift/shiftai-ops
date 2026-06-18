@@ -12,6 +12,7 @@ import { DeleteDealModal } from "@/components/delete-deal-modal";
 import { DealDocModal, type DealDocSkill } from "@/components/deal-doc-modal";
 import { DraftEmailModal } from "@/components/draft-email-modal";
 import { ProposalEngineModal } from "@/components/proposal-engine-modal";
+import { DeckBuildModal } from "@/components/deck-build-modal";
 import { DiscoveryQuestionnaireModal } from "@/components/discovery-questionnaire-modal";
 import { DiscoveryReportDealModal } from "@/components/discovery-report-deal-modal";
 import type {
@@ -112,6 +113,7 @@ export function DealActionsPanel({
   partner,
   contact,
   hasPrototype = false,
+  hasSow = false,
   surveyUrl,
   surveyResponded = false,
   ranAt = {},
@@ -122,6 +124,8 @@ export function DealActionsPanel({
   contact: Contact | null;
   /** Whether a prototype Artifact already exists — gates the deck action. */
   hasPrototype?: boolean;
+  /** Whether a scope-of-work Artifact already exists — also gates the deck action. */
+  hasSow?: boolean;
   /** Latest sent discovery-questionnaire URL — injected into the follow-up email. */
   surveyUrl?: string;
   /** Whether a completed questionnaire backs the deal — drives the discovery
@@ -135,7 +139,8 @@ export function DealActionsPanel({
   const [proposalOpen, setProposalOpen] = useState(false);
   const [docSkill, setDocSkill] = useState<DealDocSkill | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
-  const [engineMode, setEngineMode] = useState<"prototype" | "deck" | null>(null);
+  const [prototypeOpen, setPrototypeOpen] = useState(false);
+  const [deckOpen, setDeckOpen] = useState(false);
   const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   // Which boxes are being reopened from a saved draft (preload + jump to editor).
@@ -165,6 +170,8 @@ export function DealActionsPanel({
     open();
   };
 
+  // Boxes are grouped into numbered steps by `stage` — the deal's order of work:
+  // Discovery → Prototype → Proposal (the scope of work, then the deck built from it).
   const actions: ActionBox[] = [
     {
       key: "discovery-prep",
@@ -172,6 +179,11 @@ export function DealActionsPanel({
       title: "Discovery prep",
       description: "Brief for the discovery call — goals and questions to ask.",
       onClick: openReopen("discovery-prep", () => setDocSkill("discovery-prep")),
+      stage: "Discovery",
+      info: {
+        does: "Reads everything logged on this deal and writes an internal brief for the discovery call: the goals to hit and the questions to ask.",
+        happens: "Drafts a prep doc you can edit, then saves it to the deal's Drive folder.",
+      },
       ...status("discovery-prep"),
     },
     {
@@ -180,6 +192,11 @@ export function DealActionsPanel({
       title: "Discovery questionnaire",
       description: "Generate a client-specific Tally form to send after the call.",
       onClick: openReopen("questionnaire", () => setQuestionnaireOpen(true)),
+      stage: "Discovery",
+      info: {
+        does: "Generates a short, client-specific Tally questionnaire to send after the discovery call.",
+        happens: "Creates a live Tally form; the link goes in the follow-up email and the answers feed the discovery report.",
+      },
       ...status("questionnaire"),
     },
     {
@@ -190,6 +207,11 @@ export function DealActionsPanel({
         ? "Client-facing report from the questionnaire answers."
         : "Client-facing report from the call, notes + research (no survey needed).",
       onClick: openReopen("discovery-report", () => setReportOpen(true)),
+      stage: "Discovery",
+      info: {
+        does: "Writes a client-facing report from the call, your notes, the questionnaire answers (if any), and web research.",
+        happens: "Drafts a report you edit, then saves it to Drive as a deal Artifact.",
+      },
       ...status("discovery-report"),
     },
     ...(contact
@@ -200,6 +222,11 @@ export function DealActionsPanel({
             title: "Follow-up email",
             description: "Recap the call and propose the next step.",
             onClick: () => setEmailOpen(true),
+            stage: "Discovery",
+            info: {
+              does: "Drafts a short email that recaps the call and proposes the next step, using only what's logged.",
+              happens: "Drafts an email you edit; sending or saving logs it on the contact and files a copy.",
+            },
             ...status("followup"),
           } as ActionBox,
         ]
@@ -210,32 +237,54 @@ export function DealActionsPanel({
       title: "Book meeting",
       description: "Draft a short message to book the next call.",
       onClick: openReopen("book-meeting", () => setDocSkill("book-meeting")),
+      stage: "Discovery",
+      info: {
+        does: "Drafts a short, specific message to book the next call.",
+        happens: "Drafts a note you can edit and save.",
+      },
       ...status("book-meeting"),
-    },
-    {
-      key: "draft-proposal",
-      icon: FileText,
-      title: "Draft proposal",
-      description: "Draft a tailored SOW from the IP library.",
-      onClick: openReopen("draft-proposal", () => setProposalOpen(true)),
-      ...status("draft-proposal"),
     },
     {
       key: "build-prototype",
       icon: FlaskConical,
       title: "Build prototype",
-      description: "Build an HTML prototype of what we'd ship.",
-      onClick: () => setEngineMode("prototype"),
+      description: "Build an interactive HTML prototype of what we'd ship.",
+      onClick: () => setPrototypeOpen(true),
+      stage: "Prototype",
+      info: {
+        does: "Builds an interactive HTML prototype of what we'd ship, from the deal's files — multi-tab, clickable, with mockup data.",
+        happens: "Opens a build view in a new tab; an agent drafts, screenshots, and improves it over a few rounds. Saves as a draft you refine once and approve.",
+      },
       ...status("build-prototype"),
+    },
+    {
+      key: "draft-sow",
+      icon: FileText,
+      title: "Draft scope",
+      description: "High-level scope of work, built from the prototype.",
+      onClick: openReopen("draft-sow", () => setProposalOpen(true)),
+      stage: "Proposal",
+      info: {
+        does: "Reads the prototype and everything logged on this deal and writes a high-level scope: the problem, what we'll build, the foundation we set up first (environment, data and API connections, access), phases, what you own, what we need from you, timeline, and fixed fee.",
+        happens: "Saves an editable scope of work to the deal's Drive folder. Won't save if it had to guess a fee or date — those show as [NEEDS INPUT] for you to fill.",
+      },
+      ...status("draft-sow"),
     },
     {
       key: "build-deck",
       icon: Presentation,
       title: "Build deck",
-      description: "Turn the prototype into a pitch deck.",
-      onClick: () => setEngineMode("deck"),
-      disabled: !hasPrototype,
-      disabledReason: "Build a prototype first — the deck links to it",
+      description: "Render the scope + prototype into an on-brand pitch deck.",
+      onClick: () => setDeckOpen(true),
+      disabled: !hasPrototype || !hasSow,
+      disabledReason: !hasPrototype
+        ? "Build a prototype first — the deck links to it"
+        : "Draft the scope of work first — the deck is built from it",
+      stage: "Proposal",
+      info: {
+        does: "Turns the approved scope of work and the prototype into an on-brand HTML pitch deck that carries the scope and has a live Demo prototype button.",
+        happens: "Opens a build view in a new tab; an agent renders the deck and improves it over a few rounds. Saves as a draft you refine once and approve. Needs a prototype and a scope of work first.",
+      },
       ...status("build-deck"),
     },
   ];
@@ -248,10 +297,10 @@ export function DealActionsPanel({
         <DraftProposalModal
           dealId={deal.id}
           company={deal.company}
-          reopenDraft={!!reopen["draft-proposal"]}
+          reopenDraft={!!reopen["draft-sow"]}
           onClose={() => {
             setProposalOpen(false);
-            setReopen((r) => ({ ...r, "draft-proposal": false }));
+            setReopen((r) => ({ ...r, "draft-sow": false }));
           }}
         />
       )}
@@ -287,12 +336,19 @@ export function DealActionsPanel({
       {/* Note: the follow-up email persists to the deal's contact, so its
           run-status + saved-draft live on the contact page, not here. */}
 
-      {engineMode && (
+      {prototypeOpen && (
         <ProposalEngineModal
           dealId={deal.id}
           company={deal.company}
-          mode={engineMode}
-          onClose={() => setEngineMode(null)}
+          onClose={() => setPrototypeOpen(false)}
+        />
+      )}
+
+      {deckOpen && (
+        <DeckBuildModal
+          dealId={deal.id}
+          company={deal.company}
+          onClose={() => setDeckOpen(false)}
         />
       )}
 

@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-18",
+    tag: "new",
+    title: "The proposal is now one flow: a scope of work, then a deck built from it",
+    detail:
+      "“Draft proposal” is now “Draft scope (SOW)” — a high-level scope of work built from the prototype: what we'll build, the foundation we set up first (the environment, the data and API connections, access), the phases, what the client owns, what we need from them, the timeline, and the fixed fee. Then “Build deck” takes that approved scope plus the prototype and builds the client-facing pitch deck the same way the prototype builds itself — it drafts, looks at its own work, and improves it over a few rounds in its own tab, with a live “Demo prototype” button baked in. The deck waits until both a prototype and a scope exist. And the deal's actions are now laid out as numbered steps — Discovery, Prototype, Proposal — with an (i) on every action you can hover to see exactly what it does and what happens when you run it.",
+  },
+  {
+    date: "2026-06-18",
     tag: "improved",
     title: "Download a document straight from a deal",
     detail:

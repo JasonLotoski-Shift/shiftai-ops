@@ -54,10 +54,7 @@ runBuild(SAMPLE)
       r.gateHistory.map((h) => ({
         round: h.round,
         overall: h.overall,
-        structure: h.structure,
-        fidelity: h.fidelity,
-        design: h.design,
-        interactivity: h.interactivity,
+        ...h.scores,
         summary: h.summary.slice(0, 60),
       }))
     );

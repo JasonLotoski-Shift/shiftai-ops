@@ -102,7 +102,7 @@ export function DraftProposalModal({
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <FileText size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>Draft proposal · {company}</Label>
+            <Label gold>Draft scope of work · {company}</Label>
           </div>
           <button onClick={handleClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -164,7 +164,7 @@ export function DraftProposalModal({
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={handleClose} disabled={isGenerating}>Cancel</Button>
               <Button variant="primary" size="sm" disabled={!focus.trim() || isGenerating} onClick={runGenerate}>
-                {isGenerating ? "Generating…" : "Generate proposal"}
+                {isGenerating ? "Generating…" : "Generate scope"}
               </Button>
             </div>
           </div>
@@ -226,12 +226,12 @@ export function DraftProposalModal({
                         await draft.clear();
                         setStep("saved");
                       } catch (err) {
-                        setSaveErr(err instanceof Error ? err.message : "Failed to save proposal");
+                        setSaveErr(err instanceof Error ? err.message : "Failed to save scope of work");
                       }
                     });
                   }}
                 >
-                  {isSaving ? "Saving…" : "Save proposal"}
+                  {isSaving ? "Saving…" : "Save scope"}
                 </Button>
               </div>
             </div>
@@ -240,7 +240,7 @@ export function DraftProposalModal({
           <div className="px-5 py-12 text-center">
             <div className="title-lg text-track-gold mb-2 inline-block">SAVED</div>
             <p className="text-[13px] text-bone-dim">
-              Proposal saved to Drive · review it on the deal&apos;s Deliverables.
+              Scope of work saved to Drive · review it on the deal&apos;s Deliverables.
             </p>
             <div className="pt-5">
               <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>

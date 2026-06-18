@@ -710,10 +710,22 @@ export async function generateProposal(
 
   const { deal, context } = await buildDealContext(dealId);
 
+  // Ground the scope in the prototype when one exists — the SOW commits to building
+  // for real what the prototype demonstrated. Optional: a partner can draft a scope
+  // before a prototype, and the skill handles the no-prototype case.
+  const proto = await prisma.artifact.findFirst({
+    where: { dealId, generatedFromSkill: { in: ["prototype-builder", "html-prototype"] } },
+    orderBy: { createdAt: "desc" },
+    select: { driveUrl: true },
+  });
+
   const intake = [
-    "## This proposal",
+    "## This scope of work",
     `Focus / what to scope: ${focus}`,
-    `Fee to state: ${input.fee?.trim() || "(none provided — do not invent one; use [NEEDS INPUT] where a fee belongs)"}`,
+    proto?.driveUrl
+      ? `Prototype already built for this deal — the scope commits to building it for real. Link: ${proto.driveUrl}`
+      : "No prototype built yet — scope from the deal context.",
+    `Fee to state (one-time build fee and/or monthly subscription): ${input.fee?.trim() || "(none provided — do not invent one; use [NEEDS INPUT] where a price belongs)"}`,
     `Timeline to state: ${input.timeline?.trim() || "(none provided — do not invent dates; use [NEEDS INPUT])"}`,
     `Extra notes from the partner: ${input.notes?.trim() || "(none)"}`,
     `Prepared by: ${deal.partnerLead?.name ?? "[NEEDS INPUT: preparer name]"}`,
@@ -1192,7 +1204,7 @@ export async function saveProposal(dealId: string, input: { body: string }) {
   const { folderId } = await ensureDealDriveFolder(dealId);
 
   const today = new Date().toISOString().slice(0, 10);
-  const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-proposal.md`;
+  const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-scope-of-work.md`;
   const res = await drive.files.create({
     requestBody: { name: fileName, parents: [folderId], mimeType: "text/markdown" },
     media: { mimeType: "text/markdown", body: Readable.from(body) },
@@ -1207,7 +1219,7 @@ export async function saveProposal(dealId: string, input: { body: string }) {
     const created = await tx.artifact.create({
       data: {
         type: "proposal",
-        title: `Proposal · ${deal.company} · ${today}`,
+        title: `Scope of work · ${deal.company} · ${today}`,
         driveUrl: webViewLink,
         fileName,
         createdBy: partnerLabel,
@@ -1219,7 +1231,7 @@ export async function saveProposal(dealId: string, input: { body: string }) {
 
     await writeAudit(tx, {
       actor,
-      action: "create.artifact.proposal.draft",
+      action: "create.artifact.scope.draft",
       targetType: "Artifact",
       targetId: created.id,
       changes: { dealId, driveFileId: fileId, bodyLength: body.length },
@@ -1229,7 +1241,7 @@ export async function saveProposal(dealId: string, input: { body: string }) {
       actor,
       type: "doc",
       target: deal.company,
-      detail: "Drafted proposal — awaiting review",
+      detail: "Drafted scope of work — awaiting review",
       link: `/pipeline/${dealId}`,
     });
 

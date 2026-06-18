@@ -38,6 +38,17 @@ in 001–006, and applies on its own. The schema edits are already in
 since 001–006 are already applied) or paste the file into the Supabase SQL editor.
 **Still needs Jason's approval — the shared Supabase is prod.**
 
+## 008 / 009 — partner refine + deck builds (extend the prototype set)
+
+`008_partner_refine.sql` adds the partner-refine column + durable session store.
+`009_build_run_kind.sql` adds `PrototypeRun.kind` ('prototype' | 'deck') so the
+proposal-deck build rides the same run tables as the prototype builder (one column,
+default `'prototype'`, so applying it leaves every existing/prototype row unchanged).
+Both depend on 007 and apply in order after it. Schema edits are already in
+`prisma/schema.prisma`; the client is regenerated. Apply all three together with
+`npx prisma migrate dev` (it emits 007+008+009 as one migration) or paste them into
+the Supabase SQL editor in order. **Still needs Jason's approval — the shared Supabase is prod.**
+
 ## How to apply (recommended path)
 
 The clean way is to let Prisma generate the migration from the edited schema and

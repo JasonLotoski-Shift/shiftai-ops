@@ -22,7 +22,9 @@ function badge(score: number | null) {
  * embeds the interactive prototype (served by /api/prototype/<id>/view, which sets
  * the correct content-type + a sandboxing CSP so it renders AND stays isolated).
  */
-export function PrototypeBuildView({ runId, dealId, clientName }: { runId: string; dealId: string; clientName: string }) {
+export function PrototypeBuildView({ runId, dealId, clientName, kind = "prototype" }: { runId: string; dealId: string; clientName: string; kind?: string }) {
+  // The run view serves both builds; `noun` labels the header/embed for this kind.
+  const noun = kind === "deck" ? "deck" : "prototype";
   const [data, setData] = useState<Status>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [approved, setApproved] = useState(false);
@@ -86,7 +88,7 @@ export function PrototypeBuildView({ runId, dealId, clientName }: { runId: strin
             ← Deal
           </Link>
           <span className="text-graphite">/</span>
-          <span className="text-[13px] text-bone truncate">{clientName} · prototype</span>
+          <span className="text-[13px] text-bone truncate">{clientName} · {noun}</span>
           <span className={cn("ml-2 inline-flex items-center gap-1.5 text-[12px] shrink-0", errored ? "text-flag-red" : done ? "text-invoice-paid" : "text-track-gold")}>
             <span className={cn("h-1.5 w-1.5 rounded-full", errored ? "bg-flag-red" : done ? "bg-invoice-paid" : "bg-track-gold animate-pulse")} />
             {errored ? "Build failed" : refining ? "Applying your note…" : done ? `Done · ${data?.finalScore ?? "—"}` : `Round ${iters.length || "…"} · building`}
@@ -193,7 +195,7 @@ export function PrototypeBuildView({ runId, dealId, clientName }: { runId: strin
               // and scaled to fit the pane → faithful desktop view.
               <div ref={previewRef} className="w-full h-full overflow-hidden bg-white">
                 <iframe
-                  title="Prototype"
+                  title={noun}
                   src={viewUrl}
                   style={{
                     width: DESIGN_WIDTH,

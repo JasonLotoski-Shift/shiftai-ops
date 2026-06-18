@@ -1,15 +1,17 @@
-// Composes the agent's system prompt: the firm brain + the html-prototype skill
-// + the autonomous build/critique loop protocol. Mirrors lib/ai.ts buildSystemBlocks()
+// Composes the agent's system prompt per build kind: the firm brain + the kind's
+// skill (html-prototype | proposal-deck) + the design principles + the autonomous
+// build/critique loop protocol for that kind. Mirrors lib/ai.ts buildSystemBlocks()
 // (firm context first, then the skill), but adds the loop instructions the SDK agent runs.
 import fs from "node:fs";
 import path from "node:path";
 import { SKILLS_DIR } from "./paths";
+import type { BuildKind } from "./config";
 
 function readSkill(rel: string): string {
   return fs.readFileSync(path.join(SKILLS_DIR, rel), "utf8");
 }
 
-const LOOP_PROTOCOL = `
+const PROTOTYPE_LOOP_PROTOCOL = `
 ---
 
 ## How you operate — the autonomous build ⇄ critique loop
@@ -80,9 +82,62 @@ Rules for the loop:
 - Your finished work is \`prototype.html\` on disk. Do not paste the HTML into the conversation.
 `;
 
-export function buildSystemPrompt(): string {
+const DECK_LOOP_PROTOCOL = `
+---
+
+## How you operate — the autonomous build ⇄ critique loop
+
+You build the proposal deck as ONE self-contained file named \`deck.html\` in your working
+directory, then improve it by LOOKING at your own work and critiquing it, round after round,
+until it is good enough. You have these tools beyond Write/Read/Edit:
+
+- \`mcp__eyes__screenshot\` — renders the current \`deck.html\` in a real headless browser at 1440px
+  and returns an image of the page so you can SEE it. Call it after every change. The deck is a
+  long-scroll document; the screenshot shows the top of the page — that is enough to judge the cover,
+  type, palette, spacing, and the first sections. Trust your own markup for the lower sections.
+- \`mcp__gate__score\` — you submit honest 0–100 sub-scores (clarity, completeness, design, onbrand);
+  it returns the round number and tells you to STOP or CONTINUE. The gate enforces a hard cap on rounds.
+
+Your intake gives you the approved SCOPE OF WORK and a \`PROTOTYPE_URL\`. Render the SOW into the deck:
+pull scope, phases, foundation, ownership, what-we-need, timeline, and price FROM the SOW; do not
+invent a fact it does not contain. Wire the "Demo prototype" button to the real \`PROTOTYPE_URL\`.
+
+There is no interaction to drive on a deck — do NOT call \`mcp__eyes__interact\`. Judge it as a
+client-facing document: does it read clearly, is every scope section present, is the demo button
+wired to the real URL, and is it on-brand.
+
+Each round:
+1. Write or edit \`deck.html\` (Write/Edit). It must obey the "Proposal deck" rules above: one
+   self-contained file, the full section spine (cover, what we heard, what we'll build + demo button,
+   the foundation, the platform/ownership, how it works, scope in/out, timeline, what you get,
+   what we need from you, investment, the "after", next step), Edition-06 on-brand.
+2. Call \`mcp__eyes__screenshot\` and study the image like a design reviewer: cover impact, visual
+   hierarchy, spacing, density, color, type, on-brand. Name the specific weaknesses you see.
+3. Confirm in your markup that the Demo-prototype button uses the real \`PROTOTYPE_URL\` (not a
+   placeholder), and that every scope section is present and carries real content from the SOW.
+4. Decide the concrete changes for the next round.
+5. Call \`mcp__gate__score\` with honest sub-scores (clarity, completeness, design, onbrand), a
+   one-line summary of the single biggest thing to fix next, and the remaining issues.
+6. If the gate says CONTINUE, apply your changes and repeat from step 1. If it says STOP, confirm no
+   \`[NEEDS INPUT]\` markers and no banned words remain, take one final confirmation screenshot, then finish.
+
+Rules for the loop:
+- Keep each round TIGHT: one edit pass → one screenshot → one score. Do not churn many edit/screenshot
+  cycles before scoring — make your changes, look once, then SCORE and let the gate decide.
+- Be your harshest critic in the early rounds. The score should climb because the deck genuinely got
+  better. A first draft is rarely above ~60.
+- **When the gate returns STOP, you are DONE.** Do NOT call \`score\` again and do NOT keep polishing.
+  Confirm no \`[NEEDS INPUT]\` markers or banned words remain, take one final confirmation screenshot, finish.
+- Your finished work is \`deck.html\` on disk. Do not paste the HTML into the conversation.
+`;
+
+export function buildSystemPrompt(kind: BuildKind = "prototype"): string {
   const firm = readSkill("_firm/context.md");
-  const htmlSkill = readSkill("html-prototype/SKILL.md");
   const design = readSkill("_design/principles.md");
-  return [firm, "\n\n---\n\n", htmlSkill, "\n\n---\n\n", design, "\n", LOOP_PROTOCOL].join("");
+  if (kind === "deck") {
+    const deckSkill = readSkill("proposal-deck/SKILL.md");
+    return [firm, "\n\n---\n\n", deckSkill, "\n\n---\n\n", design, "\n", DECK_LOOP_PROTOCOL].join("");
+  }
+  const htmlSkill = readSkill("html-prototype/SKILL.md");
+  return [firm, "\n\n---\n\n", htmlSkill, "\n\n---\n\n", design, "\n", PROTOTYPE_LOOP_PROTOCOL].join("");
 }
