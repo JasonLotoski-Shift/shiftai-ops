@@ -33,7 +33,7 @@ export type RunFinish = {
 export type PrototypeRecorder = {
   runId: string | null;
   setSession: (sessionId: string) => Promise<void>;
-  recordIteration: (rec: GateRecord) => Promise<void>;
+  recordIteration: (rec: GateRecord, partnerComment?: string | null) => Promise<void>;
   finish: (f: RunFinish) => Promise<void>;
   recordArtifact: (input: { dealId: string; company: string; folderId: string; htmlPath: string }) => Promise<void>;
 };
@@ -93,7 +93,7 @@ export async function createPrototypeRun(
       }
     },
 
-    async recordIteration(rec: GateRecord) {
+    async recordIteration(rec: GateRecord, partnerComment?: string | null) {
       if (!runId) return;
       const base = `${runId}/round-${rec.round}`;
       // Upload the round's artifacts first; store whatever URLs we got (null on miss).
@@ -113,6 +113,7 @@ export async function createPrototypeRun(
           data: {
             runId,
             round: rec.round,
+            partnerComment: partnerComment ?? null,
             htmlUrl,
             screenshotUrl,
             critique: critique || null,

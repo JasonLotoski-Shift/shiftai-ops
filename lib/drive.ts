@@ -191,6 +191,22 @@ export function fileIdFromUrl(url: string): string | null {
   return m ? m[1] : null;
 }
 
+// Resolve the parent folder id of a Drive file (e.g. to re-upload a refined copy into
+// the same folder as the original). Returns null on any miss (file gone, no parents) so
+// callers can fall back gracefully. Shared-Drive files have exactly one parent.
+export async function parentFolderOfFile(fileId: string): Promise<string | null> {
+  try {
+    const { data } = await drive.files.get({
+      fileId,
+      fields: "parents",
+      supportsAllDrives: true,
+    });
+    return data.parents?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Permanently delete a Drive file (Shared-Drive items skip the trash and are
 // gone for good). Best-effort: a 404 means it's already gone, which we treat as
 // success so a stale DB row can still be cleaned up. Other errors propagate.

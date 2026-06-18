@@ -3,7 +3,7 @@
 // Phase C wires this to PrototypeRun rows + Supabase Realtime; for now it just runs the loop.
 import "dotenv/config";
 import http from "node:http";
-import { runBuild, type BuildBrief } from "./loop";
+import { runBuild, refineBuild, type BuildBrief } from "./loop";
 
 const PORT = Number(process.env.WORKER_PORT || 8787);
 const SECRET = process.env.WORKER_SHARED_SECRET || "";
@@ -36,9 +36,51 @@ const server = http.createServer((req, res) => {
       }
       res.writeHead(202, { "content-type": "application/json" });
       res.end(JSON.stringify({ status: "started", runId: input.runId ?? null }));
-      runBuild(input, { existingRunId: input.runId })
+      // Pass runId for BOTH the cwd-derived runDir AND the DB row: the SDK derives the
+      // SessionKey.projectKey from the sanitized cwd, so the build's runDir MUST be
+      // RUNS_DIR/<PrototypeRun id> to match refineBuild's runDir (also RUNS_DIR/<runId>).
+      // Without this the build and refine resolve to different projectKeys, the durable
+      // SessionStore.load() returns null on resume, and the partner-refine pass loses all
+      // prior context. (existingRunId only attaches the recorder to Home's pre-inserted row.)
+      runBuild(input, { runId: input.runId, existingRunId: input.runId })
         .then((r) => console.log(`[build done] ${r.runDir} rounds=${r.rounds} score=${r.finalScore} runId=${r.runId}`))
         .catch((e) => console.error("[build failed]", e));
+    });
+    return;
+  }
+
+  // The single partner-refine pass: resume the run's session, apply ONE partner comment,
+  // re-finalize. Mirrors /build — Bearer-secret auth, 202 ACK, runs in the background.
+  if (req.method === "POST" && req.url === "/refine") {
+    const auth = req.headers["authorization"] || "";
+    if (SECRET && auth !== `Bearer ${SECRET}`) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "unauthorized" }));
+      return;
+    }
+
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let input: { runId?: string; comment?: string };
+      try {
+        input = JSON.parse(body);
+      } catch {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "bad json" }));
+        return;
+      }
+      if (!input.runId || !input.comment) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "runId and comment are required" }));
+        return;
+      }
+      const { runId, comment } = input;
+      res.writeHead(202, { "content-type": "application/json" });
+      res.end(JSON.stringify({ status: "refining", runId }));
+      refineBuild({ runId, comment })
+        .then((r) => console.log(`[refine done] ${r.runDir} rounds=${r.rounds} score=${r.finalScore} runId=${r.runId}`))
+        .catch((e) => console.error("[refine failed]", e));
     });
     return;
   }
