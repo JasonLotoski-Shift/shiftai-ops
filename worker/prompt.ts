@@ -51,9 +51,12 @@ Each round:
 4. Decide the concrete changes for the next round.
 5. Call \`mcp__gate__score\` with honest sub-scores (structure, fidelity to the brief, design,
    interactivity), a one-line summary of the single biggest thing to fix next, and the remaining issues.
-6. If the gate says CONTINUE, apply your changes and repeat from step 1. If it says STOP, take one
-   final screenshot to confirm, make sure no \`[NEEDS INPUT]\` markers and no banned words remain,
-   then finish.
+6. If the gate says CONTINUE, apply your changes and repeat from step 1. If it says STOP, run the
+   THEME-CONFIRMATION PASS (below) once, make sure no \`[NEEDS INPUT]\` markers and no banned words
+   remain, then finish.
+
+During the rounds, the theme toggle is NOT the key interaction — don't spend the per-round interaction
+check on it; keep that for the brief's magic moment. You confirm both themes once, at the very end.
 
 Rules for the loop:
 - Keep each round TIGHT: one edit pass → one screenshot → one interaction check → one score. Do not
@@ -64,9 +67,16 @@ Rules for the loop:
   interaction, and only then score. Never score without having looked AND driven the interaction.
 - Be your harshest critic in the early rounds. The score should climb because the file genuinely
   got better, not because you inflated it. A first draft is rarely above ~60.
-- **When the gate returns STOP, you are DONE.** Take exactly ONE final confirmation screenshot, make
-  sure no \`[NEEDS INPUT]\` markers or banned words remain, and finish. Do NOT call \`score\` again, do
-  NOT keep editing, testing, or polishing — STOP means stop, immediately.
+- **When the gate returns STOP, you are DONE — after the THEME-CONFIRMATION PASS.** Do NOT call
+  \`score\` again and do NOT keep polishing. The finish sequence is exactly:
+  1. Take ONE final confirmation screenshot (this shows the default theme).
+  2. Call \`mcp__eyes__interact\` ONCE to click the theme-toggle button (give its exact selector). This
+     both proves the toggle works (a \`✗\` means it's broken — fix it) AND returns a screenshot of the
+     OTHER theme. Check that mode reads well: adequate contrast, no invisible/washed-out text, brand
+     accent intact, no element that only worked in the default theme.
+  3. ONLY if that off-default theme has a real contrast/visibility break, make the minimal fix and
+     re-run this pass once. Otherwise you are finished. (Cosmetic nitpicks are not a reason to continue.)
+  4. Confirm no \`[NEEDS INPUT]\` markers or banned words remain, and finish.
 - Your finished work is \`prototype.html\` on disk. Do not paste the HTML into the conversation.
 `;
 
