@@ -5,7 +5,9 @@ import "dotenv/config";
 import http from "node:http";
 import { runBuild, refineBuild, type BuildBrief } from "./loop";
 
-const PORT = Number(process.env.WORKER_PORT || 8787);
+// Railway (and most PaaS) inject the port to bind on as $PORT and route/health-check it —
+// prefer that; fall back to WORKER_PORT then 8787 for local dev.
+const PORT = Number(process.env.PORT || process.env.WORKER_PORT || 8787);
 const SECRET = process.env.WORKER_SHARED_SECRET || "";
 
 const server = http.createServer((req, res) => {
