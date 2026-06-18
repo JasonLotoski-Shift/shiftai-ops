@@ -9,6 +9,8 @@
 import path from "node:path";
 import { prisma } from "../lib/prisma";
 import { uploadFileAt } from "./storage";
+import { uploadFile } from "../lib/drive";
+import { writeAudit, writeActivity, agentActor } from "../lib/audit";
 import type { GateRecord } from "./tools/gate";
 
 export type RunInit = {
@@ -33,6 +35,7 @@ export type PrototypeRecorder = {
   setSession: (sessionId: string) => Promise<void>;
   recordIteration: (rec: GateRecord) => Promise<void>;
   finish: (f: RunFinish) => Promise<void>;
+  recordArtifact: (input: { dealId: string; company: string; folderId: string; htmlPath: string }) => Promise<void>;
 };
 
 // Create the PrototypeRun row (status=running). Returns a recorder whose methods
@@ -153,6 +156,72 @@ export async function createPrototypeRun(
         console.log(`[persistence] PrototypeRun ${runId} finished (status=${f.status})`);
       } catch (err) {
         console.warn("[persistence] finish failed:", err instanceof Error ? err.message : err);
+      }
+    },
+
+    async recordArtifact(input: {
+      dealId: string;
+      company: string;
+      folderId: string;
+      htmlPath: string;
+    }) {
+      if (!runId) return;
+      let html: string;
+      try {
+        html = require("node:fs").readFileSync(input.htmlPath, "utf8");
+      } catch (err) {
+        console.warn("[persistence] recordArtifact: could not read final HTML:", err);
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const slug = input.company.replace(/\s+/g, "-");
+      const fileName = `${today}-${slug}-prototype.html`;
+      let webViewLink: string;
+      try {
+        ({ webViewLink } = await uploadFile(html, fileName, input.folderId, "text/html"));
+      } catch (err) {
+        console.warn("[persistence] recordArtifact: Drive upload failed:", err);
+        return;
+      }
+      const actor = agentActor("prototype-builder");
+      // Match the firm convention (CLAUDE.md persistence recipe) + the actorLabel
+      // that resolveActor stamps on this same transaction's AuditLog/Activity rows
+      // (`AGENT · <SKILL>`), so the artifact card/feed shows a consistent author.
+      const createdBy = "AGENT · PROTOTYPE-BUILDER";
+      try {
+        const artifact = await prisma.$transaction(async (tx) => {
+          const created = await tx.artifact.create({
+            data: {
+              type: "other",
+              title: `Prototype · ${input.company} · ${today}`,
+              driveUrl: webViewLink,
+              fileName,
+              createdBy,
+              generatedFromSkill: "prototype-builder",
+              reviewStatus: "draft",
+              dealId: input.dealId,
+            },
+          });
+          await writeAudit(tx, {
+            actor,
+            action: "create.artifact.prototype.draft",
+            targetType: "Artifact",
+            targetId: created.id,
+            changes: { dealId: input.dealId, runId, fileName },
+          });
+          await writeActivity(tx, {
+            actor,
+            type: "ai",
+            target: input.company,
+            detail: "Built an interactive prototype — awaiting review",
+            link: `/pipeline/${input.dealId}`,
+          });
+          return created;
+        });
+        await prisma.prototypeRun.update({ where: { id: runId }, data: { artifactId: artifact.id } });
+        console.log(`[persistence] Artifact ${artifact.id} written for run ${runId}`);
+      } catch (err) {
+        console.warn("[persistence] recordArtifact: DB write failed:", err instanceof Error ? err.message : err);
       }
     },
   };

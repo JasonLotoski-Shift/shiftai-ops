@@ -20,6 +20,8 @@ export type BuildBrief = {
   /** Optional scope FKs — set by the Home kickoff so the run links to its Deal/Client. */
   dealId?: string;
   clientId?: string;
+  /** The deal's Drive /Prototype subfolder id — Home resolves it and passes it in. */
+  drivePrototypeFolderId?: string;
 };
 
 export type BuildResult = {
@@ -172,6 +174,16 @@ export async function runBuild(input: BuildBrief, runId?: string): Promise<Build
       finalScore: last ? last.overall : null,
       finalHtmlPath: fs.existsSync(prototypePath) ? prototypePath : undefined,
     });
+
+    // Persist the final deliverable (Drive + Artifact) when this is a real, deal-scoped run.
+    if (input.dealId && input.drivePrototypeFolderId && fs.existsSync(prototypePath)) {
+      await recorder.recordArtifact({
+        dealId: input.dealId,
+        company: input.client,
+        folderId: input.drivePrototypeFolderId,
+        htmlPath: prototypePath,
+      });
+    }
 
     return {
       runDir,
