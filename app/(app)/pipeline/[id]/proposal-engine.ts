@@ -4,12 +4,9 @@
 //
 // Two products, each its own server action(s):
 //   1. HTML PROTOTYPE — a two-stage workflow with a partner review gate:
-//        Stage 1 (brief): read the deal's WHOLE Drive folder (transcripts,
-//          discovery report, survey, call notes, screenshots) + web-search the
-//          prospect's brand colors, then write a reviewable prototype-brief.md
-//          (user stories, key features, the tabs to build). Sonnet — the slow
-//          Drive fan-out rides with the cheap call. The partner reviews/edits,
-//          then we save the brief to the deal's Prototype/ Drive subfolder.
+//        Stage 1 (brief): a Stage 0 kickoff picks the target from the discovery
+//          report + discussion notes, then a three-stage chain (interpret&diverge
+//          -> red-team -> commit) writes the reviewable brief.
 //        Stage 2 (build): an isolated Opus call turns the approved brief into ONE
 //          self-contained, multi-tab interactive .html. No Drive I/O competing
 //          for wall-clock, so each stage stays under the function timeout.
@@ -34,6 +31,8 @@ import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { buildDealContext } from "@/lib/deal-context";
 import { loadDealDriveFiles, type DealDriveManifestEntry } from "@/lib/deal-drive-context";
+import { runBriefChain } from "@/lib/prototype-brief/chain";
+import type { KickoffSeed } from "@/lib/prototype-brief/types";
 import type { ArtifactType } from "@/lib/generated/prisma/enums";
 
 const BUILD_MODEL = "claude-opus-4-8";
@@ -47,38 +46,25 @@ function stripCodeFence(s: string): string {
   return (m ? m[1] : t).trim();
 }
 
-// ── 1a. Prototype brief — read the whole Drive folder, write a reviewable brief ──
+// ── 1a. Prototype brief — staged engine: Stage 1->2->3 over the deal corpus ──
+// Stage 0 (proposePrototypeKickoff) runs first in the UI and hands back the seed.
 export async function generatePrototypeBrief(
   dealId: string,
-  input: { focus: string },
+  input: { seed: KickoffSeed },
 ): Promise<{ brief: string; manifest: DealDriveManifestEntry[] }> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
-
-  const focus = input.focus.trim();
-  if (!focus) throw new Error("Tell the engine what problem to prototype");
+  if (!input.seed?.candidate?.title) throw new Error("Confirm a prototype target first");
 
   const { context } = await buildDealContext(dealId);
-
-  // The deep step: every client file in the deal's Drive folder becomes the
-  // brief's primary evidence, plus the screenshots they shared.
   const corpus = await loadDealDriveFiles(dealId);
 
-  const intake = [
-    "## What to prototype",
-    focus,
-    "",
-    "## Client files (the deal's Drive folder)",
-    corpus.text || "No readable client files found in the deal's Drive folder.",
-  ].join("\n");
-
-  const brief = await generate({
-    skill: "prototype-brief",
+  const brief = await runBriefChain({
     context,
-    intake,
-    webSearch: true,
-    maxTokens: 4000,
+    corpusText: corpus.text,
     images: corpus.images.length ? corpus.images : undefined,
+    seed: input.seed,
+    gen: generate,
   });
 
   return { brief: brief.trim(), manifest: corpus.manifest };
