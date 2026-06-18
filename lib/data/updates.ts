@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-18",
     tag: "improved",
+    title: "Download a document straight from a deal",
+    detail:
+      "Each document on a deal now has a download button next to it — grab the file as-is (the HTML, PDF, Markdown, whatever it is) without opening Drive first. Opening it in its own tab still works too.",
+  },
+  {
+    date: "2026-06-18",
+    tag: "improved",
     title: "Documents open ready to read, not as raw code",
     detail:
       "Opening an HTML document from a deal's Documents list now shows the finished page in its own tab, instead of a wall of code. Other files — PDFs, decks, sheets — still open in Drive as before, and nothing about how files are saved changes.",
