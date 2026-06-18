@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { X, Sparkles, ShieldAlert, FlaskConical, Presentation, Eye, Code, FileText } from "lucide-react";
 import { Button, Label, Textarea } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
@@ -10,6 +10,8 @@ import {
   generateProposalDeck,
   saveProposalDeck,
 } from "@/app/(app)/pipeline/[id]/proposal-engine";
+import { proposePrototypeKickoff } from "@/app/(app)/pipeline/[id]/prototype-kickoff";
+import type { KickoffCandidate } from "@/lib/prototype-brief/types";
 import { startPrototypeBuild } from "@/app/(app)/pipeline/[id]/prototype-actions";
 
 type EngineMode = "prototype" | "deck";
@@ -62,6 +64,17 @@ export function ProposalEngineModal({
 
   const [step, setStep] = useState<Step>("inputs");
   const [focus, setFocus] = useState("");
+  // Prototype only — Stage 0 kickoff: the ranked targets Claude proposes from the
+  // discovery report + discussion notes, the partner's pick, and an optional steer.
+  const [kickoff, setKickoff] = useState<{
+    mode: "preselect" | "ask";
+    preselected?: KickoffCandidate;
+    options: KickoffCandidate[];
+    reason: string;
+  } | null>(null);
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  const [steer, setSteer] = useState("");
+  const [loadingKickoff, setLoadingKickoff] = useState(false);
   const [brief, setBrief] = useState("");
   const [html, setHtml] = useState("");
   const [view, setView] = useState<"preview" | "code">("preview");
@@ -72,6 +85,20 @@ export function ProposalEngineModal({
   const [startErr, setStartErr] = useState<string | null>(null);
   const [isStarting, startBuild] = useTransition();
 
+  // Prototype only — read the discovery report once when the modal opens, propose a
+  // target, and pre-select the winner when Claude is confident.
+  useEffect(() => {
+    if (mode !== "prototype" || kickoff) return;
+    setLoadingKickoff(true);
+    proposePrototypeKickoff(dealId)
+      .then((k) => {
+        setKickoff(k);
+        setChosenId(k.preselected?.id ?? null);
+      })
+      .catch(() => setKickoff({ mode: "ask", options: [], reason: "Could not read the discovery report." }))
+      .finally(() => setLoadingKickoff(false));
+  }, [mode, dealId, kickoff]);
+
   const briefNeedsInput = countNeedsInput(brief);
   const htmlNeedsInput = countNeedsInput(html);
 
@@ -81,7 +108,10 @@ export function ProposalEngineModal({
     startGenerate(async () => {
       try {
         if (isPrototype) {
-          const { brief: out } = await generatePrototypeBrief(dealId, { focus });
+          const chosen = kickoff?.options.find((o) => o.id === chosenId);
+          if (!chosen) throw new Error("Pick where the prototype should start");
+          const seed = { candidate: chosen, steer: steer.trim() || undefined };
+          const { brief: out } = await generatePrototypeBrief(dealId, { seed });
           setBrief(out);
           setStep("brief");
         } else {
@@ -101,7 +131,10 @@ export function ProposalEngineModal({
     setGenErr(null);
     startGenerate(async () => {
       try {
-        const { brief: out } = await generatePrototypeBrief(dealId, { focus });
+        const chosen = kickoff?.options.find((o) => o.id === chosenId);
+        if (!chosen) throw new Error("Pick where the prototype should start");
+        const seed = { candidate: chosen, steer: steer.trim() || undefined };
+        const { brief: out } = await generatePrototypeBrief(dealId, { seed });
         setBrief(out);
       } catch (err) {
         setGenErr(err instanceof Error ? err.message : "Generation failed");
@@ -183,10 +216,46 @@ export function ProposalEngineModal({
 
         {step === "inputs" ? (
           <div className="px-5 py-5 flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>{cfg.focusLabel} <span className="text-flag-red">*</span></Label>
-              <Textarea rows={3} placeholder={cfg.focusPlaceholder} value={focus} onChange={(e) => setFocus(e.target.value)} disabled={isGenerating} />
-            </div>
+            {isPrototype ? (
+              <div className="flex flex-col gap-2">
+                <Label>Where should the prototype start?{kickoff?.mode === "ask" ? " (pick one)" : ""}</Label>
+                {loadingKickoff && <p className="text-[12px] text-bone-mute">Reading the discovery report…</p>}
+                {!loadingKickoff && kickoff?.reason && <p className="text-[12px] text-bone-mute">{kickoff.reason}</p>}
+                <div className="flex flex-col gap-1.5">
+                  {kickoff?.options.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setChosenId(o.id)}
+                      disabled={isGenerating}
+                      className={cn(
+                        "rounded-[var(--radius-sm)] border px-2.5 py-2 text-left text-[12px] transition-colors",
+                        chosenId === o.id
+                          ? "border-track-gold/70 bg-track-gold-dim/10"
+                          : "border-graphite bg-asphalt/40 hover:border-bone-mute/40",
+                      )}
+                    >
+                      <div className="font-medium text-bone">{o.title}</div>
+                      <div className="text-bone-mute">{o.pain}</div>
+                      {o.rationale && <div className="text-bone-mute/80 mt-0.5">{o.rationale}</div>}
+                    </button>
+                  ))}
+                </div>
+                <Label className="mt-1">Optional steer</Label>
+                <Textarea
+                  rows={2}
+                  placeholder="e.g. lean into the live routing map"
+                  value={steer}
+                  onChange={(e) => setSteer(e.target.value)}
+                  disabled={isGenerating}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Label>{cfg.focusLabel} <span className="text-flag-red">*</span></Label>
+                <Textarea rows={3} placeholder={cfg.focusPlaceholder} value={focus} onChange={(e) => setFocus(e.target.value)} disabled={isGenerating} />
+              </div>
+            )}
             <p className="flex items-start gap-2 text-[12px] text-bone-mute">
               <Sparkles size={12} strokeWidth={1.5} className="mt-0.5 shrink-0 text-track-gold" />
               <span>{isGenerating ? (isPrototype ? cfg.briefing : cfg.building) : cfg.inputsHint(company)}</span>
@@ -199,7 +268,12 @@ export function ProposalEngineModal({
             )}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={onClose} disabled={isGenerating}>Cancel</Button>
-              <Button variant="primary" size="sm" disabled={!focus.trim() || isGenerating} onClick={runFromInputs}>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={(isPrototype ? !chosenId : !focus.trim()) || isGenerating || loadingKickoff}
+                onClick={runFromInputs}
+              >
                 {isGenerating ? (isPrototype ? "Reading files…" : "Building…") : isPrototype ? "Read files & draft brief" : cfg.title}
               </Button>
             </div>
@@ -243,7 +317,7 @@ export function ProposalEngineModal({
             )}
             <div className="flex justify-between items-center pt-1">
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setStep("inputs")} disabled={isStarting || isGenerating}>← Edit focus</Button>
+                <Button variant="ghost" size="sm" onClick={() => setStep("inputs")} disabled={isStarting || isGenerating}>← Edit target</Button>
                 <Button variant="ghost" size="sm" onClick={regenerateBrief} disabled={isStarting || isGenerating}>
                   {isGenerating ? "Redrafting…" : "↻ Regenerate brief"}
                 </Button>
