@@ -11,6 +11,14 @@ import { createEyesServer, closeEyes } from "./tools/eyes";
 import { createGateServer, type GateRecord } from "./tools/gate";
 import { createLibraryServer } from "./tools/library";
 import { createPrototypeRun } from "./persistence";
+import { makeSessionStore } from "../lib/agent-session-store";
+
+// Stable project key for the prototype-builder's SDK sessions. The SDK derives the
+// SessionKey.projectKey from the resolved cwd (it has no explicit projectKey option on
+// query()), so build and the later partner-refine pass match because both run with the
+// same worker cwd. This constant is the firm-level name for that session namespace and
+// is shared with the refine pass / store consumers.
+export const PROTOTYPE_PROJECT_KEY = "prototype-builder";
 
 export type BuildBrief = {
   client: string;
@@ -139,6 +147,8 @@ export async function runBuild(
         // SDK isolation: load no filesystem settings, so the worker NEVER picks up the
         // user's global ~/.claude MCP servers / hooks / CLAUDE.md — only eyes/gate/library.
         settingSources: [],
+        // Durable session persistence so a later partner-refine pass can resume this build.
+        sessionStore: makeSessionStore(),
         mcpServers: { eyes: eyes.server, gate: gate.server, library: library.server },
         allowedTools: ALLOWED_TOOLS,
         // Hard-block tools the loop never needs. Under acceptEdits, read-only built-ins like

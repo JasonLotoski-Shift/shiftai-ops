@@ -44,6 +44,10 @@ const CRITICAL_FLOOR = 75; // applies to interactivity + fidelity
 export function createGateServer(opts: {
   maxIterations: number;
   threshold: number;
+  // Optional: where this run's round numbering should start. A partner-refine pass
+  // resumes the session and continues from the auto-loop's last round, so it passes
+  // the prior max round here (the refine round becomes maxRound + 1, not 1).
+  roundOffset?: number;
   // Optional: what the agent is currently looking at (Eyes' last screenshot/HTML),
   // captured onto each record so the loop can persist the round afterwards.
   currentArtifacts?: () => { screenshotPath: string | null; htmlPath: string | null };
@@ -92,7 +96,7 @@ export function createGateServer(opts: {
             .describe("concrete issues still open"),
         },
         async (args) => {
-          const round = history.length + 1;
+          const round = (opts.roundOffset ?? 0) + history.length + 1;
           const overall = Math.round(
             args.structure * WEIGHTS.structure +
               args.fidelity * WEIGHTS.fidelity +
