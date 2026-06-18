@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma";
 // Serves a finished prototype's HTML from OUR origin with the correct content-type and a
 // sandboxing CSP. Supabase Storage forces text/plain + default-src 'none' (anti-XSS), so the
 // raw Storage URL can't render — we fetch it server-side and re-serve it here. The CSP
-// `sandbox allow-scripts allow-forms allow-modals allow-popups` lets the self-contained
-// prototype run its inline JS but in an OPAQUE origin, so it can't touch the app's cookies.
+// `sandbox` keeps the prototype in an OPAQUE origin (no allow-same-origin → it can't touch the
+// app's cookies/storage), while the allow-* flags let prototype buttons that navigate, open
+// links, download, or pop modals behave the SAME embedded as they do in a standalone tab.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
   const session = await auth();
   if (!session?.user?.partnerId) return new Response("Unauthorized", { status: 401 });
@@ -19,7 +20,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ run
   return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "content-security-policy": "sandbox allow-scripts allow-forms allow-modals allow-popups",
+      "content-security-policy":
+        "sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads allow-top-navigation-by-user-activation",
       "cache-control": "no-store",
     },
   });

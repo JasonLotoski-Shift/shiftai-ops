@@ -110,17 +110,26 @@ export function ProposalEngineModal({
   }
 
   // Prototype only — hand the brief to the worker loop, then open the run in its own tab.
-  const launch = () =>
+  const launch = () => {
+    // Open the run tab SYNCHRONOUSLY in the click gesture, before any await — a
+    // window.open() called after `await startPrototypeBuild` is treated as programmatic
+    // and gets killed by the popup blocker. We open about:blank now, then point it at the
+    // run page once we have the runId.
+    const win = window.open("about:blank", "_blank");
     startBuild(async () => {
       setStartErr(null);
       try {
         const { runId } = await startPrototypeBuild(dealId, brief);
-        window.open(`/pipeline/${dealId}/prototype/${runId}`, "_blank", "noopener");
+        const url = `/prototype/${runId}`;
+        if (win && !win.closed) win.location.href = url;
+        else window.open(url, "_blank"); // fallback if the sync open was blocked
         onClose();
       } catch (e) {
+        if (win && !win.closed) win.close();
         setStartErr(e instanceof Error ? e.message : "Could not start the build");
       }
     });
+  };
 
   // Stage 2 rebuild — deck only (prototype rebuilds via the worker view's "Run again").
   function rebuild() {
