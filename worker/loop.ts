@@ -69,8 +69,11 @@ const canUseTool: CanUseTool = async (toolName, input) => {
   };
 };
 
-export async function runBuild(input: BuildBrief, runId?: string): Promise<BuildResult> {
-  const id = runId || `run-${Date.now()}`;
+export async function runBuild(
+  input: BuildBrief,
+  opts: { runId?: string; existingRunId?: string } = {},
+): Promise<BuildResult> {
+  const id = opts.runId || `run-${Date.now()}`;
   const runDir = path.join(RUNS_DIR, id);
   fs.mkdirSync(runDir, { recursive: true });
   console.log(`\n=== prototype run ${id} ===\nclient: ${input.client}\nrunDir: ${runDir}\nmodel: ${config.model}\n`);
@@ -87,13 +90,17 @@ export async function runBuild(input: BuildBrief, runId?: string): Promise<Build
 
   // Open the run row (status=running). No-ops gracefully if the tables aren't
   // migrated yet — the build loop still runs and returns its result.
-  const recorder = await createPrototypeRun({
-    clientName: input.client,
-    industry: input.industry,
-    model: config.model,
-    dealId: input.dealId,
-    clientId: input.clientId,
-  });
+  const recorder = await createPrototypeRun(
+    {
+      clientName: input.client,
+      industry: input.industry,
+      model: config.model,
+      dealId: input.dealId,
+      clientId: input.clientId,
+      brief: input.brief,
+    },
+    { existingRunId: opts.existingRunId },
+  );
 
   // Wall-clock backstop: abort the query if the run exceeds maxRunMs. The SDK's
   // maxTurns/maxBudgetUsd don't bound elapsed time, so a stalled stream (e.g. a slow

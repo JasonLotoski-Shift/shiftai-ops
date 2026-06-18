@@ -26,7 +26,7 @@ const server = http.createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
-      let input: BuildBrief;
+      let input: BuildBrief & { runId?: string };
       try {
         input = JSON.parse(body);
       } catch {
@@ -34,13 +34,10 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: "bad json" }));
         return;
       }
-      // Phase A: acknowledge immediately, run in the background, log when done.
       res.writeHead(202, { "content-type": "application/json" });
-      res.end(JSON.stringify({ status: "started" }));
-      runBuild(input)
-        .then((r) =>
-          console.log(`[build done] ${r.runDir} rounds=${r.rounds} score=${r.finalScore}`)
-        )
+      res.end(JSON.stringify({ status: "started", runId: input.runId ?? null }));
+      runBuild(input, { existingRunId: input.runId })
+        .then((r) => console.log(`[build done] ${r.runDir} rounds=${r.rounds} score=${r.finalScore} runId=${r.runId}`))
         .catch((e) => console.error("[build failed]", e));
     });
     return;
