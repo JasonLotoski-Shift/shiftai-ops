@@ -136,6 +136,9 @@ export async function runBuild(
         cwd: runDir,
         systemPrompt: buildSystemPrompt(),
         model: config.model,
+        // SDK isolation: load no filesystem settings, so the worker NEVER picks up the
+        // user's global ~/.claude MCP servers / hooks / CLAUDE.md — only eyes/gate/library.
+        settingSources: [],
         mcpServers: { eyes: eyes.server, gate: gate.server, library: library.server },
         allowedTools: ALLOWED_TOOLS,
         // Hard-block tools the loop never needs. Under acceptEdits, read-only built-ins like
