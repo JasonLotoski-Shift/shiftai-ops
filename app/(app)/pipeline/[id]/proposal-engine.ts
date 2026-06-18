@@ -34,7 +34,6 @@ import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { buildDealContext } from "@/lib/deal-context";
 import { loadDealDriveFiles, type DealDriveManifestEntry } from "@/lib/deal-drive-context";
-import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import type { ArtifactType } from "@/lib/generated/prisma/enums";
 
 const BUILD_MODEL = "claude-opus-4-8";
@@ -138,32 +137,6 @@ export async function savePrototypeBrief(
 
   revalidatePath(`/pipeline/${dealId}`);
   return { artifactId: artifact.id, driveUrl: webViewLink };
-}
-
-// ── 1b. Prototype build — isolated Opus call from the approved brief ──
-export async function generatePrototypeHtml(
-  dealId: string,
-  input: { brief: string },
-): Promise<{ html: string }> {
-  const session = await auth();
-  if (!session?.user?.partnerId) throw new Error("Not authenticated");
-
-  const brief = input.brief.trim();
-  if (!brief) throw new Error("Build from a brief first");
-
-  const { context } = await buildDealContext(dealId);
-  const images = await loadScreenshotImages({ dealId });
-
-  const html = await generate({
-    skill: "html-prototype",
-    context,
-    intake: `## Approved prototype brief\n${brief}`,
-    model: BUILD_MODEL,
-    maxTokens: 24000,
-    images: images.length ? images : undefined,
-  });
-
-  return { html: stripCodeFence(html) };
 }
 
 // ── 2. Proposal deck — one Opus call, links the prototype ──
@@ -271,10 +244,6 @@ async function saveHtml(skill: HtmlArtifactSkill, dealId: string, htmlRaw: strin
 
   revalidatePath(`/pipeline/${dealId}`);
   return { artifactId: artifact.id, driveUrl: webViewLink };
-}
-
-export async function savePrototype(dealId: string, input: { html: string }) {
-  return saveHtml("html-prototype", dealId, input.html);
 }
 
 export async function saveProposalDeck(dealId: string, input: { html: string }) {

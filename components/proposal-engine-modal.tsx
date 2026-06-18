@@ -8,11 +8,11 @@ import { cn } from "@/lib/cn";
 import {
   generatePrototypeBrief,
   savePrototypeBrief,
-  generatePrototypeHtml,
-  savePrototype,
   generateProposalDeck,
   saveProposalDeck,
 } from "@/app/(app)/pipeline/[id]/proposal-engine";
+import { startPrototypeBuild } from "@/app/(app)/pipeline/[id]/prototype-actions";
+import { PrototypeBuildView } from "@/components/prototype-build-view";
 
 type EngineMode = "prototype" | "deck";
 
@@ -71,6 +71,9 @@ export function ProposalEngineModal({
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [isGenerating, startGenerate] = useTransition();
   const [isSaving, startSave] = useTransition();
+  const [runId, setRunId] = useState<string | null>(null);
+  const [startErr, setStartErr] = useState<string | null>(null);
+  const [isStarting, startBuild] = useTransition();
 
   const briefNeedsInput = countNeedsInput(brief);
   const htmlNeedsInput = countNeedsInput(html);
@@ -109,37 +112,32 @@ export function ProposalEngineModal({
     });
   }
 
-  // Prototype only — save the approved brief, then build the HTML from it.
-  function saveBriefAndBuild() {
-    setSaveErr(null);
-    startSave(async () => {
+  // Prototype only — save the approved brief, then hand it to the worker loop.
+  const launch = () =>
+    startBuild(async () => {
+      setSaveErr(null);
+      setStartErr(null);
       try {
         await savePrototypeBrief(dealId, { brief });
       } catch (err) {
         setSaveErr(err instanceof Error ? err.message : "Failed to save brief");
         return;
       }
-      setStep("build");
-      startGenerate(async () => {
-        try {
-          const { html: out } = await generatePrototypeHtml(dealId, { brief });
-          setHtml(out);
-          setView("preview");
-        } catch (err) {
-          setGenErr(err instanceof Error ? err.message : "Build failed");
-        }
-      });
+      try {
+        const { runId } = await startPrototypeBuild(dealId, brief);
+        setRunId(runId);
+        setStep("build");
+      } catch (e) {
+        setStartErr(e instanceof Error ? e.message : "Could not start the build");
+      }
     });
-  }
 
-  // Stage 2 rebuild — prototype rebuilds from the brief; deck rebuilds from focus.
+  // Stage 2 rebuild — deck only (prototype rebuilds via the worker view's "Run again").
   function rebuild() {
     setGenErr(null);
     startGenerate(async () => {
       try {
-        const { html: out } = isPrototype
-          ? await generatePrototypeHtml(dealId, { brief })
-          : await generateProposalDeck(dealId, { focus });
+        const { html: out } = await generateProposalDeck(dealId, { focus });
         setHtml(out);
       } catch (err) {
         setGenErr(err instanceof Error ? err.message : "Build failed");
@@ -151,8 +149,7 @@ export function ProposalEngineModal({
     setSaveErr(null);
     startSave(async () => {
       try {
-        if (isPrototype) await savePrototype(dealId, { html });
-        else await saveProposalDeck(dealId, { html });
+        await saveProposalDeck(dealId, { html });
         setStep("saved");
       } catch (err) {
         setSaveErr(err instanceof Error ? err.message : "Failed to save");
@@ -239,23 +236,41 @@ export function ProposalEngineModal({
                 <span className="text-[12px] text-bone-dim">{saveErr}</span>
               </div>
             )}
+            {startErr && (
+              <div className="flex items-start gap-2 px-3 py-2 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
+                <ShieldAlert size={13} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+                <span className="text-[12px] text-bone-dim">{startErr}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center pt-1">
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setStep("inputs")} disabled={isSaving || isGenerating}>← Edit focus</Button>
-                <Button variant="ghost" size="sm" onClick={regenerateBrief} disabled={isSaving || isGenerating}>
+                <Button variant="ghost" size="sm" onClick={() => setStep("inputs")} disabled={isStarting || isGenerating}>← Edit focus</Button>
+                <Button variant="ghost" size="sm" onClick={regenerateBrief} disabled={isStarting || isGenerating}>
                   {isGenerating ? "Redrafting…" : "↻ Regenerate brief"}
                 </Button>
               </div>
               <Button
                 variant="primary"
                 size="sm"
-                disabled={briefNeedsInput > 0 || isSaving || isGenerating || !brief.trim()}
-                onClick={saveBriefAndBuild}
+                disabled={briefNeedsInput > 0 || isStarting || isGenerating || !brief.trim()}
+                onClick={launch}
               >
-                {isSaving ? "Saving brief…" : "Save brief & build →"}
+                {isStarting ? "Starting…" : "Build prototype →"}
               </Button>
             </div>
           </div>
+        ) : step === "build" && isPrototype ? (
+          runId ? (
+            <PrototypeBuildView
+              runId={runId}
+              onRunAgain={() => { setRunId(null); setStep("brief"); }}
+              onDone={() => { /* keep modal open; partner closes or runs again */ }}
+            />
+          ) : (
+            <div className="px-5 py-6 text-[12px] text-bone-dim">
+              {startErr ? <span className="text-flag-red">{startErr}</span> : "Starting the build…"}
+            </div>
+          )
         ) : step === "build" ? (
           <div className="px-5 py-5 flex flex-col gap-4">
             {isGenerating && !html ? (
@@ -331,10 +346,10 @@ export function ProposalEngineModal({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setStep(isPrototype ? "brief" : "inputs")}
+                  onClick={() => setStep("inputs")}
                   disabled={isSaving || isGenerating}
                 >
-                  {isPrototype ? "← Edit brief" : "← Edit inputs"}
+                  ← Edit inputs
                 </Button>
                 <Button variant="ghost" size="sm" onClick={rebuild} disabled={isSaving || isGenerating || !html}>
                   {isGenerating ? "Rebuilding…" : "↻ Rebuild"}
