@@ -214,6 +214,39 @@ step. Delete `skills/prototype-spec/` on implementation.
 
 ---
 
+## Worker integration (live contract — verified 2026-06-18)
+
+The build worker is live on Railway. Verified against the current code so the implementation plan
+configures to the real interface:
+
+- **The brief is the worker's entire intake — a single markdown string.** `POST /build` takes
+  `{ runId, dealId, brief, client, industry, drivePrototypeFolderId }` (`worker/index.ts`,
+  `app/(app)/pipeline/[id]/prototype-actions.ts` `startPrototypeBuild`). `loop.ts` injects the
+  `brief` text verbatim as a `PROTOTYPE BRIEF:` block in the user prompt. **Phase 1 therefore
+  requires no worker code changes** — the staged engine only has to produce a richer `brief`
+  string, which flows unchanged through `savePrototypeBrief` → `startPrototypeBuild` → `/build`.
+- **The build system prompt now includes `skills/_design/principles.md`** (`worker/prompt.ts`:
+  firm context + `html-prototype/SKILL.md` + `_design/principles.md` + the loop protocol). The new
+  **"Visual mandate"** brief section must *align* with these principles, not duplicate or contradict
+  them: the brief specifies *where* visuals carry value per view; `_design/principles.md` owns the
+  *how* (contrast floors, intentional motion, "cards are the lazy answer," the absolute bans like
+  side-stripe borders and gradient text). Do not restate design rules in the brief.
+- **`html-prototype/SKILL.md` gets a light touch-up** (add to Files touched) so the build explicitly
+  consumes the two new brief sections: treat **"The magic moment"** as the interaction it must make
+  work and verify with `mcp__eyes__interact`, and **"Visual mandate"** as which views must be
+  visually rich. The worker now ships **real Leaflet/OSM maps**, so the visual mandate can call for
+  a live map centerpiece where the client's problem is spatial (routing, dispatch, field ops).
+- **A downstream `/refine` loop now exists and is NOT this engine's job.** `POST /refine`
+  (`{ runId, comment }`) resumes the run's durable session for ONE partner-directed pass on the
+  *built HTML*, one-shot via the `refineUsed` flag (`refinePrototype` in `prototype-actions.ts`).
+  The full pipeline now has **three** human checkpoints — Stage 0 target steer → Stage 3 brief
+  edit/approve → `/refine` on the prototype. The brief engine owns the first two; it must not
+  reinvent post-build refinement. In the superpowers analogy, `/refine` is the single code-review
+  revision pass on the executed output (`receiving-code-review`), downstream of everything here.
+- **Doc hygiene on implementation:** update the `BuildBrief.brief` JSDoc in `worker/loop.ts` and the
+  header comment in `proposal-engine.ts` to list the magic-moment + visual-mandate sections, so the
+  documented brief shape matches what the engine emits. (Comment-only; no behavior change.)
+
 ## Cost, latency, and risk
 
 - **Cost:** ~3× the model cost of one call (Stages 1–3), plus a light Stage 0 call. Brief
@@ -230,13 +263,22 @@ step. Delete `skills/prototype-spec/` on implementation.
 
 - **New:** `skills/prototype-brief-directions/SKILL.md`, `skills/prototype-brief-redteam/SKILL.md`.
 - **Rewrite:** `skills/prototype-brief/SKILL.md` (commit stage + the two new brief sections).
+- **Edit:** `skills/html-prototype/SKILL.md` — light touch-up so the build explicitly honors the
+  brief's "magic moment" (the interaction to make work + verify via `mcp__eyes__interact`) and
+  "visual mandate" (which views must be visually rich; maps available). Keep it aligned with
+  `_design/principles.md`, do not duplicate design rules.
 - **Delete:** `skills/prototype-spec/`.
 - **Edit:** `app/(app)/pipeline/[id]/proposal-engine.ts` — `generatePrototypeBrief` becomes the
   Stage 1→2→3 chain; add the Stage 0 kickoff (reconcile discovery-report modules + discussion-call
-  notes → grounded seed).
+  notes → grounded seed). Update the header comment to the new stage shape. **No change to**
+  `savePrototypeBrief` / `startPrototypeBuild` / the `/build` contract — the brief stays a single
+  markdown string.
+- **Doc-only:** `worker/loop.ts` `BuildBrief.brief` JSDoc — add the magic-moment + visual-mandate
+  sections to the documented shape.
 - **UI:** the "Build prototype" entry point — replace the single-sentence steer box with the Stage 0
-  pre-filled picker (winner pre-selected, alternates, optional steer note). Surface lives in the
-  pipeline deal prototype flow / `prototype-build-view.tsx`.
+  confidence-aware picker (winner pre-selected when obvious; surface 2–3 candidates and ask when
+  torn; optional steer note). Surface lives in the pipeline deal prototype flow /
+  `prototype-build-view.tsx`.
 
 ## Out of scope — Phase 2 / v2 (provisional)
 
