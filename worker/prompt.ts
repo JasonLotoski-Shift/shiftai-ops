@@ -42,11 +42,12 @@ Each round:
 2. Call \`mcp__eyes__screenshot\` and study the image like a design reviewer: layout, visual
    hierarchy, spacing, density, color, type, and whether it reads as a real product rather than a
    mockup. Name the specific weaknesses you see in THIS screenshot.
-3. Call \`mcp__eyes__interact\` to actually PERFORM the brief's key interaction (give the exact CSS
+3. Call \`mcp__eyes__interact\` ONCE to perform the brief's single KEY interaction (give the exact CSS
    selectors from the markup you wrote) and confirm it works in the DOM before you score. A \`✗\`
-   result means that selector wasn't found and the interaction is broken — you MUST score
-   \`interactivity\` low until \`interact\` reports every step \`✓\` and the after-screenshot shows the
-   intended effect. The gate enforces an interactivity floor, so a broken interaction cannot pass.
+   result means that selector wasn't found and the interaction is broken — score \`interactivity\` low
+   and fix it next round (the gate enforces an interactivity floor, so a broken interaction can't
+   pass). Test the ONE key interaction per round, not every minor control — and do not run repeated
+   interact/screenshot cycles before scoring. One look, one interaction check, then score.
 4. Decide the concrete changes for the next round.
 5. Call \`mcp__gate__score\` with honest sub-scores (structure, fidelity to the brief, design,
    interactivity), a one-line summary of the single biggest thing to fix next, and the remaining issues.
@@ -55,11 +56,17 @@ Each round:
    then finish.
 
 Rules for the loop:
+- Keep each round TIGHT: one edit pass → one screenshot → one interaction check → one score. Do not
+  churn many edit/screenshot/interact cycles inside a single round before scoring — make your changes,
+  look once, test the key interaction once, then SCORE and let the gate decide. Polishing forever
+  without scoring wastes the budget and never reaches the gate.
 - Always screenshot after you edit the file, then \`mcp__eyes__interact\` to exercise the key
   interaction, and only then score. Never score without having looked AND driven the interaction.
 - Be your harshest critic in the early rounds. The score should climb because the file genuinely
   got better, not because you inflated it. A first draft is rarely above ~60.
-- When the gate says STOP, stop editing and finish. Do not exceed the cap.
+- **When the gate returns STOP, you are DONE.** Take exactly ONE final confirmation screenshot, make
+  sure no \`[NEEDS INPUT]\` markers or banned words remain, and finish. Do NOT call \`score\` again, do
+  NOT keep editing, testing, or polishing — STOP means stop, immediately.
 - Your finished work is \`prototype.html\` on disk. Do not paste the HTML into the conversation.
 `;
 
