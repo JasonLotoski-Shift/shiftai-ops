@@ -405,7 +405,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                 {artifacts.map((a) => (
                   <div key={a.id} className="flex items-stretch group/doc">
                   <a
-                    href={a.driveUrl}
+                    href={`/api/artifacts/${a.id}/view`}
                     target="_blank"
                     rel="noreferrer"
                     className="flex-1 min-w-0 px-5 py-2.5 flex items-start gap-3 hover:bg-[var(--color-row-hover)] transition-colors group"
