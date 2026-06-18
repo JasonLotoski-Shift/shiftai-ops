@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { ranAtBySkill, savedAtBySkill } from "@/lib/action-status";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { stageLabels, industryLabels, leadSourceLabels } from "@/lib/data/seed";
-import { ArrowLeft, Mail, Phone, Sparkles, Activity, FileText, ExternalLink, FolderOpen } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Sparkles, Activity, FileText, ExternalLink, FolderOpen, Download } from "lucide-react";
 
 // The proposal engine's Opus build chain (server actions on this route) can run
 // 60–120s. Extend the function timeout to the max (honored on hosts that allow
@@ -421,6 +421,15 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                       </span>
                     </span>
                     <ExternalLink size={12} strokeWidth={1.5} className="text-bone-mute mt-1 shrink-0" />
+                  </a>
+                  <a
+                    href={`/api/artifacts/${a.id}/view?download=1`}
+                    download
+                    title="Download"
+                    aria-label={`Download ${a.title}`}
+                    className="self-center px-2 text-bone-mute hover:text-track-gold opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
+                  >
+                    <Download size={14} strokeWidth={1.5} />
                   </a>
                   <ArtifactDeleteControl
                     artifactId={a.id}

@@ -21,3 +21,15 @@ export function isRenderableHtml(mimeType: string | null | undefined): boolean {
   if (!mimeType) return false;
   return mimeType.split(";")[0].trim().toLowerCase() === "text/html";
 }
+
+// Builds a safe `Content-Disposition: attachment` header for a download. The
+// filename comes from Drive (attacker-influenceable), so we strip control chars
+// and CR/LF (header-injection guard), quote a sanitized ASCII fallback, and add
+// an RFC 5987 UTF-8 form so non-ASCII names survive in modern browsers. Blank or
+// nullish → "document".
+export function contentDispositionAttachment(name: string | null | undefined): string {
+  const clean = (name ?? "").replace(/[\x00-\x1f\x7f]/g, "").trim() || "document";
+  const ascii = clean.replace(/[\\"]/g, "_").replace(/[^\x20-\x7e]/g, "_");
+  const utf8 = encodeURIComponent(clean);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
+}
