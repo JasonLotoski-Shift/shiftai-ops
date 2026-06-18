@@ -91,4 +91,16 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ error: "not found" }));
 });
 
-server.listen(PORT, () => console.log(`prototype worker listening on :${PORT}`));
+// Bind to 0.0.0.0 explicitly: Node's default (no host) listens on IPv6 `::`, which
+// Railway's healthcheck can't always reach → it SIGTERMs the "unhealthy" container and
+// crash-loops to a 502. Railway requires 0.0.0.0. (Burned a deploy on this 2026-06-18.)
+server.listen(PORT, "0.0.0.0", () => console.log(`prototype worker listening on 0.0.0.0:${PORT}`));
+
+// Graceful shutdown: when Railway stops/redeploys the container it sends SIGTERM. Close the
+// HTTP server so in-flight requests drain and the process exits cleanly (no force-kill noise).
+for (const sig of ["SIGTERM", "SIGINT"] as const) {
+  process.on(sig, () => {
+    console.log(`received ${sig}, shutting down`);
+    server.close(() => process.exit(0));
+  });
+}
