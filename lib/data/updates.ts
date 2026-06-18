@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-18",
+    tag: "improved",
+    title: "Build prototype now picks where to start and writes a sharper brief",
+    detail:
+      "When you click “Build prototype”, the tool reads the discovery report and your discussion notes and proposes which problem to prototype first — pre-selecting the obvious winner, or asking you when it's a close call — instead of you typing it into a blank box. The brief it drafts is deeper: it leads with the one “magic moment” (the single click where the AI does the hard thing they hate) and says where the prototype should use real visuals like a live map or board. So what comes back feels built for them, not generic. You still review and edit the brief before anything builds.",
+  },
+  {
+    date: "2026-06-18",
     tag: "new",
     title: "Build prototype now builds itself, looks at its own work, and takes your notes",
     detail:
