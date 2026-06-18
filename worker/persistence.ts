@@ -17,6 +17,7 @@ export type RunInit = {
   model?: string;
   dealId?: string;
   clientId?: string;
+  brief?: string;
 };
 
 export type RunFinish = {
@@ -37,25 +38,40 @@ export type PrototypeRecorder = {
 // Create the PrototypeRun row (status=running). Returns a recorder whose methods
 // no-op when the row couldn't be created (tables missing / DB down) so the caller
 // never has to branch on persistence being available.
-export async function createPrototypeRun(init: RunInit): Promise<PrototypeRecorder> {
+export async function createPrototypeRun(
+  init: RunInit,
+  opts: { existingRunId?: string } = {},
+): Promise<PrototypeRecorder> {
   let runId: string | null = null;
   try {
-    const run = await prisma.prototypeRun.create({
-      data: {
-        status: "running",
-        clientName: init.clientName,
-        industry: init.industry ?? null,
-        model: init.model ?? null,
-        dealId: init.dealId ?? null,
-        clientId: init.clientId ?? null,
-      },
-      select: { id: true },
-    });
-    runId = run.id;
-    console.log(`[persistence] PrototypeRun ${runId} created (status=running)`);
+    if (opts.existingRunId) {
+      // Home pre-inserted a pending row — attach to it and flip to running.
+      const run = await prisma.prototypeRun.update({
+        where: { id: opts.existingRunId },
+        data: { status: "running", model: init.model ?? undefined },
+        select: { id: true },
+      });
+      runId = run.id;
+      console.log(`[persistence] PrototypeRun ${runId} attached (status=running)`);
+    } else {
+      const run = await prisma.prototypeRun.create({
+        data: {
+          status: "running",
+          clientName: init.clientName,
+          industry: init.industry ?? null,
+          model: init.model ?? null,
+          dealId: init.dealId ?? null,
+          clientId: init.clientId ?? null,
+          brief: init.brief ?? null,
+        },
+        select: { id: true },
+      });
+      runId = run.id;
+      console.log(`[persistence] PrototypeRun ${runId} created (status=running)`);
+    }
   } catch (err) {
     console.warn(
-      "[persistence] could not create PrototypeRun (tables may be unmigrated — see prisma/_prepared-migrations/007). Continuing without persistence:",
+      "[persistence] could not open PrototypeRun (tables may be unmigrated — see prisma/_prepared-migrations/007). Continuing without persistence:",
       err instanceof Error ? err.message : err,
     );
   }
