@@ -102,10 +102,14 @@ warrants it.
 (both already in the deal corpus the action assembles).
 
 **Behavior:** reconcile the two sources — read the modules, read which one the discussion call
-converged on, and **pre-select that winner**. Present the modules as a ranked shortlist with the
-winner pre-selected; each option shows the pain it solves and its one-line rationale, pulled from
-the report. The partner confirms in one click, picks a different module, and may add an optional
-steer note (a nuance, a constraint, a "lean into X").
+converged on, and **pre-select that winner**. The notes rarely tag a winner explicitly in those
+terms, but it is usually obvious: infer it from the report's own lean (cover headline, day-one
+metric, the most-quoted pain) plus where the discussion call spent its weight. Present the modules
+as a ranked shortlist with the inferred winner pre-selected; each option shows the pain it solves
+and its one-line rationale, pulled from the report. The partner confirms in one click (correcting
+the pre-selection is a one-click override when the inference is off), picks a different module, and
+may add an optional steer note (a nuance, a constraint, a "lean into X"). The pre-selection is a
+strong default, never a lock — the partner always has the final say.
 
 **Output:** a robust, grounded seed object — the selected target (its module title, the pain it
 solves, the rationale from the report) plus the optional steer. This replaces the one-sentence box.
@@ -117,6 +121,13 @@ back to the partner.
 ### Stage 1 — Interpret & diverge (`prototype-brief-directions`, internal)
 
 **Inputs:** the confirmed Stage 0 seed + the full corpus + screenshots (vision).
+
+**Note on the worker contract:** the Stage 1–3 chain and what Stage 3 emits must match the
+intake shape the build worker actually expects. The worker is still being built
+(`feat/prototype-worker-phase-c`); the implementation plan is deliberately **deferred** until its
+`/build` contract (brief markdown shape, any fields, the firm-context/skill composition in
+`worker/prompt.ts`) is settled, so the brief stages configure to the real interface rather than a
+moving target.
 
 **Behavior:** two moves in one call, interpret first then diverge.
 
