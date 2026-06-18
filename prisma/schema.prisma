@@ -1931,6 +1931,7 @@ model OpsEvent {
 enum PrototypeRunStatus {
   pending
   running
+  refining
   done
   error
 }
@@ -1938,6 +1939,9 @@ enum PrototypeRunStatus {
 model PrototypeRun {
   id     String             @id @default(cuid())
   status PrototypeRunStatus @default(running)
+
+  // True once the single partner-refine pass has been consumed (one per run).
+  refineUsed Boolean @default(false)
 
   // What was built — the brief's client name + industry, denormalized so a run is
   // legible without the originating Deal/Client (which may be null for dev runs).
@@ -1983,6 +1987,7 @@ model PrototypeIteration {
   runId String
 
   round         Int
+  partnerComment String? // the partner's note that triggered this round (refine pass only; null on auto rounds)
   htmlUrl       String? // Supabase Storage URL of this round's HTML snapshot
   screenshotUrl String? // Supabase Storage URL of this round's screenshot
   critique      String? // the round's self-critique (gate summary + open issues)
@@ -1997,4 +2002,19 @@ model PrototypeIteration {
   createdAt DateTime @default(now())
 
   @@index([runId, round])
+}
+
+// Durable Agent SDK session store — mirrors each run's transcript so a resume
+// (the partner-refine pass) works across worker restarts. One row per transcript
+// entry; idempotent on (projectKey, sessionId, uuid). See lib/agent-session-store.ts.
+model AgentSessionEntry {
+  id         BigInt   @id @default(autoincrement())
+  projectKey String
+  sessionId  String
+  uuid       String?
+  data       Json
+  createdAt  DateTime @default(now())
+
+  @@unique([projectKey, sessionId, uuid])
+  @@index([projectKey, sessionId, id])
 }
