@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { getPrototypeRunStatus, approvePrototype } from "@/app/(app)/pipeline/[id]/prototype-actions";
+import { getPrototypeRunStatus, approvePrototype, refinePrototype } from "@/app/(app)/pipeline/[id]/prototype-actions";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 
-type Iter = { round: number; score: number | null; critique: string | null; screenshotUrl: string | null; htmlUrl: string | null };
-type Status = { status: string; rounds: number; finalScore: number | null; finalHtmlUrl: string | null; artifactId: string | null; error: string | null; iterations: Iter[] } | null;
+type Iter = { round: number; score: number | null; critique: string | null; screenshotUrl: string | null; htmlUrl: string | null; partnerComment: string | null };
+type Status = { status: string; rounds: number; finalScore: number | null; finalHtmlUrl: string | null; artifactId: string | null; error: string | null; refineUsed: boolean; iterations: Iter[] } | null;
 
 function badge(score: number | null) {
   const s = score ?? 0;
@@ -27,9 +27,18 @@ export function PrototypeBuildView({ runId, dealId, clientName }: { runId: strin
   const [selected, setSelected] = useState<number | null>(null);
   const [approved, setApproved] = useState(false);
   const [isApproving, startApprove] = useTransition();
+  const [comment, setComment] = useState("");
+  const [isRefining, startRefine] = useTransition();
+  const [refineError, setRefineError] = useState<string | null>(null);
+  // Bumped when a refine starts so the poll loop (which stops at done) restarts to stream
+  // the resumed round and the final done.
+  const [pollNonce, setPollNonce] = useState(0);
 
   const done = data?.status === "done";
+  const refining = data?.status === "refining";
   const errored = data?.status === "error";
+  const refineUsed = data?.refineUsed ?? false;
+  const canRefine = done && !refineUsed;
   const viewUrl = `/api/prototype/${runId}/view`;
 
   // The prototype is built for a 1440px desktop. Render the iframe at that true width
@@ -62,7 +71,7 @@ export function PrototypeBuildView({ runId, dealId, clientName }: { runId: strin
     return () => {
       alive = false;
     };
-  }, [runId]);
+  }, [runId, pollNonce]);
 
   const iters = data?.iterations ?? [];
   // Default selection follows the newest round while building; the user can pin one.
@@ -80,7 +89,7 @@ export function PrototypeBuildView({ runId, dealId, clientName }: { runId: strin
           <span className="text-[13px] text-bone truncate">{clientName} · prototype</span>
           <span className={cn("ml-2 inline-flex items-center gap-1.5 text-[12px] shrink-0", errored ? "text-flag-red" : done ? "text-invoice-paid" : "text-track-gold")}>
             <span className={cn("h-1.5 w-1.5 rounded-full", errored ? "bg-flag-red" : done ? "bg-invoice-paid" : "bg-track-gold animate-pulse")} />
-            {errored ? "Build failed" : done ? `Done · ${data?.finalScore ?? "—"}` : `Round ${iters.length || "…"} · building`}
+            {errored ? "Build failed" : refining ? "Applying your note…" : done ? `Done · ${data?.finalScore ?? "—"}` : `Round ${iters.length || "…"} · building`}
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -92,7 +101,7 @@ export function PrototypeBuildView({ runId, dealId, clientName }: { runId: strin
           <Button
             variant="primary"
             size="sm"
-            disabled={!done || !data?.artifactId || isApproving || approved}
+            disabled={!done || refining || isRefining || !data?.artifactId || isApproving || approved}
             onClick={() => startApprove(async () => { await approvePrototype(runId); setApproved(true); })}
           >
             {approved ? "Approved ✓" : isApproving ? "Approving…" : "Approve final"}
@@ -106,26 +115,73 @@ export function PrototypeBuildView({ runId, dealId, clientName }: { runId: strin
 
       {/* Main: rounds rail + the big preview/embed */}
       <div className="flex-1 flex min-h-0">
-        <aside className="w-[160px] shrink-0 border-r border-graphite overflow-y-auto p-3 flex flex-col gap-2">
+        <aside className="w-[200px] shrink-0 border-r border-graphite overflow-y-auto p-3 flex flex-col gap-2">
           <div className="text-[10px] uppercase tracking-wide text-bone-mute mb-1">Rounds</div>
           {iters.map((it) => (
-            <button
-              key={it.round}
-              onClick={() => setSelected(it.round)}
-              className={cn(
-                "text-left px-2.5 py-2 rounded-[var(--radius-sm)] border text-[12px] flex items-center justify-between transition-colors",
-                current?.round === it.round ? "border-track-gold/50 bg-track-gold-dim/10 text-bone" : "border-graphite text-bone-mute hover:text-bone hover:border-bone-mute/40",
+            <div key={it.round} className="flex flex-col gap-1">
+              <button
+                onClick={() => setSelected(it.round)}
+                className={cn(
+                  "text-left px-2.5 py-2 rounded-[var(--radius-sm)] border text-[12px] flex items-center justify-between transition-colors",
+                  current?.round === it.round ? "border-track-gold/50 bg-track-gold-dim/10 text-bone" : "border-graphite text-bone-mute hover:text-bone hover:border-bone-mute/40",
+                )}
+              >
+                <span>Round {it.round}</span>
+                <span className={badge(it.score)}>{it.score ?? "—"}</span>
+              </button>
+              {it.partnerComment && (
+                <span className="px-1.5 text-[11px] text-bone-mute leading-snug">
+                  <span className="text-track-gold">partner:</span> {it.partnerComment}
+                </span>
               )}
-            >
-              <span>Round {it.round}</span>
-              <span className={badge(it.score)}>{it.score ?? "—"}</span>
-            </button>
+            </div>
           ))}
           {!iters.length && <span className="text-[12px] text-bone-mute px-1">Waiting for round 1…</span>}
-          {!done && !errored && iters.length > 0 && (
+          {!done && !refining && !errored && iters.length > 0 && (
             <span className="text-[11px] text-track-gold px-1 mt-1 flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-track-gold animate-pulse" /> improving…
             </span>
+          )}
+          {refining && (
+            <span className="text-[11px] text-track-gold px-1 mt-1 flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-track-gold animate-pulse" /> applying your note…
+            </span>
+          )}
+
+          {/* Partner-refine: one comment → one resumed agent pass, then approve. Blank skips. */}
+          {canRefine && (
+            <div className="mt-3 pt-3 border-t border-graphite flex flex-col gap-2">
+              <div className="text-[10px] uppercase tracking-wide text-bone-mute">Partner comments</div>
+              <p className="text-[11px] text-bone-mute leading-snug">One round of changes, then approve. Or approve as-is.</p>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="e.g. Make the hero CTA gold and tighten the table spacing…"
+                rows={4}
+                className="w-full resize-y rounded-[var(--radius-sm)] border border-graphite bg-asphalt px-2 py-1.5 text-[12px] text-bone placeholder:text-bone-mute/60 focus:border-track-gold/50 focus:outline-none"
+              />
+              {refineError && <span className="text-[11px] text-flag-red">{refineError}</span>}
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!comment.trim() || isRefining}
+                onClick={() =>
+                  startRefine(async () => {
+                    setRefineError(null);
+                    try {
+                      await refinePrototype(runId, comment);
+                      setComment("");
+                      // Restart the poll loop (it stopped at done) to stream the resumed round → done.
+                      setPollNonce((n) => n + 1);
+                    } catch (err) {
+                      setRefineError(err instanceof Error ? err.message : "Refine failed");
+                    }
+                  })
+                }
+              >
+                {isRefining ? "Sending…" : "Refine once & finalize"}
+              </Button>
+            </div>
           )}
         </aside>
 

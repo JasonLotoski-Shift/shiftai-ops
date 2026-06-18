@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureDealSubfolder } from "@/lib/deal-drive";
 import { writeAudit, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
+import { pruneSession } from "@/lib/agent-session-store";
 
 export async function startPrototypeBuild(dealId: string, brief: string): Promise<{ runId: string }> {
   const session = await auth();
@@ -54,11 +55,45 @@ export async function getPrototypeRunStatus(runId: string) {
   const run = await prisma.prototypeRun.findUnique({
     where: { id: runId },
     select: {
-      status: true, rounds: true, finalScore: true, finalHtmlUrl: true, artifactId: true, error: true,
-      iterations: { orderBy: { round: "asc" }, select: { round: true, score: true, critique: true, screenshotUrl: true, htmlUrl: true } },
+      status: true, rounds: true, finalScore: true, finalHtmlUrl: true, artifactId: true, error: true, refineUsed: true,
+      iterations: { orderBy: { round: "asc" }, select: { round: true, score: true, critique: true, screenshotUrl: true, htmlUrl: true, partnerComment: true } },
     },
   });
   return run;
+}
+
+// The single partner-refine pass: leaves ONE partner comment that resumes the run's own
+// agent session for exactly one more directed round. Blank notes skip this and go straight
+// to Approve. Reverts status on POST failure; the worker flips refineUsed once it lands.
+export async function refinePrototype(runId: string, comment: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const text = comment.trim();
+  if (!text) throw new Error("Leave a comment to refine, or approve as-is");
+
+  const run = await prisma.prototypeRun.findUnique({ where: { id: runId }, select: { refineUsed: true, status: true } });
+  if (!run) throw new Error("Run not found");
+  if (run.refineUsed) throw new Error("This prototype has already been refined once");
+  if (run.status !== "done") throw new Error("Refine is only available once the build is done");
+
+  const workerUrl = process.env.WORKER_URL;
+  const secret = process.env.WORKER_SHARED_SECRET;
+  if (!workerUrl || !secret) throw new Error("Worker not configured");
+
+  await prisma.prototypeRun.update({ where: { id: runId }, data: { status: "refining" } });
+  try {
+    const resp = await fetch(`${workerUrl.replace(/\/$/, "")}/refine`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}`, "content-type": "application/json" },
+      body: JSON.stringify({ runId, comment: text }),
+    });
+    if (!resp.ok) throw new Error(`worker returned ${resp.status}`);
+  } catch (err) {
+    // Couldn't hand off — put the run back to done so the partner can retry or approve.
+    await prisma.prototypeRun.update({ where: { id: runId }, data: { status: "done" } });
+    throw new Error(err instanceof Error && err.message.startsWith("worker returned") ? err.message : "Could not reach the build worker");
+  }
+  return { ok: true };
 }
 
 export async function approvePrototype(runId: string): Promise<{ ok: true }> {
@@ -66,11 +101,13 @@ export async function approvePrototype(runId: string): Promise<{ ok: true }> {
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
   const actor = partnerActor(session.user.partnerId, partnerLabel);
-  const run = await prisma.prototypeRun.findUnique({ where: { id: runId }, select: { artifactId: true, dealId: true } });
+  const run = await prisma.prototypeRun.findUnique({ where: { id: runId }, select: { artifactId: true, dealId: true, sessionId: true } });
   if (!run?.artifactId) throw new Error("No artifact to approve yet");
   await prisma.$transaction(async (tx) => {
     await tx.artifact.update({ where: { id: run.artifactId! }, data: { reviewStatus: "approved" } });
     await writeAudit(tx, { actor, action: "approve.artifact.prototype", targetType: "Artifact", targetId: run.artifactId!, changes: { runId } });
   });
+  // The session is no longer needed once the run is approved — best-effort cleanup.
+  if (run.sessionId) await pruneSession(run.sessionId);
   return { ok: true };
 }
