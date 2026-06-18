@@ -25,7 +25,8 @@ export const PROTOTYPE_PROJECT_KEY = "prototype-builder";
 export type BuildBrief = {
   client: string;
   industry: string;
-  /** The prototype brief markdown: problem, user stories, features, tabs, interaction, sample data, brand direction. */
+  /** The prototype brief markdown: the magic moment, problem, user stories, features, tabs,
+   *  sample data, visual mandate, the "after" picture, brand direction. */
   brief: string;
   /** Optional scope FKs — set by the Home kickoff so the run links to its Deal/Client. */
   dealId?: string;

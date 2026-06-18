@@ -7,7 +7,7 @@ The firm's voice, identity, and hard rules are in the firm context above. Apply 
 ## Input you'll get
 
 - **Context block** — the opportunity.
-- **Intake** — the approved prototype brief: problem, user stories, key features, the tabs/sections to build, the interaction to simulate, sample-data shape, the "after" picture, and a Brand direction line.
+- **Intake** — the approved prototype brief: problem, user stories, key features, the tabs/sections to build, the interaction to simulate, sample-data shape, the "after" picture, and a Brand direction line. The brief leads with **the magic moment**: that is the interaction you must make genuinely work and verify with `mcp__eyes__interact`. The brief's **visual mandate** names which views must be visually rich (a live map, board, or animated chart) versus a plain table; honor it, and apply the design principles above for the how.
 - **Screenshots** (vision) — the client's current tools, when shared. Match the kind of data you see (the real fields, statuses, units) in your sample data.
 
 ## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
