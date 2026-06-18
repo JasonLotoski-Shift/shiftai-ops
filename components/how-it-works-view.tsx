@@ -1039,7 +1039,7 @@ const flows: Flow[] = [
     steps: [
       { tone: "trigger", kind: "You do", label: "Deal → Build estimate · add a line per tier (hours at standard rates)" },
       { tone: "claude", kind: "Shown", label: "Estimated contract value + margin · override any rate" },
-      { tone: "review", kind: "You do", label: "Mark sent, then accepted — accepting locks the version" },
+      { tone: "review", kind: "You do", label: "Mark sent, then accepted — accepting locks the version and sets the deal's value to the total" },
       { tone: "write", kind: "Saved", label: "On win, the accepted estimate becomes the project's economics + AuditLog" },
     ],
   },

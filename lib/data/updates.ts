@@ -38,6 +38,13 @@ export const updates: Update[] = [
   },
   {
     date: "2026-06-18",
+    tag: "improved",
+    title: "Accepting an estimate now sets the deal's value, and you can delete a deal",
+    detail:
+      "Three small pipeline changes: (1) when you mark an estimate accepted, the deal's value updates to the estimate total — the accepted scope is the number that shows on the board. (2) The deal's value field takes any exact dollar amount now, not just round thousands. (3) A deal has a Delete button (next to Edit) for mistakes and dead leads — it removes the deal and everything on it after you confirm; files already saved to Drive stay in Drive. Signed deals can't be deleted (they've become clients).",
+  },
+  {
+    date: "2026-06-18",
     tag: "new",
     title: "Build prototype now builds itself, looks at its own work, and takes your notes",
     detail:

@@ -211,15 +211,24 @@ export async function deleteEstimateLine(lineId: string) {
 const VALID_ESTIMATE_STATUS: EstimateStatus[] = ["draft", "sent", "accepted", "superseded"];
 
 // Move an estimate through its lifecycle. Accepting supersedes every other
-// non-accepted estimate on the deal (one accepted estimate at a time).
+// non-accepted estimate on the deal (one accepted estimate at a time) AND
+// overrides the deal's headline value with the accepted total — the accepted
+// estimate IS the contract value from that point on (it already converts to
+// project economics on win; this keeps the pipeline number honest meanwhile).
 export async function setEstimateStatus(estimateId: string, status: string) {
   const { actor } = await getActor();
   if (!VALID_ESTIMATE_STATUS.includes(status as EstimateStatus)) throw new Error("Unknown status");
   const before = await prisma.estimate.findUnique({
     where: { id: estimateId },
-    select: { id: true, dealId: true, status: true },
+    select: { id: true, dealId: true, status: true, totalValue: true, deal: { select: { valueEstimate: true } } },
   });
   if (!before) throw new Error("Estimate not found");
+
+  const changes: Record<string, unknown> = { status: { before: before.status, after: status } };
+  // On accept, sync the deal value to the estimate total (skip a no-op or an
+  // empty/zero estimate — never zero out a deal value on accept).
+  const overrideValue =
+    status === "accepted" && before.totalValue > 0 && before.totalValue !== before.deal.valueEstimate;
 
   await prisma.$transaction(async (tx) => {
     await tx.estimate.update({ where: { id: estimateId }, data: { status: status as EstimateStatus } });
@@ -229,15 +238,26 @@ export async function setEstimateStatus(estimateId: string, status: string) {
         data: { status: "superseded" },
       });
     }
+    if (overrideValue) {
+      await tx.deal.update({
+        where: { id: before.dealId },
+        data: { valueEstimate: before.totalValue, lastTouchAt: new Date() },
+      });
+      changes.valueEstimate = { before: before.deal.valueEstimate, after: before.totalValue };
+    }
     await writeAudit(tx, {
       actor,
       action: "update.estimate.status",
       targetType: "Estimate",
       targetId: estimateId,
-      changes: { status: { before: before.status, after: status } },
+      changes,
     });
   });
 
   revalidatePath(`/pipeline/${before.dealId}`);
+  if (overrideValue) {
+    revalidatePath("/pipeline");
+    revalidatePath("/dashboard");
+  }
   return { ok: true as const };
 }

@@ -627,6 +627,77 @@ const STAGE_LABELS_EDIT: Record<DealStage, string> = {
   signed: "Signed",
 };
 
+// ──────────────────────────────────────────────────────────────────────
+// deleteDeal — permanently remove a pipeline deal and everything scoped to it.
+//
+// Only allowed BEFORE signing: a signed deal has become a Client (project +
+// Drive folder + billing), so deleting it here would orphan all that — the
+// guard sends you to the client instead. Estimates (+lines) and contact links
+// cascade via their FK. The nullable-FK children (artifacts, discovery
+// surveys, tasks, action drafts, prototype runs) would default to SET NULL, so
+// we delete them explicitly to avoid orphan rows. Drive files the deal already
+// produced are left intact — Drive has no transaction; the rows go, the files
+// stay reachable in Drive.
+// ──────────────────────────────────────────────────────────────────────
+export async function deleteDeal(dealId: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const actor = partnerActor(
+    session.user.partnerId,
+    session.user.name ?? session.user.email ?? "Unknown",
+  );
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: { id: true, company: true, stage: true, valueEstimate: true },
+  });
+  if (!deal) throw new Error("Deal not found");
+  if (deal.stage === "signed") {
+    throw new Error("This deal is signed — it became a client. Delete the client, not the deal.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Nullable-FK children — delete explicitly (the DB would otherwise leave
+    // them as orphans with a null dealId). Sequential on the tx client.
+    const artifacts = await tx.artifact.deleteMany({ where: { dealId } });
+    const surveys = await tx.discoverySurvey.deleteMany({ where: { dealId } });
+    const tasks = await tx.task.deleteMany({ where: { dealId } });
+    const drafts = await tx.actionDraft.deleteMany({ where: { dealId } });
+    const runs = await tx.prototypeRun.deleteMany({ where: { dealId } }); // run steps cascade
+    // Estimates (+lines) and contact links cascade on this delete.
+    await tx.deal.delete({ where: { id: dealId } });
+    await writeAudit(tx, {
+      actor,
+      action: "delete.deal",
+      targetType: "Deal",
+      targetId: dealId,
+      changes: {
+        company: deal.company,
+        stage: deal.stage,
+        valueEstimate: deal.valueEstimate,
+        deleted: {
+          artifacts: artifacts.count,
+          discoverySurveys: surveys.count,
+          tasks: tasks.count,
+          actionDrafts: drafts.count,
+          prototypeRuns: runs.count,
+        },
+      },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: deal.company,
+      detail: "Deal deleted from pipeline",
+      link: "/pipeline",
+    });
+  });
+
+  revalidatePath("/pipeline");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 export async function generateProposal(
   dealId: string,
   input: { focus: string; fee?: string; timeline?: string; notes?: string },

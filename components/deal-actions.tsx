@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, FileText, FileSearch, Pencil, ClipboardList, CalendarPlus, FlaskConical, Presentation, FileQuestion, type LucideIcon } from "lucide-react";
+import { Mail, FileText, FileSearch, Pencil, Trash2, ClipboardList, CalendarPlus, FlaskConical, Presentation, FileQuestion, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
 import { DraftProposalModal } from "@/components/draft-proposal-modal";
 import { DealEditModal } from "@/components/deal-edit-modal";
+import { DeleteDealModal } from "@/components/delete-deal-modal";
 import { DealDocModal, type DealDocSkill } from "@/components/deal-doc-modal";
 import { DraftEmailModal } from "@/components/draft-email-modal";
 import { ProposalEngineModal } from "@/components/proposal-engine-modal";
@@ -62,16 +63,23 @@ export function DealActions({
 }) {
   const [convertOpen, setConvertOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const signed = deal.stage === "signed";
 
   return (
     <>
       {!signed && (
-        <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
-          <Pencil size={13} strokeWidth={1.5} />
-          Edit
-        </Button>
+        <>
+          <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil size={13} strokeWidth={1.5} />
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
+            <Trash2 size={13} strokeWidth={1.5} className="text-flag-red" />
+            Delete
+          </Button>
+        </>
       )}
 
       <Button variant="primary" size="sm" onClick={() => setConvertOpen(true)}>
@@ -87,6 +95,9 @@ export function DealActions({
       />
 
       {editOpen && <DealEditModal deal={deal} onClose={() => setEditOpen(false)} />}
+      {deleteOpen && (
+        <DeleteDealModal dealId={deal.id} company={deal.company} onClose={() => setDeleteOpen(false)} />
+      )}
     </>
   );
 }

@@ -108,7 +108,7 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
               <Input
                 type="number"
                 min={0}
-                step={1000}
+                step={1}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 disabled={isPending}
