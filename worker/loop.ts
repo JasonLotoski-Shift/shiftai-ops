@@ -85,6 +85,7 @@ export async function runBuild(
     // Tag each score with the screenshot/HTML the agent was looking at, so the
     // loop can persist each round's artifacts to Storage afterwards.
     currentArtifacts: () => eyes.getLastArtifacts(),
+    onRound: (rec) => recorder.recordIteration(rec),
   });
   const library = createLibraryServer();
 
@@ -169,11 +170,8 @@ export async function runBuild(
       }
     }
 
-    // Persist each round (uploads HTML + screenshot, writes a PrototypeIteration),
-    // then finalize the run. Done after the loop so the SDK tool handlers stay fast.
-    for (const rec of gate.history) {
-      await recorder.recordIteration(rec);
-    }
+    // Each round was already persisted live via the gate's onRound hook (recordIteration
+    // fires as each score lands). Here we only finalize the run.
     const last = gate.history[gate.history.length - 1];
     await recorder.finish({
       status: "done",

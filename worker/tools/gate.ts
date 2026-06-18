@@ -47,6 +47,9 @@ export function createGateServer(opts: {
   // Optional: what the agent is currently looking at (Eyes' last screenshot/HTML),
   // captured onto each record so the loop can persist the round afterwards.
   currentArtifacts?: () => { screenshotPath: string | null; htmlPath: string | null };
+  // Optional: fires inside the score handler after the record is built, so each
+  // round's PrototypeIteration is written live as it scores (not batched post-loop).
+  onRound?: (rec: GateRecord) => Promise<void>;
 }) {
   const history: GateRecord[] = [];
 
@@ -128,6 +131,11 @@ export function createGateServer(opts: {
             screenshotPath: artifacts.screenshotPath,
             htmlPath: artifacts.htmlPath,
           });
+
+          if (opts.onRound) {
+            try { await opts.onRound(history[history.length - 1]); }
+            catch (e) { console.warn("[gate] onRound failed:", e instanceof Error ? e.message : e); }
+          }
 
           let verdict: string;
           if (stop && satisfied) {
