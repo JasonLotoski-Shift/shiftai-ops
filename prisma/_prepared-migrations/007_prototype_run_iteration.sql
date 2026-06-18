@@ -17,7 +17,7 @@
 -- into the Supabase SQL editor as a manual fallback (leaves the ledger out of sync).
 
 -- CreateEnum
-CREATE TYPE "PrototypeRunStatus" AS ENUM ('running', 'done', 'error');
+CREATE TYPE "PrototypeRunStatus" AS ENUM ('pending', 'running', 'done', 'error');
 
 -- CreateTable
 CREATE TABLE "PrototypeRun" (
@@ -27,6 +27,8 @@ CREATE TABLE "PrototypeRun" (
     "industry" TEXT,
     "sessionId" TEXT,
     "model" TEXT,
+    "brief" TEXT,
+    "artifactId" TEXT,
     "rounds" INTEGER NOT NULL DEFAULT 0,
     "finalScore" INTEGER,
     "finalHtmlUrl" TEXT,
@@ -78,3 +80,4 @@ ALTER TABLE "PrototypeRun" ADD CONSTRAINT "PrototypeRun_clientId_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "PrototypeIteration" ADD CONSTRAINT "PrototypeIteration_runId_fkey" FOREIGN KEY ("runId") REFERENCES "PrototypeRun"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

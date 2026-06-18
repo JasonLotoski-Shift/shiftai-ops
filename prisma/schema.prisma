@@ -1929,6 +1929,7 @@ model OpsEvent {
 // (it is plain Node, not Next — no server action / revalidatePath).
 // ──────────────────────────────────────────────────────────────────────
 enum PrototypeRunStatus {
+  pending
   running
   done
   error
@@ -1946,6 +1947,11 @@ model PrototypeRun {
   // The SDK session for this run (resume / audit). Null until the loop starts.
   sessionId String?
   model     String?
+
+  // The approved brief this run was built from (snapshot; the run is self-contained).
+  brief String?
+  // The final Artifact written on success — lets Home's approve action find it.
+  artifactId String?
 
   // Outcome rollup, filled when the loop finishes.
   rounds       Int     @default(0)
