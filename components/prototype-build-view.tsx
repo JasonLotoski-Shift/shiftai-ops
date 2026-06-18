@@ -57,8 +57,12 @@ export function PrototypeBuildView({ runId, onRunAgain, onDone }: { runId: strin
 
         <div className="flex-1 flex flex-col gap-2 min-w-0">
           {done && data?.finalHtmlUrl ? (
-            <iframe title="Prototype" src={data.finalHtmlUrl} sandbox="allow-scripts"
-              className="w-full h-[58vh] bg-white rounded-[var(--radius)] border border-graphite" />
+            <>
+              <iframe title="Prototype" src={`/api/prototype/${runId}/view`} sandbox="allow-scripts"
+                className="w-full h-[58vh] bg-white rounded-[var(--radius)] border border-graphite" />
+              <a href={`/api/prototype/${runId}/view`} target="_blank" rel="noreferrer"
+                className="text-[12px] text-bone-mute hover:text-bone self-end">Open fullscreen ↗</a>
+            </>
           ) : current?.screenshotUrl ? (
             <img src={current.screenshotUrl} alt={`Round ${current.round}`}
               className="w-full max-h-[58vh] object-contain bg-bitumen rounded-[var(--radius)] border border-graphite" />

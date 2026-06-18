@@ -7,12 +7,10 @@ import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import {
   generatePrototypeBrief,
-  savePrototypeBrief,
   generateProposalDeck,
   saveProposalDeck,
 } from "@/app/(app)/pipeline/[id]/proposal-engine";
 import { startPrototypeBuild } from "@/app/(app)/pipeline/[id]/prototype-actions";
-import { PrototypeBuildView } from "@/components/prototype-build-view";
 
 type EngineMode = "prototype" | "deck";
 
@@ -71,7 +69,6 @@ export function ProposalEngineModal({
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [isGenerating, startGenerate] = useTransition();
   const [isSaving, startSave] = useTransition();
-  const [runId, setRunId] = useState<string | null>(null);
   const [startErr, setStartErr] = useState<string | null>(null);
   const [isStarting, startBuild] = useTransition();
 
@@ -112,21 +109,14 @@ export function ProposalEngineModal({
     });
   }
 
-  // Prototype only — save the approved brief, then hand it to the worker loop.
+  // Prototype only — hand the brief to the worker loop, then open the run in its own tab.
   const launch = () =>
     startBuild(async () => {
-      setSaveErr(null);
       setStartErr(null);
       try {
-        await savePrototypeBrief(dealId, { brief });
-      } catch (err) {
-        setSaveErr(err instanceof Error ? err.message : "Failed to save brief");
-        return;
-      }
-      try {
         const { runId } = await startPrototypeBuild(dealId, brief);
-        setRunId(runId);
-        setStep("build");
+        window.open(`/pipeline/${dealId}/prototype/${runId}`, "_blank", "noopener");
+        onClose();
       } catch (e) {
         setStartErr(e instanceof Error ? e.message : "Could not start the build");
       }
@@ -259,18 +249,6 @@ export function ProposalEngineModal({
               </Button>
             </div>
           </div>
-        ) : step === "build" && isPrototype ? (
-          runId ? (
-            <PrototypeBuildView
-              runId={runId}
-              onRunAgain={() => { setRunId(null); setStep("brief"); }}
-              onDone={() => { /* keep modal open; partner closes or runs again */ }}
-            />
-          ) : (
-            <div className="px-5 py-6 text-[12px] text-bone-dim">
-              {startErr ? <span className="text-flag-red">{startErr}</span> : "Starting the build…"}
-            </div>
-          )
         ) : step === "build" ? (
           <div className="px-5 py-5 flex flex-col gap-4">
             {isGenerating && !html ? (
