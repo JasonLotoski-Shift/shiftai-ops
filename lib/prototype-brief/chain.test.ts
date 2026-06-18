@@ -29,17 +29,25 @@ const gen = async (input: { skill: string; intake: string; model?: string; webSe
   throw new Error("unexpected skill " + input.skill);
 };
 
-const out = await runBriefChain({ context: "CTX", corpusText: "CORPUS", seed, gen });
+// Wrapped in an async IIFE (not top-level await) so the file transforms cleanly
+// under the repo's CommonJS default — matches the other lib/*.test.ts. A failed
+// assert rejects, and the .catch exits non-zero so the test reports failure.
+void (async () => {
+  const out = await runBriefChain({ context: "CTX", corpusText: "CORPUS", seed, gen });
 
-assert.equal(out, "FINAL BRIEF MARKDOWN", "returns the commit-stage brief");
-assert.deepEqual(calls.map((c) => c.skill),
-  ["prototype-brief-directions", "prototype-brief-redteam", "prototype-brief"], "stage order");
-assert.ok(calls[0].intake.includes("AI Dispatch") && calls[0].intake.includes("lean into the map"),
-  "stage 1 receives the seed");
-assert.ok(calls[1].intake.includes("D1"), "stage 2 receives stage 1 directions");
-assert.ok(calls[2].intake.includes("one click") && calls[2].intake.includes("SIGNAL_TEXT"),
-  "stage 3 receives the sharpened winner + signal");
-assert.equal(calls[2].webSearch, true, "stage 3 enables brand web search");
-assert.ok(calls.every((c) => c.model === "claude-opus-4-8"), "reasoning stages use Opus");
+  assert.equal(out, "FINAL BRIEF MARKDOWN", "returns the commit-stage brief");
+  assert.deepEqual(calls.map((c) => c.skill),
+    ["prototype-brief-directions", "prototype-brief-redteam", "prototype-brief"], "stage order");
+  assert.ok(calls[0].intake.includes("AI Dispatch") && calls[0].intake.includes("lean into the map"),
+    "stage 1 receives the seed");
+  assert.ok(calls[1].intake.includes("D1"), "stage 2 receives stage 1 directions");
+  assert.ok(calls[2].intake.includes("one click") && calls[2].intake.includes("SIGNAL_TEXT"),
+    "stage 3 receives the sharpened winner + signal");
+  assert.equal(calls[2].webSearch, true, "stage 3 enables brand web search");
+  assert.ok(calls.every((c) => c.model === "claude-opus-4-8"), "reasoning stages use Opus");
 
-console.log("chain.test.ts OK");
+  console.log("chain.test.ts OK");
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
