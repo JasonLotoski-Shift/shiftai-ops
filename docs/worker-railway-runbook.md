@@ -47,6 +47,13 @@ copy them over. Do **not** set `WORKER_PORT` (Railway injects `PORT`, which the 
 Trigger the deploy. First build is ~5–10 min (it installs Chromium). When it's healthy, Service →
 Settings → **Networking → Generate Domain** → copy the public **service URL**.
 
+> ⚠️ **Set the domain's TARGET PORT to match what the worker logs.** The worker binds to
+> Railway's injected `PORT` and prints `listening on 0.0.0.0:<PORT>` (currently `8080`). When you
+> generate the domain, Railway may default the target port to `8787` (our *local-dev* fallback) —
+> if it doesn't match the logged port, every request 502s with "Application failed to respond"
+> even though the deploy is green. Edit the domain → set **Target Port = the port from the log
+> (`8080`)**. (Burned ~an hour on this 2026-06-18.)
+
 Quick check: `curl https://<service-url>/health` → `{"ok":true}`.
 
 ## 5. Wire the app to the worker (Vercel)
