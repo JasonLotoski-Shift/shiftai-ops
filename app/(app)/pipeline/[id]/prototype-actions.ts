@@ -9,6 +9,15 @@ import { writeAudit, partnerActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { pruneSession } from "@/lib/agent-session-store";
 
+// WORKER_URL is set by hand in Vercel/Railway and is easy to paste without a scheme
+// (e.g. "shiftai-ops-production.up.railway.app"), which makes fetch() throw
+// "Failed to parse URL". Normalize: ensure an https:// scheme and strip any trailing
+// slash so `${base}/build` is always a valid absolute URL.
+function workerBase(raw: string): string {
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  return withScheme.replace(/\/$/, "");
+}
+
 export async function startPrototypeBuild(dealId: string, brief: string): Promise<{ runId: string }> {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
@@ -36,7 +45,7 @@ export async function startPrototypeBuild(dealId: string, brief: string): Promis
     throw new Error("Worker not configured");
   }
   try {
-    const resp = await fetch(`${workerUrl.replace(/\/$/, "")}/build`, {
+    const resp = await fetch(`${workerBase(workerUrl)}/build`, {
       method: "POST",
       headers: { Authorization: `Bearer ${secret}`, "content-type": "application/json" },
       body: JSON.stringify({ runId: run.id, dealId: deal.id, brief: text, client: deal.company, industry: deal.industry, drivePrototypeFolderId: folderId }),
@@ -82,7 +91,7 @@ export async function refinePrototype(runId: string, comment: string): Promise<{
 
   await prisma.prototypeRun.update({ where: { id: runId }, data: { status: "refining" } });
   try {
-    const resp = await fetch(`${workerUrl.replace(/\/$/, "")}/refine`, {
+    const resp = await fetch(`${workerBase(workerUrl)}/refine`, {
       method: "POST",
       headers: { Authorization: `Bearer ${secret}`, "content-type": "application/json" },
       body: JSON.stringify({ runId, comment: text }),
