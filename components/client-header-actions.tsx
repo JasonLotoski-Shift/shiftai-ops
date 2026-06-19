@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FolderOpen, Terminal, Check, Presentation, FileSignature, Upload, FileInput } from "lucide-react";
+import { FolderOpen, Terminal, Check, Presentation, FileSignature, Stamp, Upload, FileInput } from "lucide-react";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
 import { DiscoveryReportModal } from "@/components/discovery-report-modal";
 import { SowModal } from "@/components/sow-modal";
+import { ContractModal } from "@/components/contract-modal";
 import { UploadFileModal } from "@/components/upload-file-modal";
 
 // The client's Actions panel (under the title). The header keeps the page's
@@ -29,7 +30,7 @@ export function ClientActionsPanel({
   savedAt?: Record<string, Date | undefined>;
 }) {
   const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState<"discovery-report" | "sow" | "upload" | null>(null);
+  const [open, setOpen] = useState<"discovery-report" | "sow" | "generate-contract" | "upload" | null>(null);
   // Which two-step box is being reopened from a saved draft.
   const [reopen, setReopen] = useState<Record<string, boolean>>({});
 
@@ -37,11 +38,11 @@ export function ClientActionsPanel({
   const searchParams = useSearchParams();
   const qa = searchParams.get("qa");
   useEffect(() => {
-    if (qa === "discovery-report" || qa === "sow" || qa === "upload") setOpen(qa);
+    if (qa === "discovery-report" || qa === "sow" || qa === "generate-contract" || qa === "upload") setOpen(qa);
   }, [qa]);
 
   // Open a two-step box; if it has a saved draft, reopen the editor preloaded.
-  function openBox(key: "discovery-report" | "sow") {
+  function openBox(key: "discovery-report" | "sow" | "generate-contract") {
     if (savedAt[key]) setReopen((r) => ({ ...r, [key]: true }));
     setOpen(key);
   }
@@ -92,6 +93,15 @@ export function ClientActionsPanel({
       stepOneSavedAt: savedAt["sow"],
     },
     {
+      key: "generate-contract",
+      icon: Stamp,
+      title: "Generate contract",
+      description: "Draft the standard agreement as a fillable HTML you export to PDF. SOW becomes Schedule A.",
+      onClick: () => openBox("generate-contract"),
+      ranAt: ranAt["generate-contract"],
+      stepOneSavedAt: savedAt["generate-contract"],
+    },
+    {
       key: "upload",
       icon: Upload,
       title: "Upload files",
@@ -111,7 +121,7 @@ export function ClientActionsPanel({
     <>
       <ActionsPanel
         actions={actions}
-        forceOpen={qa === "discovery-report" || qa === "sow" || qa === "upload"}
+        forceOpen={qa === "discovery-report" || qa === "sow" || qa === "generate-contract" || qa === "upload"}
       />
 
       {open === "discovery-report" && (
@@ -133,6 +143,17 @@ export function ClientActionsPanel({
           onClose={() => {
             setOpen(null);
             setReopen((r) => ({ ...r, sow: false }));
+          }}
+        />
+      )}
+      {open === "generate-contract" && (
+        <ContractModal
+          clientId={clientId}
+          company={company}
+          reopenDraft={!!reopen["generate-contract"]}
+          onClose={() => {
+            setOpen(null);
+            setReopen((r) => ({ ...r, "generate-contract": false }));
           }}
         />
       )}

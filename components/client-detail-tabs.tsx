@@ -616,6 +616,7 @@ const artifactIcon: Record<Artifact["type"], typeof FileText> = {
   deck: Presentation,
   email: Mail,
   sow: FileText,
+  contract: FileText,
   invoice: FileText,
   report: FileText,
   other: FileText,

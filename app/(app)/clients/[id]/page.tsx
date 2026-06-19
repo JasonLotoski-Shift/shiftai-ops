@@ -47,10 +47,12 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const actionRanAt: Record<string, Date | undefined> = {
     "discovery-report": clientRanAt["discovery-report"],
     sow: clientRanAt["sow"],
+    "generate-contract": clientRanAt["generate-contract"],
   };
   const actionSavedAt: Record<string, Date | undefined> = {
     "discovery-report": clientSavedAt["discovery-report"],
     sow: clientSavedAt["sow"],
+    "generate-contract": clientSavedAt["generate-contract"],
   };
 
   const survey = client.discoverySurveys[0];

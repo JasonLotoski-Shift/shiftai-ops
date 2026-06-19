@@ -34,29 +34,32 @@ Section spine (keep the order; drop a section only if it genuinely does not appl
 8. **Change control** — how a change to scope, schedule, or price is requested, priced, and agreed in writing before work proceeds.
 9. **Term, termination & confidentiality** — short, plain; flagged for counsel. Then a **signature block** for both parties.
 
-## The commercial terms (from `business-model-v2.md` §2)
+## The commercial terms (v3 — from `business-model-v2.md` §2)
 
-Three layers. Use the partner's supplied numbers; mark any that are missing.
+Use the partner's supplied numbers; mark any that are missing.
 
-- **Build fee** — one-time, the figure from the accepted proposal. State what it funds (standing up the client's own system). Do not discount it here.
-- **Monthly subscription** — the **platform base** (hosting, auth, the data spine, security patching, the cross-client improvement stream) plus a **per-module line** for each live module (monitoring, drift, integration upkeep, small improvements, support). State the start date and that it maintains, secures, and improves the system. Frame as a managed service, never "rent" or SaaS "seats/tiers."
-- **Buy-out** — optional, **set per deal at SOW time, no published formula**. Include the clause only if the partner supplied a price; otherwise note buy-out is available and priced per deal, and mark the figure `[NEEDS INPUT]`. Frame it as fair value of what the client would otherwise pay over the life of the system, **never a leaving fee**. A buy-out transfers only the client's own instance snapshot (their fork, frozen), carries a license-back to Shift of generic patterns, and ends the improvement stream at the buy-out date.
+- **Build fee** — one-time, the figure from the accepted proposal. It is a **conditional sale**: it funds building the client's custom **Deliverable**, and the client owns the Deliverable outright once it is paid in full (title vests on full payment). Do not discount it here.
+- **Background IP licence fee** — monthly, for the reusable engine (the **Background IP**) embedded in and required to run the Deliverable, payable for as long as the client uses the system. This is the core recurring value: it covers maintenance, security, and the cross-client improvement stream. Frame as a managed service, never "rent" or SaaS "seats/tiers."
+- **Operate & support** — optional annual support for the Deliverable (warranty, error correction, support hours).
+- **No buy-out.** The client already owns the Deliverable; the Background IP is never sold. Do not offer or price a buy-out.
 
-## IP & ownership (from `business-model-v2.md` §3 — counsel must confirm)
+## IP & ownership (v3 — counsel must confirm)
 
-State the three-layer model plainly:
+State the model plainly:
 
-- **Shift Platform** — the core framework, the agent/skill engine, dashboard scaffolding, integration patterns, and the pattern Library. **Shift owns it.** The client receives a license, never title (except a buy-out of their own fork).
-- **Client Instance** ("their version") — the client-specific config, workflow logic, custom-only code, and always their own data. The client holds a **perpetual, non-exclusive, non-transferable, internal-use source license**, maintained by the subscription, delivered into a repo the client controls. Perpetual survives a subscription lapse for what they already have; updates and the improvement stream stop.
-- **Deployment** — Shift-hosted **or** client-run in-house under that license. **Never hosted-only.**
-- **Source escrow** — included in every SOW. The client's instance source is held in escrow and released only on defined triggers: Shift insolvency, material uncured breach, or product end-of-life. This is the structural answer to vendor risk.
+- **The Deliverable** — the custom software built for this client. The client **buys and owns it outright** once it is paid in full (a conditional sale; title vests on full payment). Until then Shift retains title and a purchase-money security interest.
+- **Background IP** — Shift's reusable framework, the agent/skill engine, the AI orchestration/gateway layer, integration patterns, and the pattern Library. **Shift owns it.** The client gets a non-exclusive, non-transferable licence to use it only as embedded in the Deliverable, for the Background IP licence fee, for as long as it uses the system. It is never sold.
+- **Client Data** — always the client's.
+- **Deployment** — Shift-hosted **or** client-run in-house. **Never hosted-only.**
+- **Use restrictions** — internal business use only; no resale, sublicense, or service-bureau; a change of control requires Shift's consent and re-negotiation.
+- **Background-IP escrow** — because the Deliverable cannot run without the Background IP, the Background IP source is held in escrow and released only on Shift insolvency, material uncured breach, or product end-of-life, for the client's internal maintenance only.
 - **The boundary** — improvements flow one way (the firm's Library into the client's system, patterns never data); the client's data, identifiers, pricing, and named workflows are never shared.
 
-Mark the license-vs-assignment wording, the exact escrow triggers, and change-of-control treatment as **`[for counsel]`** — the skill states the model; counsel writes the binding words.
+Mark the conditional-sale/vesting wording, the PPSA security-interest perfection, the escrow triggers, and the change-of-control treatment as **`[for counsel]`** — the skill states the model; counsel writes the binding words.
 
 ## Voice
 
-Plain, certain, operator language; defer to the firm context. Use the approved managed-service vocabulary (`business-model-v2.md` §8): *managed service, you keep your version, run it in-house, maintain secure and improve, the improvement stream, buy-out, the pattern Library, patterns never data, build in modules*. No banned words (no "locked," no "leverage," no "seamless"). A contract is plainer than a pitch: short clauses, defined terms, no adjectives.
+Plain, certain, operator language; defer to the firm context. Use the approved managed-service vocabulary (`business-model-v2.md` §8): *managed service, you own your build, the Deliverable, the Background IP licence, run it in-house, maintain secure and improve, the improvement stream, the pattern Library, patterns never data, build in modules*. No banned words (no "locked," no "leverage," no "seamless"), and no "buy-out" (it is removed). A contract is plainer than a pitch: short clauses, defined terms, no adjectives.
 
 ## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
 

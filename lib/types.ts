@@ -388,6 +388,7 @@ export type ArtifactType =
   | "deck"
   | "email"
   | "sow"
+  | "contract"
   | "invoice"
   | "report"
   | "other";

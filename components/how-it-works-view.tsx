@@ -33,6 +33,7 @@ import {
   HelpCircle,
   Wrench,
   ClipboardCheck,
+  Stamp,
   Map as MapIcon,
 } from "lucide-react";
 
@@ -968,6 +969,17 @@ const flows: Flow[] = [
       { tone: "claude", kind: "Claude", label: "Drafts scope + acceptance, the commercial terms, and the firm's IP model; stamps DRAFT + [for counsel] markers" },
       { tone: "review", kind: "You review", label: "Preview, edit the source; [NEEDS INPUT] blocks save until every fee/party/date is real" },
       { tone: "write", kind: "Saved", label: "Filed to the client's Drive as a Google Doc + an Artifact; counsel redlines before signature" },
+    ],
+  },
+  {
+    icon: <Stamp size={16} strokeWidth={1.5} />,
+    title: "Generate a contract",
+    blurb: "The firm's standard agreement as a fillable HTML you export to PDF: a Master Conditional Sale and Custom Software Development Agreement (the client buys the build, Shift keeps the Background IP). The legal terms are a fixed, BC-researched template; only the parties, fees, dates, and the Schedule A scope are filled. Never signature-ready: a BC lawyer reviews the binding terms first.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Client → Generate contract · enter the parties, the build fee, the monthly Background IP licence fee, the payment schedule, and the effective date" },
+      { tone: "claude", kind: "Claude", label: "Drafts Schedule A (the Deliverable) from the approved SOW, then fills the fixed BC template — conditional sale, Background IP, liability, privacy, escrow, governing law — around your numbers. The legal wording is not rewritten" },
+      { tone: "review", kind: "You review", label: "Preview the contract, edit the source; [NEEDS INPUT] blocks save until every fee, party, and date is real (including Shift's own legal details in firm-party.ts)" },
+      { tone: "write", kind: "Saved", label: "Filed to the client's Drive as a fillable .html + an Artifact. Open it, fill any remaining fields in the browser, then Download PDF. Counsel reviews before signature" },
     ],
   },
   {

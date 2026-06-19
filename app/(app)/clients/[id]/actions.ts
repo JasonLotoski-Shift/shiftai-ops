@@ -14,10 +14,19 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { folderIdFromUrl, uploadFile, uploadAsGoogleDoc } from "@/lib/drive";
+import {
+  folderIdFromUrl,
+  uploadFile,
+  uploadAsGoogleDoc,
+  drive,
+  fileIdFromUrl,
+  exportGoogleDoc,
+  downloadDriveFile,
+} from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
+import { renderContract } from "@/lib/contract/template";
 import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import { formatDate } from "@/lib/format";
 import { normalizeDomain } from "@/lib/apollo";
@@ -309,6 +318,200 @@ export async function saveSow(clientId: string, input: { body: string }) {
       type: "doc",
       target: client.company,
       detail: "Drafted a Statement of Work (for partner + counsel review)",
+      link: `/clients/${clientId}`,
+    });
+
+    return created;
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  return { artifactId: artifact.id, driveUrl: webViewLink };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Generate Contract — the firm's standard client agreement as a fillable,
+// self-contained HTML document with a Download-PDF (browser print) button.
+//
+// Split, like every Quick Action: generateContract drafts (no writes),
+// saveContract files it + Artifact + AuditLog + Activity in one transaction.
+//
+// Architecture (see lib/contract/template.ts): the binding legal terms are a
+// FIXED, counsel-reviewable template — the LLM never rewrites them. Claude only
+// drafts Appendix A (the scope/delivery), grounded in the approved SOW. The
+// server fills the parties/fees/dates deterministically. Output files as
+// text/html (NOT a Google Doc) so the fillable fields + print button survive.
+// ──────────────────────────────────────────────────────────────────────
+
+// Best-effort read of the latest approved SOW/scope text so Appendix A is built
+// from what was actually agreed, not re-imagined. Degrades to null (Claude then
+// works from the project scope in the context). Caps length to keep the prompt sane.
+async function latestApprovedScopeText(clientId: string): Promise<string | null> {
+  const art = await prisma.artifact.findFirst({
+    where: { clientId, generatedFromSkill: { in: ["sow", "scope"] } },
+    orderBy: { createdAt: "desc" },
+    select: { driveUrl: true },
+  });
+  if (!art?.driveUrl) return null;
+  const fileId = fileIdFromUrl(art.driveUrl);
+  if (!fileId) return null;
+  try {
+    const meta = await drive.files.get({ fileId, fields: "mimeType", supportsAllDrives: true });
+    const mime = meta.data.mimeType ?? "";
+    const text = mime.startsWith("application/vnd.google-apps")
+      ? (await exportGoogleDoc(fileId, mime)).text
+      : (await downloadDriveFile(fileId)).toString("utf8");
+    return text.slice(0, 12000);
+  } catch {
+    return null; // a missing reference must never block drafting
+  }
+}
+
+export type ContractIntake = {
+  clientLegalName: string;
+  clientAddress: string;
+  effectiveDate: string;
+  projectName: string;
+  buildFee: string;
+  backgroundIpLicenseFee: string;
+  supportFee?: string;
+  paymentTerms: string;
+  recital?: string;
+  scopeNotes?: string;
+};
+
+export async function generateContract(
+  clientId: string,
+  input: ContractIntake,
+): Promise<{ body: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const preparedBy = session.user.name ?? session.user.email ?? "";
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      company: true,
+      industry: true,
+      contractValue: true,
+      description: true,
+      primaryContact: { select: { name: true, title: true, email: true } },
+      projects: {
+        orderBy: { startDate: "desc" },
+        select: { name: true, phase: true, status: true },
+      },
+    },
+  });
+  if (!client) throw new Error("Client not found");
+
+  const contextLines: string[] = [
+    "## Client",
+    `Company: ${client.company}`,
+    `Industry: ${client.industry}`,
+    `Contract value on file: ${client.contractValue}`,
+  ];
+  if (client.description) contextLines.push(`About: ${client.description}`);
+  contextLines.push(
+    "",
+    "## Primary contact",
+    `${client.primaryContact.name} — ${client.primaryContact.title}`,
+  );
+  if (client.projects.length) {
+    contextLines.push("", "## Projects / engagement");
+    for (const p of client.projects) {
+      contextLines.push(`- ${p.name} — phase: ${p.phase}, status: ${p.status.replace("_", "-")}`);
+    }
+  }
+  const sowText = await latestApprovedScopeText(clientId);
+  if (sowText) {
+    contextLines.push(
+      "",
+      "## Approved Statement of Work (source of truth for Appendix A — build the scope from this)",
+      sowText,
+    );
+  }
+  const context = contextLines.join("\n");
+
+  const intake = [
+    "## Draft Schedule A (the Deliverable / Statement of Work) for this client's contract.",
+    `Engagement / project name: ${input.projectName?.trim() || "(use the project name from the context)"}`,
+    "",
+    "## Scope notes from the partner",
+    input.scopeNotes?.trim() ||
+      "(none — build Schedule A from the approved SOW and the project scope in the context)",
+  ].join("\n");
+
+  const scheduleAHtml = (
+    await generate({ skill: "generate-contract", context, intake, maxTokens: 8000 })
+  ).trim();
+
+  const body = renderContract({
+    clientLegalName: input.clientLegalName,
+    clientAddress: input.clientAddress,
+    clientContactName: client.primaryContact.name,
+    clientContactTitle: client.primaryContact.title,
+    clientContactEmail: client.primaryContact.email,
+    effectiveDate: input.effectiveDate,
+    projectName: input.projectName,
+    recital: input.recital ?? "",
+    buildFee: input.buildFee,
+    backgroundIpLicenseFee: input.backgroundIpLicenseFee,
+    supportFee: input.supportFee ?? "",
+    paymentTerms: input.paymentTerms,
+    scheduleAHtml,
+    preparedBy,
+  });
+
+  return { body };
+}
+
+export async function saveContract(clientId: string, input: { body: string }) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const body = input.body.trim();
+  if (!body) throw new Error("Contract body is required");
+  assertNoNeedsInput(body, "contract");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { id: true, company: true, driveFolderUrl: true },
+  });
+  if (!client) throw new Error("Client not found");
+
+  const parentFolderId = resolveClientFolderId(client.driveFolderUrl);
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `Services Agreement (DRAFT) - ${client.company} - ${today}.html`;
+  const { fileId, webViewLink } = await uploadHtml(body, fileName, parentFolderId);
+
+  const artifact = await prisma.$transaction(async (tx) => {
+    const created = await tx.artifact.create({
+      data: {
+        type: "contract" as ArtifactType,
+        title: `Contract (draft) · ${client.company} · ${today}`,
+        driveUrl: webViewLink,
+        fileName,
+        createdBy: partnerLabel,
+        generatedFromSkill: "generate-contract",
+        reviewStatus: "draft",
+        clientId: client.id,
+      },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "create.artifact.contract.draft",
+      targetType: "Artifact",
+      targetId: created.id,
+      changes: { clientId, driveFileId: fileId, bodyLength: body.length },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: client.company,
+      detail: "Drafted a client contract (for partner + counsel review)",
       link: `/clients/${clientId}`,
     });
 

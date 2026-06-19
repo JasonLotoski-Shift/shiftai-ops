@@ -231,7 +231,7 @@ export default async function ProjectDetailPage({
         isFirstContract: project.isFirstContract,
       });
 
-  const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, invoice: FileText, report: FileText, other: FileText } as const;
+  const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, contract: FileText, invoice: FileText, report: FileText, other: FileText } as const;
   const reviewTone = { draft: "neutral", approved: "steel", sent: "gold", archived: "bone" } as const;
 
   const milestonesComplete = projectMilestones.filter((m) => m.status === "complete").length;

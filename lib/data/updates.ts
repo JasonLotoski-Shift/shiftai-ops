@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-18",
     tag: "new",
+    title: "Generate a contract from a client, ready to fill and export to PDF",
+    detail:
+      "On a client, “Generate contract” drafts the firm's standard agreement: a Master Conditional Sale and Custom Software Development Agreement where the client buys the custom build and Shift keeps the reusable engine underneath it. You enter the parties, the build fee, the monthly Background IP licence fee, the payment schedule, and the effective date, and Claude writes Schedule A (the Deliverable) from the approved Statement of Work. The legal terms are a fixed template, researched for a BC corporation (governing law, privacy, intellectual property, liability, escrow), so the wording stays the same on every contract and only the deal-specific parts change. It saves as a fillable web page in the client's Drive folder: open it, fill any remaining fields right in the browser, and use the Download PDF button. It is a draft for partner and counsel review, never signature-ready, and it will not save while any [NEEDS INPUT] field is blank, including Shift's own legal details.",
+  },
+  {
+    date: "2026-06-18",
+    tag: "new",
     title: "The proposal is now one flow: a scope of work, then a deck built from it",
     detail:
       "“Draft proposal” is now “Draft scope (SOW)” — a high-level scope of work built from the prototype: what we'll build, the foundation we set up first (the environment, the data and API connections, access), the phases, what the client owns, what we need from them, the timeline, and the fixed fee. Then “Build deck” takes that approved scope plus the prototype and builds the client-facing pitch deck the same way the prototype builds itself — it drafts, looks at its own work, and improves it over a few rounds in its own tab, with a live “Demo prototype” button baked in. The deck waits until both a prototype and a scope exist. And the deal's actions are now laid out as numbered steps — Discovery, Prototype, Proposal — with an (i) on every action you can hover to see exactly what it does and what happens when you run it.",

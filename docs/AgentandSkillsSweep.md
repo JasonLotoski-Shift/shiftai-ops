@@ -49,6 +49,7 @@
 | 4 | proposal-deck | ops | html | Slide-style HTML proposal deck | PN |
 | 31 | discovery-report | ops | html | Client-facing Discovery build-plan deck (light mode + client brand) | P |
 | 32 | sow | ops | gdoc | Statement of Work contract draft (counsel-flagged) | P |
+| 39 | generate-contract | ops | html | Standard client agreement (v3 conditional sale + Background IP), fillable HTML to PDF; drafts Schedule A only (legal terms are a fixed BC template); SOW becomes Schedule A | — |
 | | **- Prototype workflow (3 steps) -** | | | | |
 | 5 | prototype-brief | ops | md | Step 1: scope what to prototype | P |
 | 6 | prototype-spec | ops | md | Step 2: build-ready blueprint | PN |
@@ -179,6 +180,14 @@ Scores: **T**one · **B**rand · **A**udience · **G**oal · **F**ormat · no-**
 - **Inputs:** client + project context + partner intake of the agreed terms. **Dependencies:** `_firm/context.md`; the v2 commercial + IP model (inlined from `business-model-v2.md`); Prisma Client/Project; a Drive HTML-to-Google-Doc save helper (Gate 6); pairs downstream of `scope`.
 - **Baseline refs:** voice · audience · business-model-v2 (commercial + IP). **Audit:** pass 2026-06-06 · T5 B(n/a) A5 G5 F5 H5 (born-audited).
 - **Notes:** New 2026-06-06. Contract skill: drafts the v2 three-layer IP model + source escrow + per-deal buy-out; every output is flagged "DRAFT, for partner + counsel, not for signature" with `[for counsel]` markers on the binding wording. Brand is intentionally minimal (plain contract for clean Doc conversion, not a branded deck), so B is n/a. The inlined IP/commercial terms are a deploy-time copy of business-model-v2.md; keep in sync if the model changes.
+
+#### 39. generate-contract · ops-runtime · html (fillable HTML to PDF)
+- **Goal:** Produce the firm's standard client agreement (v3 Master Conditional Sale and Custom Software Development Agreement) as a fillable, self-contained HTML document with a Download-PDF (browser print) button. The SOW becomes Schedule A.
+- **Audience:** the client (signs), the partner (fills/refines), BC counsel (reviews the binding terms). **Produces:** one self-contained HTML file (contenteditable fields + print stylesheet) filed to the client's Drive folder.
+- **Where it works:** ops Quick Action on the Client page ("Generate contract"). **How it works:** the binding Terms & Conditions are a **fixed, counsel-reviewable template** (`lib/contract/template.ts`, the v3 conditional-sale + Background-IP structure with Schedules A–D) the server fills deterministically with the partner's intake (parties, build fee, Background IP licence fee, payment, dates) and Shift's party config (`lib/contract/firm-party.ts`). The skill's **only** AI job is drafting **Schedule A** (the Deliverable: scope, acceptance criteria, out-of-scope, milestones, client responsibilities) from the approved SOW; the action injects it. Output files as text/html (not a Google Doc) so the fillable fields + print button survive.
+- **Inputs:** client + project context + the latest approved SOW/scope text + partner intake (commercial + party terms). **Dependencies:** `_firm/context.md`; `lib/contract/template.ts` + `firm-party.ts`; Prisma Client/Artifact; Drive `uploadFile` (text/html); pairs downstream of `sow`. Model per `docs/contract-v3-change-brief.md`.
+- **Baseline refs:** voice · audience · business-model-v2 (IP/commercial, v3 conditional-sale model) · BC legal research (governing law, PPSA, PIPA/PIPEDA, e-signature, GST/PST). **Audit:** not-audited (new 2026-06-18; pending the personas/ICP gate like the rest).
+- **Notes:** New 2026-06-18. The skill is scoped to Schedule A on purpose, so the LLM never rewrites the binding clauses, keeping the legal text stable between contracts. Every output carries a red "DRAFT, pending BC counsel review, not for signature" banner; `[for counsel]` marks the lawyer's decisions (liability carve-outs, arbitration-vs-courts, PPSA perfection) and `[NEEDS INPUT]` marks facts that block the save (fees, parties, dates, and Shift's own legal details in `firm-party.ts`). The template is not legal advice and must be reviewed by a BC lawyer before first use.
 
 ### Prototype workflow (brief → spec → HTML)
 

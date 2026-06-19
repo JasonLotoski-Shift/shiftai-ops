@@ -7,6 +7,8 @@
 **Date:** 2026-06-04.
 **Why:** the firm moved to a managed-service model — one-time **build** + monthly **subscription** (the core, replacing the old "retainer = continuation only") + a premium **buy-out**; engagement phase **Run → Operate**; firm keeps a reusable pattern library; client keeps a runnable version of their instance. Canonical model: `../shiftai-firm/planning/business-model-v2.md`.
 
+> ⚠️ **AMENDMENT 2026-06-18 — model moved to v3 (conditional sale + Background IP; buy-out removed).** The commercial/IP model above is superseded by v3: the client **buys and owns the custom Deliverable** outright on full payment; Shift **owns the Background IP** and licenses it for a **monthly Background IP licence fee**; **no buy-out**. The Part-A skill copies (`skills/_firm/context.md`, `skills/scope/SKILL.md`, `skills/sow/SKILL.md`) and the contract tool (`skills/generate-contract/`, `lib/contract/`) have been updated to v3. Change set: [contract-v3-change-brief.md](contract-v3-change-brief.md). Pending Jay's ratification + BC counsel.
+
 ---
 
 # Part A — Positioning / AI-context  (✅ applied 2026-06-14)
