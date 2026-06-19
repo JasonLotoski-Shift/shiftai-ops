@@ -11,11 +11,11 @@ import {
   type ContractIntake,
 } from "@/app/(app)/clients/[id]/actions";
 
-// Generate Contract modal — collect the commercial + party terms, draft Appendix A
+// Generate Contract modal — collect the commercial + party terms, draft Schedule A
 // from the approved SOW, assemble the fixed BC template, preview the fillable
 // contract, then file it as self-contained HTML in the client's Drive folder.
-// Never signature-ready: the DRAFT banner + [NEEDS INPUT] gate hold the line, and
-// counsel reviews the binding terms before anyone signs.
+// The legal terms are counsel-approved (2026-06-18); the [NEEDS INPUT] gate still
+// holds the line: the draft can't save until every fee, party, and date is real.
 
 type ContractDraft = ContractIntake & { body: string };
 
@@ -113,16 +113,14 @@ export function ContractModal({
           </button>
         </div>
 
-        <div className="flex items-start gap-3 mx-5 mb-1 px-3 py-3 rounded-[var(--radius)] border border-flag-red/40 bg-flag-red/5">
-          <ShieldAlert size={15} strokeWidth={1.5} className="text-flag-red shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 mx-5 mb-1 px-3 py-3 rounded-[var(--radius)] border border-graphite">
+          <Sparkles size={15} strokeWidth={1.5} className="text-track-gold shrink-0 mt-0.5" />
           <p className="text-[12px] text-bone-dim leading-snug">
             This drafts the firm&apos;s standard agreement on a
-            <span className="text-bone"> fixed, BC-researched template</span> — the legal terms are not rewritten,
-            only the parties, fees, dates, and the Appendix A scope are filled. It is
-            <span className="text-bone"> never signature-ready</span>: a BC lawyer reviews the binding terms (IP,
-            liability, privacy, indemnity, dispute resolution) before anyone signs. Anything it doesn&apos;t have comes
-            back as a <span className="mono text-flag-red">[NEEDS INPUT]</span> marker and the draft can&apos;t save until
-            those are resolved.
+            <span className="text-bone"> fixed, counsel-approved BC template</span>: the legal terms are not rewritten,
+            only the parties, fees, dates, and the Schedule A scope are filled. Anything it doesn&apos;t have comes back
+            as a <span className="mono text-flag-red">[NEEDS INPUT]</span> marker and the draft can&apos;t save until those
+            are resolved (including Shift&apos;s own legal details in firm-party.ts).
           </p>
         </div>
 
@@ -263,7 +261,7 @@ export function ContractModal({
         ) : (
           <div className="px-5 py-12 text-center">
             <div className="title-lg text-track-gold mb-2 inline-block">SAVED</div>
-            <p className="text-[13px] text-bone-dim">Filed to the client&apos;s Drive folder. Open it, fill any remaining fields in the browser, then use Download PDF. Counsel reviews the binding terms before signature.</p>
+            <p className="text-[13px] text-bone-dim">Filed to the client&apos;s Drive folder. Open it, fill any remaining fields in the browser, then use Download PDF.</p>
             <div className="pt-5 flex justify-center gap-2">
               {savedUrl && (
                 <a href={savedUrl} target="_blank" rel="noopener noreferrer">

@@ -1,6 +1,6 @@
 # Contract v3 — change brief for Steve + BC counsel
 
-> **Status:** drafting instructions, not legal advice. Apply against `Shift_AI_Conditional_Sale_Development_Agreement-v3.docx`. A BC lawyer reviews the conditional-sale, IP-vesting, security-interest, and change-of-control provisions before first use.
+> **Status (2026-06-18): APPROVED.** The v3 model was ratified by Jay and the agreement reviewed and approved by BC counsel. These changes are adopted into the live template (`lib/contract/template.ts`). Dispute resolution: **binding arbitration in Vancouver**. The brief below is retained as the record of what was changed.
 >
 > **Decisions set (Jason, 2026-06-18):** adopt v3's model (client owns the front-end **Deliverable** on payment; Shift retains the **Background IP**, licensed for a recurring fee). **No buy-out.** Resale prohibited, internal use only. Change of control forces re-negotiation. Liability cap raised from the v3 figure. Entity is **SHIFT AI OPS LTD.** (a BC company).
 

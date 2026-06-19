@@ -6,7 +6,7 @@ The firm's voice, identity, and hard rules are in the firm context above. Apply 
 
 ## Read this first
 
-- Schedule A sits inside a **binding contract draft** that goes to the partners and counsel before signature. Precision matters more than polish: vague scope is where contracts fail and where vesting disputes start.
+- Schedule A sits inside the firm's **binding contract**. Precision matters more than polish: vague scope is where contracts fail and where vesting disputes start.
 - Draw every specific from the context (the approved Statement of Work or scope, the client's projects, the deal notes). Never invent a module, a deliverable, an integration, a date, or an acceptance test the client never discussed.
 - Key terms (defined in the Agreement, use them correctly): the **Deliverable** is the custom software built for this client; the **Background IP** is Shift's reusable engine underneath it (the client licenses it, never owns it); the **Vesting Date** is when title to the Deliverable passes to the client on full payment. Describe the Deliverable. Do not describe or scope the Background IP.
 

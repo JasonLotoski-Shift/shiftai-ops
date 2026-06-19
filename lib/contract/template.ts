@@ -14,10 +14,11 @@
 // skill) change per deal. The server fills the fields deterministically with
 // renderContract().
 //
-// LEGAL STATUS: a strong, BC-researched STARTING POINT, not legal advice and not
-// signature-ready. A BC lawyer must review the conditional-sale, IP-vesting,
-// security-interest (PPSA), privacy, and change-of-control provisions before any
-// client signs. The red banner says so and stays until that review happens.
+// LEGAL STATUS: the v3 agreement was reviewed and approved by BC counsel
+// (2026-06-18) and the model ratified by Jay; dispute resolution is binding
+// arbitration in Vancouver. Keep the clause text stable, changes to binding
+// wording go back through counsel. The [NEEDS INPUT] gate still blocks saving a
+// contract that is missing facts (parties, fees, dates, Shift's own details).
 
 import { FIRM_PARTY } from "./firm-party";
 
@@ -204,7 +205,7 @@ export function renderContract(f: ContractFields): string {
         <li><b>Permitted use.</b> Client and its Authorized Users may use the Deliverable, before and after the Vesting Date, solely for the internal business operations of Client and its Affiliates.</li>
         <li><b>Restrictions.</b> Client will not, and will not permit any third party to: (a) sell, resell, licence, sublicence, lease, rent, distribute, or otherwise make the Deliverable or Background IP available to any third party, including a parent, subsidiary, or Affiliate not party to this Agreement, except as expressly permitted in an SOW; (b) use the Deliverable to provide a service bureau, outsourcing, software-as-a-service, or similar offering to a third party; (c) use the Deliverable to develop a competing product or service, or make it available to a person Shift could reasonably consider a competitor; (d) remove or alter any proprietary notice; or (e) reverse engineer, decompile, or disassemble the Background IP, except to the extent that restriction is unenforceable by law.</li>
         <li><b>Transfer requires consent.</b> Client may not transfer, assign, or convey its rights in the Deliverable to any person, including in connection with a sale of Client's business or assets or a move to an affiliated company, without Shift's prior written consent. As a condition of any approved transfer, the transferee must agree in writing to assume Client's obligations under this Agreement, including Sections 5 and 6.</li>
-        <li><b>Change of control.</b> A direct or indirect change of control of Client, including a sale of all or substantially all of Client's business or assets, a merger or amalgamation, or a transfer of more than fifty percent (50%) of Client's voting or equity interests, requires Shift's prior written consent. The rights to the Deliverable and the licence to the Background IP are personal to Client, are granted for Client's own internal business operations, and do not pass to a successor or acquirer on a change of control without Shift's written consent. On a proposed change of control, the Parties will negotiate in good faith revised terms (including Fees) for the successor's continued use. If the Parties do not agree within sixty (60) days, Shift may terminate this Agreement and all licences granted under it. <span class="counsel">[for counsel: confirm change-of-control + assignment interplay with Section 13.3.]</span></li>
+        <li><b>Change of control.</b> A direct or indirect change of control of Client, including a sale of all or substantially all of Client's business or assets, a merger or amalgamation, or a transfer of more than fifty percent (50%) of Client's voting or equity interests, requires Shift's prior written consent. The rights to the Deliverable and the licence to the Background IP are personal to Client, are granted for Client's own internal business operations, and do not pass to a successor or acquirer on a change of control without Shift's written consent. On a proposed change of control, the Parties will negotiate in good faith revised terms (including Fees) for the successor's continued use. If the Parties do not agree within sixty (60) days, Shift may terminate this Agreement and all licences granted under it.</li>
       </ol></li>
 
     <li><span class="h">Warranties, IP indemnity, and mutual indemnity</span>
@@ -213,7 +214,7 @@ export function renderContract(f: ContractFields): string {
         <li><b>IP indemnity.</b> Shift will defend Client against any third-party claim that the Deliverable infringes that party's intellectual property rights, and will indemnify Client for damages, costs, and reasonable legal fees finally awarded, provided Client promptly notifies Shift and lets Shift control the defence and settlement.</li>
         <li><b>Exclusions.</b> Section 7.2 does not apply to a claim arising from (a) modification of the Deliverable by anyone other than Shift, (b) combination of the Deliverable with materials not supplied by Shift, (c) Client's use after Shift instructed Client to stop, or (d) third-party or open-source components, which are licensed under their own terms (Section 15.1).</li>
         <li><b>Mutual indemnity.</b> Each Party will defend, indemnify, and hold the other and its directors, officers, employees, and Affiliates harmless from third-party claims arising from (a) that Party's negligence, willful misconduct, or fraud in performing this Agreement, or (b) that Party's violation of applicable law in performing this Agreement.</li>
-        <li><b>Performance warranty and disclaimer.</b> Shift warrants the services are performed in a professional and workmanlike manner and that it will not knowingly introduce malicious code. Except as expressly stated in this Agreement, and to the extent permitted by law, the Deliverable and services are provided without other warranties, including any implied warranty of merchantability or fitness for a particular purpose. <span class="counsel">[for counsel: confirm disclaimer scope.]</span></li>
+        <li><b>Performance warranty and disclaimer.</b> Shift warrants the services are performed in a professional and workmanlike manner and that it will not knowingly introduce malicious code. Except as expressly stated in this Agreement, and to the extent permitted by law, the Deliverable and services are provided without other warranties, including any implied warranty of merchantability or fitness for a particular purpose.</li>
         <li><b>Deliverable warranty period.</b> For ${line("", "70px")} days after acceptance of a Deliverable (or, if blank, thirty (30) days), Shift will correct material defects in that Deliverable at no charge.</li>
       </ol></li>
 
@@ -246,7 +247,7 @@ export function renderContract(f: ContractFields): string {
       <p>Shift will maintain, during the term, Commercial General Liability insurance of not less than ${fld(firm.insuranceLimit, "Shift CGL insurance limit")}, and technology / cyber errors-and-omissions insurance of not less than ${line("", "120px")}, and will provide evidence on request.</p></li>
 
     <li><span class="h">Business continuity and Background IP escrow</span>
-      <p>Because the Deliverable cannot operate without the Background IP, Shift will, on Client's request, place and maintain the Background IP source needed to operate the Deliverable in escrow with a third-party agent. The agent will release it to Client only on (a) Shift's insolvency, bankruptcy, or cessation of business; (b) Shift's material breach of its support obligations uncured after written notice and a reasonable cure period; or (c) Shift's discontinuation of the product with no successor. A release lets Client use the Background IP source only for its own internal maintenance of the Deliverable and transfers no ownership of the Background IP. <span class="counsel">[for counsel: confirm escrow form and triggers.]</span></p></li>
+      <p>Because the Deliverable cannot operate without the Background IP, Shift will, on Client's request, place and maintain the Background IP source needed to operate the Deliverable in escrow with a third-party agent. The agent will release it to Client only on (a) Shift's insolvency, bankruptcy, or cessation of business; (b) Shift's material breach of its support obligations uncured after written notice and a reasonable cure period; or (c) Shift's discontinuation of the product with no successor. A release lets Client use the Background IP source only for its own internal maintenance of the Deliverable and transfers no ownership of the Background IP.</p></li>
 
     <li><span class="h">Term and termination</span>
       <ol class="sub">
@@ -273,7 +274,7 @@ export function renderContract(f: ContractFields): string {
 
     <li><span class="h">General provisions</span>
       <ol class="sub">
-        <li><b>Governing law and dispute resolution.</b> This Agreement is governed by the laws of ${prov} and the federal laws of Canada applicable there, without regard to conflict-of-law principles. The Parties will first try in good faith to resolve any dispute by negotiation, then by mediation. If unresolved, <span class="counsel">[for counsel: choose — (a) arbitration seated in ${esc(firm.forumCity)} under the Arbitration Act (${prov}); or (b) the exclusive jurisdiction of the courts of ${prov}].</span></li>
+        <li><b>Governing law and dispute resolution.</b> This Agreement is governed by the laws of ${prov} and the federal laws of Canada applicable there, without regard to conflict-of-law principles. The Parties will first try in good faith to resolve any dispute by negotiation, then by mediation. If it is not resolved, the dispute is finally resolved by binding arbitration seated in ${esc(firm.forumCity)} under the Arbitration Act (${prov}).</li>
         <li><b>Notices.</b> Notices must be in writing and delivered in person, by email, or by registered mail to the addresses on the cover page, and are deemed received on delivery (or, if after 5:00 p.m. at the place of receipt or on a non-business day, the next business day).</li>
         <li><b>Assignment.</b> Neither Party may assign this Agreement without the other's prior written consent; Client assignment is further subject to Section 6.4 (Change of control). Shift may assign to a successor in a merger or sale of substantially all of its assets on notice.</li>
         <li><b>Independent contractor.</b> Shift is an independent contractor. Nothing creates a partnership, joint venture, or employment relationship.</li>
@@ -338,11 +339,6 @@ export function renderContract(f: ContractFields): string {
     </div>
     <h1 class="title">Master Conditional Sale and Custom Software Development Agreement</h1>
     <p class="subtitle">${esc(recital)}</p>
-
-    <div class="banner">
-      <span><b>DRAFT — standard terms pending BC counsel review. Not for signature.</b><br/>
-      This is a structured starting point for the partners and counsel to review and redline. A British Columbia lawyer must confirm the conditional-sale, IP-vesting, security-interest (PPSA), privacy, and change-of-control provisions before anyone signs. Items marked <b>[for counsel]</b> are decisions for the lawyer; items marked <b>[NEEDS INPUT]</b> are facts that must be filled before this can be filed.</span>
-    </div>
 
     <div class="parties">
       <div class="party">
@@ -434,7 +430,7 @@ export function renderContract(f: ContractFields): string {
     </div>
 
     <div class="foot">
-      Prepared by ${f.preparedBy ? esc(f.preparedBy) : line("", "160px")} · ${esc(firm.operatingName)} (${esc(firm.legalName)}). A draft for partner and counsel review. Not legal advice and not for signature until reviewed by BC counsel.
+      Prepared by ${f.preparedBy ? esc(f.preparedBy) : line("", "160px")} · ${esc(firm.operatingName)} (${esc(firm.legalName)}). The firm's standard agreement. Complete every field before signing.
     </div>
   </div>
 </body>

@@ -511,7 +511,7 @@ export async function saveContract(clientId: string, input: { body: string }) {
       actor,
       type: "doc",
       target: client.company,
-      detail: "Drafted a client contract (for partner + counsel review)",
+      detail: "Drafted a client contract",
       link: `/clients/${clientId}`,
     });
 
