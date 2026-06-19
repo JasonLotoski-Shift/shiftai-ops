@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-19",
+    tag: "improved",
+    title: "Generate a contract straight from a deal, not just a client",
+    detail:
+      "The Generate contract action now lives on the deal too, as its own step after the proposal. A deal only becomes a client once the contract is signed, so this is where you draft the agreement to send. It works the same as on a client: fills the counsel-approved BC template with the parties, fees, and dates, drafts Schedule A from the deal's scope of work, and files a fillable contract to the deal's Drive folder.",
+  },
+  {
     date: "2026-06-18",
     tag: "new",
     title: "Generate a contract from a client, ready to fill and export to PDF",

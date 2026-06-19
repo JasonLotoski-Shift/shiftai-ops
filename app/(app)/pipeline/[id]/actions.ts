@@ -14,6 +14,8 @@ import { ensureDealDriveFolder, moveDealFolderToClient } from "@/lib/deal-drive"
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
+import { renderContract, type ContractIntake } from "@/lib/contract/template";
+import { latestScopeText } from "@/lib/contract/scope-source";
 import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { buildDealContext } from "@/lib/deal-context";
 import { linkContact, repointDealLinksToClient } from "@/lib/contact-links";
@@ -1242,6 +1244,130 @@ export async function saveProposal(dealId: string, input: { body: string }) {
       type: "doc",
       target: deal.company,
       detail: "Drafted scope of work — awaiting review",
+      link: `/pipeline/${dealId}`,
+    });
+
+    return created;
+  });
+
+  revalidatePath(`/pipeline/${dealId}`);
+  return { artifactId: artifact.id, driveUrl: webViewLink };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Generate Contract (deal-scoped) — the firm's standard agreement as a fillable,
+// self-contained HTML document with a Download-PDF (browser print) button. A deal
+// becomes a client only once the contract is signed, so the action lives here too,
+// not just on the client page. Same shape and template as the client-scoped twin
+// in app/(app)/clients/[id]/actions.ts; files to the deal's Drive folder with a
+// dealId Artifact. The legal terms are counsel-approved (2026-06-18); only the
+// parties/fees/dates and Schedule A (the Deliverable) change per deal.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function generateContract(
+  dealId: string,
+  input: ContractIntake,
+): Promise<{ body: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const preparedBy = session.user.name ?? session.user.email ?? "";
+
+  const { deal, context } = await buildDealContext(dealId);
+
+  const sowText = await latestScopeText({ dealId });
+  const fullContext = sowText
+    ? `${context}\n\n## Approved scope of work (source of truth for Schedule A — build the Deliverable from this)\n${sowText}`
+    : context;
+
+  const intake = [
+    "## Draft Schedule A (the Deliverable / Statement of Work) for this deal's contract.",
+    `Engagement / project name: ${input.projectName?.trim() || "(use the engagement from the context)"}`,
+    "",
+    "## Scope notes from the partner",
+    input.scopeNotes?.trim() ||
+      "(none — build Schedule A from the approved scope and the deal context)",
+  ].join("\n");
+
+  const scheduleAHtml = (
+    await generate({ skill: "generate-contract", context: fullContext, intake, maxTokens: 8000 })
+  ).trim();
+
+  const body = renderContract({
+    clientLegalName: input.clientLegalName,
+    clientAddress: input.clientAddress,
+    clientContactName: deal.contact.name,
+    clientContactTitle: deal.contact.title,
+    clientContactEmail: deal.contact.email,
+    effectiveDate: input.effectiveDate,
+    projectName: input.projectName,
+    recital: input.recital ?? "",
+    buildFee: input.buildFee,
+    backgroundIpLicenseFee: input.backgroundIpLicenseFee,
+    supportFee: input.supportFee ?? "",
+    paymentTerms: input.paymentTerms,
+    scheduleAHtml,
+    preparedBy,
+  });
+
+  return { body };
+}
+
+export async function saveContract(dealId: string, input: { body: string }) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const body = input.body.trim();
+  if (!body) throw new Error("Contract body is required");
+  assertNoNeedsInput(body, "contract");
+
+  const deal = await prisma.deal.findUnique({
+    where: { id: dealId },
+    select: { id: true, company: true },
+  });
+  if (!deal) throw new Error("Deal not found");
+
+  const { folderId } = await ensureDealDriveFolder(dealId);
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `Services Agreement (DRAFT) - ${deal.company} - ${today}.html`;
+  const res = await drive.files.create({
+    requestBody: { name: fileName, parents: [folderId], mimeType: "text/html" },
+    media: { mimeType: "text/html", body: Readable.from(body) },
+    fields: "id, webViewLink",
+    supportsAllDrives: true,
+  });
+  const fileId = res.data.id;
+  const webViewLink = res.data.webViewLink;
+  if (!fileId || !webViewLink) throw new Error("Drive upload returned no ID");
+
+  const artifact = await prisma.$transaction(async (tx) => {
+    const created = await tx.artifact.create({
+      data: {
+        type: "contract",
+        title: `Contract (draft) · ${deal.company} · ${today}`,
+        driveUrl: webViewLink,
+        fileName,
+        createdBy: partnerLabel,
+        generatedFromSkill: "generate-contract",
+        reviewStatus: "draft",
+        dealId: deal.id,
+      },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "create.artifact.contract.draft",
+      targetType: "Artifact",
+      targetId: created.id,
+      changes: { dealId, driveFileId: fileId, bodyLength: body.length },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: deal.company,
+      detail: "Drafted a client contract",
       link: `/pipeline/${dealId}`,
     });
 

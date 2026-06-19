@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, FileText, FileSearch, Pencil, Trash2, ClipboardList, CalendarPlus, FlaskConical, Presentation, FileQuestion, type LucideIcon } from "lucide-react";
+import { Mail, FileText, FileSearch, Pencil, Trash2, ClipboardList, CalendarPlus, FlaskConical, Presentation, FileQuestion, Stamp, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
+import { ContractModal } from "@/components/contract-modal";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
 import { DraftProposalModal } from "@/components/draft-proposal-modal";
 import { DealEditModal } from "@/components/deal-edit-modal";
@@ -141,6 +142,7 @@ export function DealActionsPanel({
   const [emailOpen, setEmailOpen] = useState(false);
   const [prototypeOpen, setPrototypeOpen] = useState(false);
   const [deckOpen, setDeckOpen] = useState(false);
+  const [contractOpen, setContractOpen] = useState(false);
   const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   // Which boxes are being reopened from a saved draft (preload + jump to editor).
@@ -155,6 +157,7 @@ export function DealActionsPanel({
   useEffect(() => {
     if (qaProposal) setProposalOpen(true);
     if (qa === "questionnaire") setQuestionnaireOpen(true);
+    if (qa === "generate-contract") setContractOpen(true);
   }, [qaProposal, qa]);
 
   if (signed) return null;
@@ -287,6 +290,19 @@ export function DealActionsPanel({
       },
       ...status("build-deck"),
     },
+    {
+      key: "generate-contract",
+      icon: Stamp,
+      title: "Generate contract",
+      description: "The agreement you send to sign — fillable HTML you export to PDF. SOW becomes Schedule A.",
+      onClick: openReopen("generate-contract", () => setContractOpen(true)),
+      stage: "Contract",
+      info: {
+        does: "Fills the firm's counsel-approved BC agreement (conditional sale + Background IP) with the parties, fees, and dates, and drafts Schedule A (the Deliverable) from the approved scope. The legal wording is not rewritten.",
+        happens: "Drafts a fillable contract you preview and edit, then saves to the deal's Drive folder. Open it, fill any remaining fields, and Download PDF. Won't save while a fee, party, or date is still [NEEDS INPUT].",
+      },
+      ...status("generate-contract"),
+    },
   ];
 
   return (
@@ -349,6 +365,18 @@ export function DealActionsPanel({
           dealId={deal.id}
           company={deal.company}
           onClose={() => setDeckOpen(false)}
+        />
+      )}
+
+      {contractOpen && (
+        <ContractModal
+          target={{ dealId: deal.id }}
+          company={deal.company}
+          reopenDraft={!!reopen["generate-contract"]}
+          onClose={() => {
+            setContractOpen(false);
+            setReopen((r) => ({ ...r, "generate-contract": false }));
+          }}
         />
       )}
 

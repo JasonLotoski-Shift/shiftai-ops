@@ -6,32 +6,44 @@ import { Button, Label, Input, Textarea } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { useActionDraft } from "@/components/use-action-draft";
 import {
-  generateContract,
-  saveContract,
-  type ContractIntake,
+  generateContract as generateContractClient,
+  saveContract as saveContractClient,
 } from "@/app/(app)/clients/[id]/actions";
+import {
+  generateContract as generateContractDeal,
+  saveContract as saveContractDeal,
+} from "@/app/(app)/pipeline/[id]/actions";
+import { type ContractIntake } from "@/lib/contract/template";
 
 // Generate Contract modal — collect the commercial + party terms, draft Schedule A
 // from the approved SOW, assemble the fixed BC template, preview the fillable
-// contract, then file it as self-contained HTML in the client's Drive folder.
+// contract, then file it as self-contained HTML in the entity's Drive folder.
 // The legal terms are counsel-approved (2026-06-18); the [NEEDS INPUT] gate still
 // holds the line: the draft can't save until every fee, party, and date is real.
+//
+// Lives on both the client page and the deal page (a deal becomes a client only
+// once the contract is signed). `target` selects which scoped action set to call.
 
 type ContractDraft = ContractIntake & { body: string };
+export type ContractTarget = { clientId: string } | { dealId: string };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function ContractModal({
-  clientId,
+  target,
   company,
   reopenDraft = false,
   onClose,
 }: {
-  clientId: string;
+  target: ContractTarget;
   company: string;
   reopenDraft?: boolean;
   onClose: () => void;
 }) {
+  // Pick the entity id + the matching scoped server actions.
+  const entityId = "clientId" in target ? target.clientId : target.dealId;
+  const genAction = "clientId" in target ? generateContractClient : generateContractDeal;
+  const saveAction = "clientId" in target ? saveContractClient : saveContractDeal;
   const [step, setStep] = useState<"inputs" | "draft" | "saved">("inputs");
   const [f, setF] = useState<ContractIntake>({
     clientLegalName: company,
@@ -51,7 +63,7 @@ export function ContractModal({
   const [isGenerating, startGenerate] = useTransition();
   const [isSaving, startSave] = useTransition();
 
-  const draft = useActionDraft<ContractDraft>("generate-contract", { clientId });
+  const draft = useActionDraft<ContractDraft>("generate-contract", target);
 
   const needsInputCount = (draftBody.match(/\[NEEDS INPUT/g) || []).length;
   const set = (patch: Partial<ContractIntake>) => setF((cur) => ({ ...cur, ...patch }));
@@ -82,7 +94,7 @@ export function ContractModal({
     setGenErr(null);
     startGenerate(async () => {
       try {
-        const { body } = await generateContract(clientId, f);
+        const { body } = await genAction(entityId, f);
         setDraftBody(body);
         setStep("draft");
       } catch (err) {
@@ -243,7 +255,7 @@ export function ContractModal({
                     setSaveErr(null);
                     startSave(async () => {
                       try {
-                        const { driveUrl } = await saveContract(clientId, { body: draftBody });
+                        const { driveUrl } = await saveAction(entityId, { body: draftBody });
                         await draft.clear();
                         setSavedUrl(driveUrl);
                         setStep("saved");

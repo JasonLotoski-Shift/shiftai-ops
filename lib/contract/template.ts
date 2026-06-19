@@ -43,6 +43,22 @@ export type ContractFields = {
   preparedBy: string; // partner who prepared it; optional
 };
 
+// What the Generate Contract modal collects and the server actions pass in. The
+// client-scoped and deal-scoped actions share this shape. The contact fields are
+// filled by the action from the client/deal record, not the modal.
+export type ContractIntake = {
+  clientLegalName: string;
+  clientAddress: string;
+  effectiveDate: string;
+  projectName: string;
+  buildFee: string;
+  backgroundIpLicenseFee: string;
+  supportFee?: string;
+  paymentTerms: string;
+  recital?: string;
+  scopeNotes?: string;
+};
+
 function esc(s: string): string {
   return String(s ?? "")
     .replace(/&/g, "&amp;")

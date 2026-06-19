@@ -148,7 +148,7 @@ export function ClientActionsPanel({
       )}
       {open === "generate-contract" && (
         <ContractModal
-          clientId={clientId}
+          target={{ clientId }}
           company={company}
           reopenDraft={!!reopen["generate-contract"]}
           onClose={() => {

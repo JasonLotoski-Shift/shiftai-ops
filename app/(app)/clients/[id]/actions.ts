@@ -14,19 +14,12 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import {
-  folderIdFromUrl,
-  uploadFile,
-  uploadAsGoogleDoc,
-  drive,
-  fileIdFromUrl,
-  exportGoogleDoc,
-  downloadDriveFile,
-} from "@/lib/drive";
+import { folderIdFromUrl, uploadFile, uploadAsGoogleDoc } from "@/lib/drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
-import { renderContract } from "@/lib/contract/template";
+import { renderContract, type ContractIntake } from "@/lib/contract/template";
+import { latestScopeText } from "@/lib/contract/scope-source";
 import { loadScreenshotImages } from "@/lib/ingest-uploads";
 import { formatDate } from "@/lib/format";
 import { normalizeDomain } from "@/lib/apollo";
@@ -336,48 +329,12 @@ export async function saveSow(clientId: string, input: { body: string }) {
 // saveContract files it + Artifact + AuditLog + Activity in one transaction.
 //
 // Architecture (see lib/contract/template.ts): the binding legal terms are a
-// FIXED, counsel-reviewable template — the LLM never rewrites them. Claude only
-// drafts Appendix A (the scope/delivery), grounded in the approved SOW. The
-// server fills the parties/fees/dates deterministically. Output files as
-// text/html (NOT a Google Doc) so the fillable fields + print button survive.
+// FIXED, counsel-approved template — the LLM never rewrites them. Claude only
+// drafts Schedule A (the Deliverable), grounded in the approved SOW. The server
+// fills the parties/fees/dates deterministically. Output files as text/html
+// (NOT a Google Doc) so the fillable fields + print button survive. The
+// deal-scoped twin lives in app/(app)/pipeline/[id]/actions.ts.
 // ──────────────────────────────────────────────────────────────────────
-
-// Best-effort read of the latest approved SOW/scope text so Appendix A is built
-// from what was actually agreed, not re-imagined. Degrades to null (Claude then
-// works from the project scope in the context). Caps length to keep the prompt sane.
-async function latestApprovedScopeText(clientId: string): Promise<string | null> {
-  const art = await prisma.artifact.findFirst({
-    where: { clientId, generatedFromSkill: { in: ["sow", "scope"] } },
-    orderBy: { createdAt: "desc" },
-    select: { driveUrl: true },
-  });
-  if (!art?.driveUrl) return null;
-  const fileId = fileIdFromUrl(art.driveUrl);
-  if (!fileId) return null;
-  try {
-    const meta = await drive.files.get({ fileId, fields: "mimeType", supportsAllDrives: true });
-    const mime = meta.data.mimeType ?? "";
-    const text = mime.startsWith("application/vnd.google-apps")
-      ? (await exportGoogleDoc(fileId, mime)).text
-      : (await downloadDriveFile(fileId)).toString("utf8");
-    return text.slice(0, 12000);
-  } catch {
-    return null; // a missing reference must never block drafting
-  }
-}
-
-export type ContractIntake = {
-  clientLegalName: string;
-  clientAddress: string;
-  effectiveDate: string;
-  projectName: string;
-  buildFee: string;
-  backgroundIpLicenseFee: string;
-  supportFee?: string;
-  paymentTerms: string;
-  recital?: string;
-  scopeNotes?: string;
-};
 
 export async function generateContract(
   clientId: string,
@@ -421,7 +378,7 @@ export async function generateContract(
       contextLines.push(`- ${p.name} — phase: ${p.phase}, status: ${p.status.replace("_", "-")}`);
     }
   }
-  const sowText = await latestApprovedScopeText(clientId);
+  const sowText = await latestScopeText({ clientId });
   if (sowText) {
     contextLines.push(
       "",

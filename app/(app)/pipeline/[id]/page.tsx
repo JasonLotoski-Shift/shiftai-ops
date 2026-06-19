@@ -107,6 +107,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     "draft-sow": ranAt["scope"],
     "build-prototype": ranAt["prototype-builder"] ?? ranAt["html-prototype"],
     "build-deck": ranAt["proposal-deck"],
+    "generate-contract": ranAt["generate-contract"],
   };
   const actionSavedAt: Record<string, Date | undefined> = {
     "discovery-prep": savedAt["discovery-prep"],
@@ -114,6 +115,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     "discovery-report": savedAt["discovery-report"],
     "draft-sow": savedAt["scope"],
     "book-meeting": savedAt["book-meeting"],
+    "generate-contract": savedAt["generate-contract"],
   };
   // The deck is built from the scope of work; gate it on a SOW Artifact existing
   // (alongside a prototype). ranAt["scope"] is set when a scope Artifact exists.
