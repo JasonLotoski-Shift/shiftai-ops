@@ -4,6 +4,10 @@
 >
 > **Decisions set (Jason, 2026-06-18):** adopt v3's model (client owns the front-end **Deliverable** on payment; Shift retains the **Background IP**, licensed for a recurring fee). **No buy-out.** Resale prohibited, internal use only. Change of control forces re-negotiation. Liability cap raised from the v3 figure. Entity is **SHIFT AI OPS LTD.** (a BC company).
 
+> ⚠️ **Post-approval amendments (Jason, 2026-06-22).**
+> 1. **Party stays the corporation, SHIFT AI OPS LTD. (per §1), but it is not incorporated yet.** Incorporation is in progress; the BC company number is unassigned, so the parties block shows a blank fill-line for it. This draft goes to the client for **review** as the corporation. **DO NOT EXECUTE** until SHIFT AI OPS LTD. is actually incorporated and the number is filled in — until then the entity does not legally exist. (Sole-proprietor fallback values are kept in `lib/contract/firm-party.ts` if a deal must be signed before incorporation; that route puts the §7 indemnities and the uncapped §10.2 carve-outs on Jason personally.)
+> 2. **Insurance section removed (reverses §6's Insurance item).** The firm carries no CGL or cyber/tech E&O policy yet, so the section was cut and the two cross-references renumbered (see the note in `template.ts`). Restore the counsel-approved clause when coverage is in place.
+
 ---
 
 ## 1. Entity and jurisdiction — Canadianize the template

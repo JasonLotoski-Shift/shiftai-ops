@@ -83,6 +83,20 @@ function line(value?: string | null, minWidth = "180px"): string {
   return `<span class="fld soft" style="min-width:${minWidth}" contenteditable="true">${esc((value ?? "").trim())}</span>`;
 }
 
+// Schedule A (the AI-drafted SOW) marks two different kinds of blank. A
+// [NEEDS INPUT: …] is a fact the firm owes and was not given (a deliverable, an
+// acceptance test, a fee) — it stays red and blocks filing via the save gate. A
+// [FILL: …] is a value the Client or the signing/kickoff completes on the
+// document (a milestone date keyed to the signature date, the cloud provider
+// confirmed at kickoff). Those become empty fill-lines the Client writes in, and
+// never block filing. Convert them before the scope is embedded.
+function softenFills(html: string): string {
+  return String(html ?? "").replace(
+    /\[FILL:[^\]]*\]/g,
+    () => `<span class="fld soft" style="min-width:120px" contenteditable="true"></span>`,
+  );
+}
+
 export function renderContract(f: ContractFields): string {
   const firm = FIRM_PARTY;
   const recital =
@@ -152,6 +166,10 @@ export function renderContract(f: ContractFields): string {
     .sign .box .label{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
     .sign .sigline{margin-top:26px;border-top:1px solid var(--ink);padding-top:4px;font-size:10pt;color:var(--muted);}
     .foot{margin-top:26px;border-top:1px solid var(--rule);padding-top:8px;color:var(--muted);font-size:9.5pt;}
+    /* Branded running header/footer: print-only. Each repeats on every page and
+       sits in the page margin band, so the browser's own URL/timestamp can be
+       turned off in the print dialog and these carry the brand instead. */
+    .run-head,.run-foot{display:none;}
     @media print{
       body{background:#fff;}
       .toolbar,.screen-only{display:none !important;}
@@ -160,7 +178,16 @@ export function renderContract(f: ContractFields): string {
       .fld.soft{border-bottom:1px solid #1b1b1a;}
       .fld.needs{color:var(--needs);} /* stay red so an unfinished print is obvious */
       .pagebreak{break-before:page;}
-      @page{size:letter;margin:0.75in;}
+      @page{size:letter;margin:0.9in 0.8in 0.95in;}
+      .run-head,.run-foot{display:flex !important;position:fixed;left:0;right:0;
+        align-items:baseline;justify-content:space-between;gap:12px;
+        font-family:ui-sans-serif,system-ui,"Segoe UI",Arial,sans-serif;
+        color:var(--muted);font-size:8pt;letter-spacing:.03em;}
+      .run-head{top:-0.62in;border-bottom:0.5pt solid var(--rule);padding-bottom:4pt;}
+      .run-foot{bottom:-0.7in;border-top:0.5pt solid var(--rule);padding-top:4pt;}
+      .run-head .bk,.run-foot .bk{text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--ink);}
+      .run-head .bk b,.run-foot .bk b{color:var(--gold);}
+      .run-head .doc,.run-foot .doc{text-transform:uppercase;}
     }
   `;
 
@@ -228,7 +255,7 @@ export function renderContract(f: ContractFields): string {
       <ol class="sub">
         <li><b>IP warranty.</b> Shift warrants that the Deliverable, as delivered and used in accordance with this Agreement, does not infringe the intellectual property rights of any third party, and that Shift has the right to grant the licences in this Agreement.</li>
         <li><b>IP indemnity.</b> Shift will defend Client against any third-party claim that the Deliverable infringes that party's intellectual property rights, and will indemnify Client for damages, costs, and reasonable legal fees finally awarded, provided Client promptly notifies Shift and lets Shift control the defence and settlement.</li>
-        <li><b>Exclusions.</b> Section 7.2 does not apply to a claim arising from (a) modification of the Deliverable by anyone other than Shift, (b) combination of the Deliverable with materials not supplied by Shift, (c) Client's use after Shift instructed Client to stop, or (d) third-party or open-source components, which are licensed under their own terms (Section 15.1).</li>
+        <li><b>Exclusions.</b> Section 7.2 does not apply to a claim arising from (a) modification of the Deliverable by anyone other than Shift, (b) combination of the Deliverable with materials not supplied by Shift, (c) Client's use after Shift instructed Client to stop, or (d) third-party or open-source components, which are licensed under their own terms (Section 14.1).</li>
         <li><b>Mutual indemnity.</b> Each Party will defend, indemnify, and hold the other and its directors, officers, employees, and Affiliates harmless from third-party claims arising from (a) that Party's negligence, willful misconduct, or fraud in performing this Agreement, or (b) that Party's violation of applicable law in performing this Agreement.</li>
         <li><b>Performance warranty and disclaimer.</b> Shift warrants the services are performed in a professional and workmanlike manner and that it will not knowingly introduce malicious code. Except as expressly stated in this Agreement, and to the extent permitted by law, the Deliverable and services are provided without other warranties, including any implied warranty of merchantability or fitness for a particular purpose.</li>
         <li><b>Deliverable warranty period.</b> For ${line("", "70px")} days after acceptance of a Deliverable (or, if blank, thirty (30) days), Shift will correct material defects in that Deliverable at no charge.</li>
@@ -259,8 +286,11 @@ export function renderContract(f: ContractFields): string {
         <li><b>Cap.</b> Except for (a) a Party's indemnification obligations, (b) breach of Section 8 (Confidentiality), (c) Client's payment obligations, and (d) a Party's gross negligence or willful misconduct, each Party's total aggregate liability arising out of this Agreement will not exceed <b>the greater of (i) fifty percent (50%) of the total Fees payable under the applicable SOW, or (ii) the Fees paid by Client in the six (6) months preceding the claim.</b></li>
       </ol></li>
 
-    <li><span class="h">Insurance</span>
-      <p>Shift will maintain, during the term, Commercial General Liability insurance of not less than ${fld(firm.insuranceLimit, "Shift CGL insurance limit")}, and technology / cyber errors-and-omissions insurance of not less than ${line("", "120px")}, and will provide evidence on request.</p></li>
+    <!-- Insurance section removed 2026-06-22: the firm carries no CGL or cyber E&O
+         policy yet. The clause text is counsel-approved (see git history / the v3
+         change brief); to restore it when coverage is in place, re-add the <li> AND
+         revert the two cross-references renumbered for its absence:
+         §7.3 "Section 14.1" -> "15.1" and the Survival list "11, 13, ... 15" -> "12, 14, ... 16". -->
 
     <li><span class="h">Business continuity and Background IP escrow</span>
       <p>Because the Deliverable cannot operate without the Background IP, Shift will, on Client's request, place and maintain the Background IP source needed to operate the Deliverable in escrow with a third-party agent. The agent will release it to Client only on (a) Shift's insolvency, bankruptcy, or cessation of business; (b) Shift's material breach of its support obligations uncured after written notice and a reasonable cure period; or (c) Shift's discontinuation of the product with no successor. A release lets Client use the Background IP source only for its own internal maintenance of the Deliverable and transfers no ownership of the Background IP.</p></li>
@@ -277,7 +307,7 @@ export function renderContract(f: ContractFields): string {
         <li><b>Before vesting.</b> If an SOW terminates before the Vesting Date for any reason other than Shift's uncured material breach, Client's licence to use the Deliverable ends immediately, and Client will, at Shift's option, return or certify destruction of all copies of the Deliverable.</li>
         <li><b>Shift's breach before vesting.</b> If an SOW terminates before the Vesting Date because of Shift's uncured material breach, Client is entitled, at its election, to a refund of Fees paid for the unaccepted work, or to vesting of title to the work paid for and accepted.</li>
         <li><b>After vesting.</b> If the Vesting Date has occurred, Client's ownership of the Deliverable is unaffected by termination, but the Background IP licence under Section 5.2 and the restrictions in Section 6 survive for as long as Client uses the Deliverable.</li>
-        <li><b>Survival.</b> Sections 1, 5, 6, 7, 8, 9, 10, 12, 14, and 16 survive termination or expiry.</li>
+        <li><b>Survival.</b> Sections 1, 5, 6, 7, 8, 9, 10, 11, 13, and 15 survive termination or expiry.</li>
       </ol></li>
 
     <li><span class="h">Additional covenants</span>
@@ -316,7 +346,7 @@ export function renderContract(f: ContractFields): string {
       <div class="box">
         <div class="label">${esc(firm.legalName)} ("Shift")</div>
         <div class="sigline">Signature</div>
-        <div style="margin-top:14px">Name: ${line("", "180px")}</div>
+        <div style="margin-top:14px">Name: ${line(firm.signatoryName, "180px")}</div>
         <div style="margin-top:8px">Title: ${line("", "180px")}</div>
         <div style="margin-top:8px">Date: ${line("", "140px")}</div>
       </div>
@@ -343,12 +373,20 @@ export function renderContract(f: ContractFields): string {
   <div class="toolbar screen-only">
     <span>Fill the highlighted fields, then export. Blue = editable; <b style="color:#f0b3ae">red = still needs a value</b>.</span>
     <span style="display:flex;align-items:center;gap:14px">
-      <span class="hint">Set your browser to "Save as PDF" in the print dialog.</span>
+      <span class="hint">In the print dialog: Destination → <b>Save as PDF</b>, and turn <b>off</b> "Headers and footers" for a clean branded export.</span>
       <button onclick="window.print()">Download PDF</button>
     </span>
   </div>
 
   <div class="page">
+    <div class="run-head">
+      <span class="bk"><b>Shift</b> AI Partners</span>
+      <span class="doc">Master Conditional Sale &amp; Custom Software Development Agreement</span>
+    </div>
+    <div class="run-foot">
+      <span>Confidential — prepared for ${esc(f.clientLegalName || "the Client")}</span>
+      <span class="bk"><b>Shift</b> AI Partners${firm.incorporated ? ` · ${esc(firm.legalName)}` : ""}</span>
+    </div>
     <div class="masthead">
       <span class="brand"><b>Shift</b> AI Partners</span>
       <span class="doctype">Master Conditional Sale &amp;<br/>Custom Software Development Agreement</span>
@@ -359,15 +397,14 @@ export function renderContract(f: ContractFields): string {
     <div class="parties">
       <div class="party">
         <div class="label">Provider ("Shift")</div>
-        <div class="who">${fld(firm.legalName, "Shift legal entity name")}</div>
-        <div class="meta">A corporation incorporated under the laws of ${prov}<br/>
-        Incorporation no. ${fld(firm.incorporationNumber, "Shift incorporation number")}<br/>
-        ${fld(firm.address, "Shift registered address")}<br/>${esc(firm.noticeEmail)}</div>
+        <div class="who">${fld(firm.partyName, "Shift party name")}</div>
+        <div class="meta">${esc(firm.partyDescriptor)}<br/>
+        ${firm.incorporated ? `Incorporation no. ${line(firm.incorporationNumber, "140px")}<br/>` : ""}${fld(firm.address, "Shift registered address")}<br/>${esc(firm.noticeEmail)}</div>
       </div>
       <div class="party">
         <div class="label">Client ("Customer")</div>
         <div class="who">${clientName}</div>
-        <div class="meta">${fld(f.clientAddress, "Client address")}<br/>
+        <div class="meta">${line(f.clientAddress, "220px")}<br/>
         Attn: ${line(f.clientContactName, "160px")}${f.clientContactTitle ? `, ${esc(f.clientContactTitle)}` : ""}<br/>
         ${f.clientContactEmail ? esc(f.clientContactEmail) : line("", "200px")}</div>
       </div>
@@ -393,7 +430,7 @@ export function renderContract(f: ContractFields): string {
     <h2>Schedule A — Statement of Work</h2>
     <p style="font-size:10pt;color:var(--muted)">Entered into under, and governed by, this Agreement. Project: ${fld(f.projectName, "project / engagement name")}.</p>
     <div class="sched-body">
-      ${f.scheduleAHtml || `<p class="fld needs">[NEEDS INPUT: Schedule A — Deliverable scope of work]</p>`}
+      ${f.scheduleAHtml ? softenFills(f.scheduleAHtml) : `<p class="fld needs">[NEEDS INPUT: Schedule A — Deliverable scope of work]</p>`}
       <h3>Fees and payment</h3>
       <table>
         <tr><th>Item</th><th>Amount</th><th>Due</th></tr>
@@ -446,7 +483,7 @@ export function renderContract(f: ContractFields): string {
     </div>
 
     <div class="foot">
-      Prepared by ${f.preparedBy ? esc(f.preparedBy) : line("", "160px")} · ${esc(firm.operatingName)} (${esc(firm.legalName)}). The firm's standard agreement. Complete every field before signing.
+      Prepared by ${f.preparedBy ? esc(f.preparedBy) : line("", "160px")} · ${esc(firm.operatingName)}${firm.incorporated ? ` (${esc(firm.legalName)})` : ""}. The firm's standard agreement. Complete every field before signing.
     </div>
   </div>
 </body>

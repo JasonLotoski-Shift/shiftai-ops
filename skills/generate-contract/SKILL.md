@@ -24,7 +24,7 @@ Cover these, in this order (drop one only if there is genuinely nothing to say):
 1. **Description of the Deliverable** — the custom system and where AI does real work, concrete to this business, tied to the approved scope. One or two short paragraphs, then a `<ul>` of the modules and components in this Deliverable, each in plain terms. Identify any third-party software or services the Deliverable depends on.
 2. **Acceptance criteria** — for each module or milestone, the observable test the Client uses to accept it, and the length of the review period (for Section 2.3 of the Agreement, e.g. ten (10) business days). This is the most important part and it drives the Vesting Date. Be concrete: "the system imports the supplier file and flags duplicates" beats "import works."
 3. **Out of scope** — what this Deliverable does not include: what waits for a later SOW, what the Client keeps doing as-is. Draw it from the context. If no specific exclusions are known, say the scope is the system above and further modules are added under later SOWs.
-4. **Milestones and timeline** — a `<table>` with the milestone, what it produces, and the target date. Use Discovery, then Build (foundation first, then features), then final acceptance. **Real dates only if supplied**; otherwise put `[NEEDS INPUT: <which date>]` in the cell.
+4. **Milestones and timeline** — a `<table>` with the milestone, what it produces, and the target date. Use Discovery, then Build (foundation first, then features), then final acceptance. **Real dates only if supplied.** For any date the Client or the signing/kickoff sets later (a date keyed to the signature date, or one confirmed in the Discovery Phase Report), put `[FILL: <which date>]` in the cell — the template renders it as an empty fill-line the Client completes at signing, and it does not block filing. Do not invent a date, and do not use `[NEEDS INPUT]` for these.
 5. **What the Client provides** — the Client's obligations the build depends on: a single point of contact, access to the named systems and data, decisions inside the agreed cadence, and people's time. Be specific; a build slips when these are vague.
 6. **Dependencies and assumptions** — what the scope assumes (third-party access, data readiness, environments). Note that if an assumption fails, it is handled by a new SOW or Work Order, not free work.
 
@@ -45,4 +45,9 @@ Cover these, in this order (drop one only if there is genuinely nothing to say):
 
 ## When input is missing — never invent
 
-Never fabricate a deliverable, a date, an integration, an acceptance test, or a headcount. Where a load-bearing fact is missing, write `[NEEDS INPUT: <what's needed>]` exactly where it belongs and keep going. A server-side gate blocks the contract from being filed while any `[NEEDS INPUT]` remains, so leaving the marker visible is the correct, safe move. This is the firm's most important rule.
+Never fabricate a deliverable, a date, an integration, an acceptance test, or a headcount. There are two kinds of blank, and they are not interchangeable:
+
+- `[NEEDS INPUT: <what's needed>]` — a load-bearing fact the firm owes and you were not given (a deliverable, an integration, an acceptance test, a fee). It renders red, and a server-side gate blocks the contract from being filed while any `[NEEDS INPUT]` remains. Leaving the marker visible is the correct, safe move. This is the firm's most important rule.
+- `[FILL: <what>]` — a value the Client or the signing/kickoff completes on the document (a milestone date keyed to the signature date or confirmed in Discovery, the cloud provider confirmed at kickoff). The template renders it as an empty fill-line; it does not block filing. Use this for dates and kickoff-confirmed specifics instead of inventing them.
+
+When in doubt about whether the firm owes the fact or the Client fills it in, use `[NEEDS INPUT]`.
