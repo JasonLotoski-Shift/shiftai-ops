@@ -322,8 +322,8 @@ export async function saveSow(clientId: string, input: { body: string }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Generate Contract — the firm's standard client agreement as a fillable,
-// self-contained HTML document with a Download-PDF (browser print) button.
+// Generate Contract — the firm's standard client agreement, filed as a native
+// Google Doc the client can redline (comments, track changes, export to PDF).
 //
 // Split, like every Quick Action: generateContract drafts (no writes),
 // saveContract files it + Artifact + AuditLog + Activity in one transaction.
@@ -331,9 +331,9 @@ export async function saveSow(clientId: string, input: { body: string }) {
 // Architecture (see lib/contract/template.ts): the binding legal terms are a
 // FIXED, counsel-approved template — the LLM never rewrites them. Claude only
 // drafts Schedule A (the Deliverable), grounded in the approved SOW. The server
-// fills the parties/fees/dates deterministically. Output files as text/html
-// (NOT a Google Doc) so the fillable fields + print button survive. The
-// deal-scoped twin lives in app/(app)/pipeline/[id]/actions.ts.
+// fills the parties/fees/dates deterministically and renders clean semantic HTML
+// that uploadAsGoogleDoc imports into a Google Doc. The deal-scoped twin lives in
+// app/(app)/pipeline/[id]/actions.ts.
 // ──────────────────────────────────────────────────────────────────────
 
 export async function generateContract(
@@ -439,8 +439,9 @@ export async function saveContract(clientId: string, input: { body: string }) {
 
   const parentFolderId = resolveClientFolderId(client.driveFolderUrl);
   const today = new Date().toISOString().slice(0, 10);
-  const fileName = `Services Agreement (DRAFT) - ${client.company} - ${today}.html`;
-  const { fileId, webViewLink } = await uploadHtml(body, fileName, parentFolderId);
+  // File as a native Google Doc (not raw HTML) so the client can redline it.
+  const fileName = `Services Agreement (DRAFT) - ${client.company} - ${today}`;
+  const { fileId, webViewLink } = await uploadAsGoogleDoc(body, fileName, parentFolderId);
 
   const artifact = await prisma.$transaction(async (tx) => {
     const created = await tx.artifact.create({

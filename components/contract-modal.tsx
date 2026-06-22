@@ -205,7 +205,7 @@ export function ContractModal({
           <div className="px-5 py-5 flex flex-col gap-4">
             <div className="flex items-center gap-2">
               <Sparkles size={13} strokeWidth={1.5} className="text-track-gold" />
-              <span className="text-[13px] text-bone">Draft ready — preview below, edit the source if needed, then save. The saved file is fillable and has a Download-PDF button.</span>
+              <span className="text-[13px] text-bone">Draft ready — preview below, edit the source if needed, then save. It files as an editable Google Doc the client can redline and export to PDF.</span>
             </div>
             <iframe
               srcDoc={draftBody}
@@ -273,7 +273,7 @@ export function ContractModal({
         ) : (
           <div className="px-5 py-12 text-center">
             <div className="title-lg text-track-gold mb-2 inline-block">SAVED</div>
-            <p className="text-[13px] text-bone-dim">Filed to the client&apos;s Drive folder. Open it, fill any remaining fields in the browser, then use Download PDF.</p>
+            <p className="text-[13px] text-bone-dim">Filed to the client&apos;s Drive folder as a Google Doc. Open it to redline, fill the blank lines, and share or export to PDF.</p>
             <div className="pt-5 flex justify-center gap-2">
               {savedUrl && (
                 <a href={savedUrl} target="_blank" rel="noopener noreferrer">

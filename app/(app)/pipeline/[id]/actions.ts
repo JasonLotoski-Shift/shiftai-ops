@@ -9,7 +9,7 @@ import { Readable } from "node:stream";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { drive, seedClientSubfolders } from "@/lib/drive";
+import { drive, seedClientSubfolders, uploadAsGoogleDoc } from "@/lib/drive";
 import { ensureDealDriveFolder, moveDealFolderToClient } from "@/lib/deal-drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
@@ -1330,16 +1330,9 @@ export async function saveContract(dealId: string, input: { body: string }) {
 
   const { folderId } = await ensureDealDriveFolder(dealId);
   const today = new Date().toISOString().slice(0, 10);
-  const fileName = `Services Agreement (DRAFT) - ${deal.company} - ${today}.html`;
-  const res = await drive.files.create({
-    requestBody: { name: fileName, parents: [folderId], mimeType: "text/html" },
-    media: { mimeType: "text/html", body: Readable.from(body) },
-    fields: "id, webViewLink",
-    supportsAllDrives: true,
-  });
-  const fileId = res.data.id;
-  const webViewLink = res.data.webViewLink;
-  if (!fileId || !webViewLink) throw new Error("Drive upload returned no ID");
+  // File as a native Google Doc (not raw HTML) so the client can redline it.
+  const fileName = `Services Agreement (DRAFT) - ${deal.company} - ${today}`;
+  const { fileId, webViewLink } = await uploadAsGoogleDoc(body, fileName, folderId);
 
   const artifact = await prisma.$transaction(async (tx) => {
     const created = await tx.artifact.create({
