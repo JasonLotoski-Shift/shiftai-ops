@@ -166,10 +166,6 @@ export function renderContract(f: ContractFields): string {
     .sign .box .label{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
     .sign .sigline{margin-top:26px;border-top:1px solid var(--ink);padding-top:4px;font-size:10pt;color:var(--muted);}
     .foot{margin-top:26px;border-top:1px solid var(--rule);padding-top:8px;color:var(--muted);font-size:9.5pt;}
-    /* Branded running header/footer: print-only. Each repeats on every page and
-       sits in the page margin band, so the browser's own URL/timestamp can be
-       turned off in the print dialog and these carry the brand instead. */
-    .run-head,.run-foot{display:none;}
     @media print{
       body{background:#fff;}
       .toolbar,.screen-only{display:none !important;}
@@ -178,16 +174,7 @@ export function renderContract(f: ContractFields): string {
       .fld.soft{border-bottom:1px solid #1b1b1a;}
       .fld.needs{color:var(--needs);} /* stay red so an unfinished print is obvious */
       .pagebreak{break-before:page;}
-      @page{size:letter;margin:0.9in 0.8in 0.95in;}
-      .run-head,.run-foot{display:flex !important;position:fixed;left:0;right:0;
-        align-items:baseline;justify-content:space-between;gap:12px;
-        font-family:ui-sans-serif,system-ui,"Segoe UI",Arial,sans-serif;
-        color:var(--muted);font-size:8pt;letter-spacing:.03em;}
-      .run-head{top:-0.62in;border-bottom:0.5pt solid var(--rule);padding-bottom:4pt;}
-      .run-foot{bottom:-0.7in;border-top:0.5pt solid var(--rule);padding-top:4pt;}
-      .run-head .bk,.run-foot .bk{text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--ink);}
-      .run-head .bk b,.run-foot .bk b{color:var(--gold);}
-      .run-head .doc,.run-foot .doc{text-transform:uppercase;}
+      @page{size:letter;margin:0.75in;}
     }
   `;
 
@@ -373,20 +360,12 @@ export function renderContract(f: ContractFields): string {
   <div class="toolbar screen-only">
     <span>Fill the highlighted fields, then export. Blue = editable; <b style="color:#f0b3ae">red = still needs a value</b>.</span>
     <span style="display:flex;align-items:center;gap:14px">
-      <span class="hint">In the print dialog: Destination → <b>Save as PDF</b>, and turn <b>off</b> "Headers and footers" for a clean branded export.</span>
+      <span class="hint">In the print dialog: Destination → <b>Save as PDF</b>, Margins <b>Default</b>, and turn <b>off</b> "Headers and footers" for clean pages.</span>
       <button onclick="window.print()">Download PDF</button>
     </span>
   </div>
 
   <div class="page">
-    <div class="run-head">
-      <span class="bk"><b>Shift</b> AI Partners</span>
-      <span class="doc">Master Conditional Sale &amp; Custom Software Development Agreement</span>
-    </div>
-    <div class="run-foot">
-      <span>Confidential — prepared for ${esc(f.clientLegalName || "the Client")}</span>
-      <span class="bk"><b>Shift</b> AI Partners${firm.incorporated ? ` · ${esc(firm.legalName)}` : ""}</span>
-    </div>
     <div class="masthead">
       <span class="brand"><b>Shift</b> AI Partners</span>
       <span class="doctype">Master Conditional Sale &amp;<br/>Custom Software Development Agreement</span>

@@ -27,7 +27,7 @@ export const updates: Update[] = [
     tag: "improved",
     title: "The generated contract is cleaner and ready to send for review",
     detail:
-      "The agreement now carries Shift's branding on every page, names the firm correctly (SHIFT AI OPS LTD.), and fills in the firm address. Fields the client completes — their address, the milestone dates, the hosting provider — now show as blank lines to fill in at signing, instead of red “needs input” markers that blocked you from saving. The insurance section is gone for now, since the firm has no policy yet. Anything the firm still owes — the fees, the engagement name — still blocks saving until it's real. When you export, the print dialog has a tip to turn off the browser's headers and footers so the page link and date don't print over the branding.",
+      "The agreement is branded, names the firm correctly (SHIFT AI OPS LTD.), and fills in the firm address. Fields the client completes — their address, the milestone dates, the hosting provider — now show as blank lines to fill in at signing, instead of red “needs input” markers that blocked you from saving. The insurance section is gone for now, since the firm has no policy yet. Anything the firm still owes — the fees, the engagement name — still blocks saving until it's real. When you export to PDF, the print dialog has a tip: turn off the browser's headers and footers so the page link and date don't print on every page.",
   },
   {
     date: "2026-06-19",
