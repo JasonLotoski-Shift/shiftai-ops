@@ -7,11 +7,14 @@
 // — Shared Drive items are invisible without them. Helpers in this file set them.
 
 import { Readable } from "node:stream";
-import { google, drive_v3 } from "googleapis";
+import { google, drive_v3, docs_v1 } from "googleapis";
 
-const globalForDrive = globalThis as unknown as { drive: drive_v3.Drive | undefined };
+const globalForGoogle = globalThis as unknown as {
+  drive: drive_v3.Drive | undefined;
+  docs: docs_v1.Docs | undefined;
+};
 
-function makeClient(): drive_v3.Drive {
+function makeClients(): { drive: drive_v3.Drive; docs: docs_v1.Docs } {
   const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_B64;
   if (!b64) {
     throw new Error(
@@ -21,14 +24,31 @@ function makeClient(): drive_v3.Drive {
   const credentials = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
   const auth = new google.auth.GoogleAuth({
     credentials,
-    scopes: ["https://www.googleapis.com/auth/drive"],
+    // drive: create/copy/export files. documents: brand the generated contract
+    // Doc (margins, fonts, header/footer) via the Docs API after Drive imports it.
+    scopes: [
+      "https://www.googleapis.com/auth/drive",
+      "https://www.googleapis.com/auth/documents",
+    ],
   });
-  return google.drive({ version: "v3", auth });
+  return {
+    drive: google.drive({ version: "v3", auth }),
+    docs: google.docs({ version: "v1", auth }),
+  };
 }
 
-export const drive: drive_v3.Drive = globalForDrive.drive ?? makeClient();
+const googleClients =
+  globalForGoogle.drive && globalForGoogle.docs
+    ? { drive: globalForGoogle.drive, docs: globalForGoogle.docs }
+    : makeClients();
 
-if (process.env.NODE_ENV !== "production") globalForDrive.drive = drive;
+export const drive: drive_v3.Drive = googleClients.drive;
+export const docs: docs_v1.Docs = googleClients.docs;
+
+if (process.env.NODE_ENV !== "production") {
+  globalForGoogle.drive = drive;
+  globalForGoogle.docs = docs;
+}
 
 // Lightweight reachability check for the System status tab — lists one file to
 // confirm the service account can reach the Shared Drive. Returns ok + latency
@@ -98,6 +118,85 @@ export async function uploadAsGoogleDoc(
   });
   if (!res.data.id || !res.data.webViewLink) throw new Error("Drive Google Doc create returned no ID");
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
+}
+
+// Brand a generated contract Google Doc to the firm letterhead (light-mode doc
+// spec in the brand guide): 1" margins, Inter body, a running header with the
+// SHIFT AI PARTNERS wordmark (AI in Track Gold), and a footer with the domain +
+// a confidential line. Runs via the Docs API AFTER Drive imports the HTML —
+// page setup (margins/fonts/header/footer) is exactly what the HTML importer
+// can't do. Best-effort: callers wrap it so a branding hiccup never blocks the
+// saved contract (the Doc still exists, just unbranded).
+const PT = (n: number): docs_v1.Schema$Dimension => ({ magnitude: n, unit: "PT" });
+const rgb = (hex: number): docs_v1.Schema$OptionalColor => ({
+  color: { rgbColor: { red: ((hex >> 16) & 255) / 255, green: ((hex >> 8) & 255) / 255, blue: (hex & 255) / 255 } },
+});
+const GOLD = rgb(0xc9a961); // Track Gold
+const INK = rgb(0x15171a); // Ink
+const MUTED = rgb(0x5a574f);
+
+export async function brandGoogleDoc(fileId: string, opts: { clientName: string }): Promise<void> {
+  // Body extent, so we can set the body font over the whole range.
+  const doc = await docs.documents.get({ documentId: fileId, fields: "body(content(endIndex))" });
+  const content = doc.data.body?.content ?? [];
+  const bodyEnd = content.length ? content[content.length - 1].endIndex ?? 1 : 1;
+
+  const setup: docs_v1.Schema$Request[] = [
+    {
+      updateDocumentStyle: {
+        documentStyle: { marginTop: PT(72), marginBottom: PT(72), marginLeft: PT(72), marginRight: PT(72) },
+        fields: "marginTop,marginBottom,marginLeft,marginRight",
+      },
+    },
+    { createHeader: { type: "DEFAULT" } },
+    { createFooter: { type: "DEFAULT" } },
+  ];
+  if (bodyEnd > 2) {
+    setup.splice(1, 0, {
+      updateTextStyle: {
+        range: { startIndex: 1, endIndex: bodyEnd - 1 },
+        textStyle: { weightedFontFamily: { fontFamily: "Inter" } },
+        fields: "weightedFontFamily",
+      },
+    });
+  }
+  const res = await docs.documents.batchUpdate({ documentId: fileId, requestBody: { requests: setup } });
+  const replies = res.data.replies ?? [];
+  const headerId = replies.find((r) => r.createHeader)?.createHeader?.headerId ?? undefined;
+  const footerId = replies.find((r) => r.createFooter)?.createFooter?.footerId ?? undefined;
+
+  const fill: docs_v1.Schema$Request[] = [];
+  if (headerId) {
+    const wm = "SHIFT AI PARTNERS";
+    const ai = wm.indexOf("AI");
+    fill.push({ insertText: { location: { segmentId: headerId, index: 0 }, text: wm } });
+    fill.push({
+      updateTextStyle: {
+        range: { segmentId: headerId, startIndex: 0, endIndex: wm.length },
+        textStyle: { bold: true, fontSize: PT(12), weightedFontFamily: { fontFamily: "Big Shoulders Display" }, foregroundColor: INK },
+        fields: "bold,fontSize,weightedFontFamily,foregroundColor",
+      },
+    });
+    fill.push({
+      updateTextStyle: {
+        range: { segmentId: headerId, startIndex: ai, endIndex: ai + 2 },
+        textStyle: { foregroundColor: GOLD },
+        fields: "foregroundColor",
+      },
+    });
+  }
+  if (footerId) {
+    const ft = `shiftai.partners   ·   Confidential — prepared for ${opts.clientName}`;
+    fill.push({ insertText: { location: { segmentId: footerId, index: 0 }, text: ft } });
+    fill.push({
+      updateTextStyle: {
+        range: { segmentId: footerId, startIndex: 0, endIndex: ft.length },
+        textStyle: { fontSize: PT(8), weightedFontFamily: { fontFamily: "Inter" }, foregroundColor: MUTED },
+        fields: "fontSize,weightedFontFamily,foregroundColor",
+      },
+    });
+  }
+  if (fill.length) await docs.documents.batchUpdate({ documentId: fileId, requestBody: { requests: fill } });
 }
 
 // Upload any binary Buffer (image, doc, …) to a Drive folder under its own

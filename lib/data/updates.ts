@@ -27,7 +27,7 @@ export const updates: Update[] = [
     tag: "improved",
     title: "Contracts now generate as an editable Google Doc",
     detail:
-      "Generate contract now files the agreement as a native Google Doc in the client's Drive folder — open it to redline, comment, fill the blank lines, and share or export to PDF, instead of a fill-in-the-browser web page. The agreement is branded, names the firm correctly (SHIFT AI OPS LTD.), and fills in the firm address. Fields the client completes — their address, the milestone dates, the hosting provider — show as blank lines to fill in at signing. The insurance section is gone for now, since the firm has no policy yet. Anything the firm still owes — the fees, the engagement name — is highlighted and still blocks saving until it's real.",
+      "Generate contract now files the agreement as a native Google Doc in the client's Drive folder — open it to redline, comment, fill the blank lines, and share or export to PDF, instead of a fill-in-the-browser web page. The Doc comes out on the firm letterhead — proper margins, Inter type, and a SHIFT AI header and footer — names the firm correctly (SHIFT AI OPS LTD.), and fills in the firm address. Fields the client completes — their address, the milestone dates, the hosting provider — show as blank lines to fill in at signing. The insurance section is gone for now, since the firm has no policy yet. Anything the firm still owes — the fees, the engagement name — is highlighted and still blocks saving until it's real.",
   },
   {
     date: "2026-06-19",

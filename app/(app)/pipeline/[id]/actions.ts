@@ -9,7 +9,7 @@ import { Readable } from "node:stream";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { drive, seedClientSubfolders, uploadAsGoogleDoc } from "@/lib/drive";
+import { drive, seedClientSubfolders, uploadAsGoogleDoc, brandGoogleDoc } from "@/lib/drive";
 import { ensureDealDriveFolder, moveDealFolderToClient } from "@/lib/deal-drive";
 import { writeAudit, writeActivity, partnerActor, agentActor } from "@/lib/audit";
 import { assertNoNeedsInput } from "@/lib/no-hallucination";
@@ -1333,6 +1333,12 @@ export async function saveContract(dealId: string, input: { body: string }) {
   // File as a native Google Doc (not raw HTML) so the client can redline it.
   const fileName = `Services Agreement (DRAFT) - ${deal.company} - ${today}`;
   const { fileId, webViewLink } = await uploadAsGoogleDoc(body, fileName, folderId);
+  // Letterhead branding (margins, fonts, header/footer) — best-effort, never blocks the save.
+  try {
+    await brandGoogleDoc(fileId, { clientName: deal.company });
+  } catch (e) {
+    console.error("contract branding skipped:", e instanceof Error ? e.message : e);
+  }
 
   const artifact = await prisma.$transaction(async (tx) => {
     const created = await tx.artifact.create({
