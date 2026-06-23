@@ -22,10 +22,9 @@
 // renumber the headings AND every cross-reference by hand (this is why the
 // Insurance removal on 2026-06-22 also renumbered §7.3 and the Survival list).
 //
-// KNOWN DISCREPANCY (pre-existing, left verbatim): Schedule D cites "Section 2.3"
-// for treating Work Orders as SOWs, but that concept is §2.4 (Sequential
-// engagements); 2.3 is Acceptance. Preserved as-is — a cross-reference is binding
-// wording, so the correction is counsel's call, flagged for review.
+// CROSS-REFERENCE FIX (2026-06-22, authorized by Jason): Schedule D's "treated as
+// an SOW" reference was corrected from Section 2.3 (Acceptance) to Section 2.4
+// (Sequential engagements), the clause that actually governs Work Orders as SOWs.
 //
 // LEGAL STATUS: the v3 agreement was reviewed and approved by BC counsel
 // (2026-06-18) and the model ratified by Jay; dispute resolution is binding
@@ -346,7 +345,7 @@ export function renderContract(f: ContractFields): string {
 
   <hr/>
   <h2>Schedule D — Retainer Services (optional)</h2>
-  <p>This Schedule applies only if the Parties agree retainer-based services. Work is scoped through written Work Orders, each treated as an SOW under Section 2.3 and Section 4, so title to each Work Order's Deliverable vests as it is completed and paid for.</p>
+  <p>This Schedule applies only if the Parties agree retainer-based services. Work is scoped through written Work Orders, each treated as an SOW under Section 2.4 and Section 4, so title to each Work Order's Deliverable vests as it is completed and paid for.</p>
   <table>
     <tr><th style="width:34%">Retainer start date</th><td>${"_".repeat(24)}</td></tr>
     <tr><th>Monthly capacity</th><td>${"_".repeat(14)} hours per month</td></tr>
