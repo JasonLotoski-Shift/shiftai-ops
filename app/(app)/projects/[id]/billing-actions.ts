@@ -22,7 +22,9 @@ import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { monthlyDueDate } from "@/lib/billing/schedule";
 import { recomputePayoutsTx } from "@/lib/billing/payouts";
 import { FALLBACK_BILL_RATE_CENTS } from "@/lib/billing/rate-card";
-import type { InstallmentTrigger } from "@/lib/generated/prisma/enums";
+import { requireManagingPartner } from "@/lib/permissions";
+import { commissionDollars } from "@/lib/billing/commission";
+import type { InstallmentTrigger, CommissionBase } from "@/lib/generated/prisma/enums";
 
 async function getActor() {
   const session = await auth();
@@ -999,6 +1001,108 @@ export async function setProjectBillingMeta(
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/financials");
   return { ok: true as const };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FEATURE 9 (commission) — Deal-source commission, project fallback (2026-06-22)
+//
+// The project-level twin of the deal commission, for when a deal converted with
+// none set (or to adjust the snapshot). Independent payees (partner OR external),
+// each 1-10% of a base; the one-time build slice is computed against budgetFee.
+// 6/12-month bases only matter if a ServiceContract exists. Firm money —
+// managing-partner gated (the shared getActor is NOT gated, so guard here).
+// ──────────────────────────────────────────────────────────────────────
+
+const VALID_COMMISSION_BASES_PROJ: CommissionBase[] = ["deal_value", "total_6mo", "total_12mo"];
+
+function validCommissionPctProj(raw: number): number {
+  const pct = Math.round(Number(raw) * 100) / 100;
+  if (!Number.isFinite(pct) || pct < 1 || pct > 10) throw new Error("Commission % must be between 1 and 10");
+  return pct;
+}
+
+function validCommissionBaseProj(raw?: string): CommissionBase {
+  if (raw && VALID_COMMISSION_BASES_PROJ.includes(raw as CommissionBase)) return raw as CommissionBase;
+  throw new Error(`Invalid commission base: ${raw}`);
+}
+
+function assertPayeeProj(input: { partnerId?: string | null; externalName?: string | null }) {
+  const hasPartner = !!input.partnerId;
+  const hasExternal = !!input.externalName?.trim();
+  if (hasPartner === hasExternal) throw new Error("Choose a partner or an external name, not both or neither");
+}
+
+export async function addProjectSourceCommission(
+  projectId: string,
+  input: { partnerId?: string; externalName?: string; pct: number; base: string; notes?: string },
+) {
+  const { actor } = await getActor();
+  await requireManagingPartner();
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, budgetFee: true, serviceContract: { select: { monthlyFee: true } } },
+  });
+  if (!project) throw new Error("Project not found");
+  assertPayeeProj(input);
+  const pct = validCommissionPctProj(input.pct);
+  const base = validCommissionBaseProj(input.base);
+  const count = await prisma.projectSourceCommission.count({ where: { projectId } });
+  if (count >= 2) throw new Error("At most two commission payees per project");
+  if (input.partnerId) {
+    const p = await prisma.partner.findUnique({ where: { id: input.partnerId }, select: { id: true } });
+    if (!p) throw new Error("Partner not found");
+  }
+  const monthlyFee = project.serviceContract?.monthlyFee ?? 0;
+  const buildAmount = commissionDollars(pct, base, project.budgetFee, monthlyFee).build;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.projectSourceCommission.create({
+      data: {
+        projectId,
+        partnerId: input.partnerId ?? null,
+        externalName: input.partnerId ? null : input.externalName?.trim() ?? null,
+        pct,
+        base,
+        buildAmount,
+        sourceDealCommissionId: null,
+        notes: input.notes?.trim() || null,
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.projectSourceCommission",
+      targetType: "ProjectSourceCommission",
+      targetId: row.id,
+      changes: { projectId, partnerId: input.partnerId ?? null, externalName: input.externalName ?? null, pct, base, buildAmount },
+    });
+    return row;
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/financials");
+  return { id: created.id };
+}
+
+export async function deleteProjectSourceCommission(id: string) {
+  const { actor } = await getActor();
+  await requireManagingPartner();
+  const before = await prisma.projectSourceCommission.findUnique({ where: { id }, select: { id: true, projectId: true } });
+  if (!before) throw new Error("Commission not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectSourceCommission.delete({ where: { id } });
+    await writeAudit(tx, {
+      actor,
+      action: "delete.projectSourceCommission",
+      targetType: "ProjectSourceCommission",
+      targetId: id,
+      changes: { projectId: before.projectId },
+    });
+  });
+
+  revalidatePath(`/projects/${before.projectId}`);
+  revalidatePath("/financials");
+  return { id };
 }
 
 // ──────────────────────────────────────────────────────────────────────

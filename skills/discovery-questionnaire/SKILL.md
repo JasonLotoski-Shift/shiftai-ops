@@ -1,23 +1,19 @@
-# Skill — Discovery questionnaire (prospect-specific intake)
+# Skill — Discovery questionnaire (final assembler)
 
-Generate a deep, **business-specific** questionnaire to send a prospect right after a discovery call. Its job is to pull the operational detail we need to build a sharp Discovery Report — the real workflows, tools, bottlenecks, numbers, and priorities of THIS business. The partner reviews and edits it before it becomes a live form, so aim for thorough and grounded over safe and generic.
+This is the LAST round of the discovery-questionnaire chain. The earlier rounds (the `discovery-research` skill) already mapped the prospect's whole company and drafted two pools of candidate questions: a **call-specific** pool (5-6 questions tied to what they raised on the call) and a **whole-company** pool (broad questions spanning every business function). Your job is to critique, dedupe, balance, and assemble those candidates into the final questionnaire the partner reviews and sends.
 
-The firm's voice, identity, and hard rules are in the firm context above. Apply them — especially the no-hallucination rule.
+The partner edits this before it becomes a live form, so aim for thorough and grounded over safe and generic. The firm's voice, identity, and hard rules are in the firm context above. Apply them, especially the no-hallucination rule.
 
 ## Input you'll get
 
-- **Context block** — the deal/prospect: company, industry, stage, the primary contact, and the discovery-call interactions (what they told us — their operation, pain, tools, the workflows that eat time, any numbers named).
-- **Files from the deal's Drive folder** (when present) — full call transcripts, notes, and docs, plus screenshots of their current tools as images. This is the richest source: pull the specific workflows, system names, and numbers the client said in their own words, and ask about THOSE.
-- **Intake** — the partner's must-ask areas and any notes (e.g. "dig into dispatch and the parent-company re-keying").
+- **Context block** — the deal/prospect: company, vertical, stage, the primary contact.
+- **Intake** — four parts:
+  - The partner's focus / must-ask areas and notes.
+  - **Call-specific candidates** — the round-2 question pool (JSON), grounded in the call.
+  - **Whole-company candidates** — the round-3 question pool (JSON), spanning the business-area map.
+  - The **business-area map** — the vertical, the functions with their confidence, and the open gaps, for section grouping and grounding reference.
 
-## Writing rules — no storytelling, no negation framing (firm-wide, 2026-06-09)
-
-Every draft this skill produces must be bite-sized and fact-based:
-
-- Lead with the fact or the number. Short sentences. Cite the source for any stat — an uncited "this chart shows" reads as AI-generated.
-- Never use negation constructions: "not X, but Y," "this, not that," "not in theory, but in practice." State the positive claim alone — naming the wrong thing first makes the reader picture it.
-- No narrative arc: no hooks ("stopped me cold"), no scene-setting, no "the leaders who look back" closers, no overvalidating filler ("great question," "you're right to ask"). The readers are execs — they already understand the ifs and buts; spelling them out wastes their attention.
-- No em dashes (—) anywhere in the deliverable text. Use a period, a comma, or a colon instead.
+You are NOT reading the raw call transcript here. The research rounds already distilled it. Work from the candidate pools and the map.
 
 ## What to produce
 
@@ -35,31 +31,28 @@ Return **only a single JSON array** — no prose, no markdown fences, nothing be
 ]
 ```
 
-- **`type`** — pick the type that fits the answer:
-  - `long_text` for "walk us through…" narrative questions (the most valuable ones).
-  - `short_text` for a name/role/one-liner; `number` for counts; `email` for an email.
-  - `single_select` / `multi_select` / `dropdown` only when you can list **real, mutually-exclusive options grounded in their business** (never invent plausible-sounding choices — use `long_text` instead).
-  - `rating` for a 1–5 satisfaction/confidence question; `linear_scale` for a 1–10 (e.g. "how connected are your systems?").
-  - `ranking` once, to force them to prioritise their biggest pains (give the options).
-  - `file_upload` once, optional, for a current report/screenshot/process doc.
-- **`options`** — required for `single_select`/`multi_select`/`dropdown`/`ranking`; omit otherwise.
-- **`section`** — group the questions under 6–10 short section headings (e.g. *The operation today*, *Tools & systems*, *Dispatch / the core workflow*, *Data & reporting*, *The team*, *Priorities & outcomes*, *Decision & timeline*). Order the array by section.
-- **`required`** — true only for the handful of must-answer questions; keep most optional so a busy operator isn't blocked.
+## Your job — critique, dedupe, balance, assemble
+
+1. **Merge the two pools.** Work from the call-specific candidates and the whole-company candidates together. Neither pool outranks the other by default; grounding and sharpness decide what survives.
+2. **Dedupe on grounding, not on pool.** Where two candidates ask the same thing, keep the better-grounded, more specific one and drop the other, regardless of which pool it came from. Do not keep a call-specific question over a broad one just because it was on the call.
+3. **Critique each candidate.** Drop any question that is vague, generic, or not grounded in the map or the call. A question that could be sent to any company is a failure. Tighten the wording of the ones you keep into plain language a busy operator answers once.
+4. **Balance the coverage — this is the point of the chain.** The final form must do BOTH: dig into what the call raised AND learn the rest of the company. Use the `function` tags on the candidates (both pools carry them) to keep a fair spread across operations, finance, sales & marketing, supply chain, people/HR, IT & systems, and leadership, weighted toward the gaps the map flagged. Aim for roughly **5-6 call-anchored questions, and the rest broad whole-company coverage**. Do not let call topics crowd out the functions the call never touched, those blind spots are exactly why the questionnaire exists. If the whole-company pool is thin, add open 'walk us through how X works today' questions for the under-covered functions rather than piling on more call-specific items.
+5. **Group into sections.** 6-10 short section headings (e.g. *The operation today*, *Tools & systems*, *Finance & reporting*, *Sales & customers*, *The team*, *Priorities & outcomes*, *Decision & timeline*). Order the array by section.
+6. **End coverage with open questions.** End each major area with an open 'what are we missing here?' and close the whole thing with one open question: *'Anything we didn't ask that we should know?'*
 
 ## How deep
 
-- **~30–40 questions** across the sections. This is a real intake, not a contact form — but every question must earn its place.
-- **Specific to this business.** Reference their actual operation, tools, and the workflows they named on the call. A fuel-distribution prospect gets questions about runouts, tank monitoring, routing, and dispatch; a construction firm gets questions about scheduling, RFIs, and change orders. A generic questionnaire is a failure.
-- **Anchor on measurable pain.** Ask what eats hours, what gets re-keyed, where customers feel it, how often things break — and ask for rough numbers (hours/week, frequency, headcount) where it's natural.
-- **End each major area with an open "what are we missing?"** and close the whole thing with one open question: *"Anything we didn't ask that we should know?"*
-- **Ensure we capture other business-areas** the partner flagged in the intake, even if they didn't come up on the call. If the partner said "dig into dispatch and the parent-company re-keying," ask a few questions about those even if they weren't mentioned on the call. Be sure to understand what business-vertical the deal is in (e.g. fuel distribution, construction, healthcare) and ask about the core workflows/operations/bottle-necks and tools for that vertical, even if the call was light on those details.
+- **~30-40 questions** across the sections. A real intake, not a contact form, but every question must earn its place.
+- **Specific to this business.** Reference their actual operation, tools, and the workflows the research rounds surfaced. A generic questionnaire is a failure.
+- **Anchor on measurable pain.** Keep the questions that ask what eats hours, what gets re-keyed, where customers feel it, how often things break, and ask for rough numbers (hours/week, frequency, headcount) where natural.
 
 ## Hard rules for this task
 
-- **Ground every question in the context.** If you don't know enough about a part of their business to ask a sharp question, ask an open one ("Walk us through how X works today") rather than a fake-specific one.
-- **Never invent options.** A `single_select` with made-up choices is worse than a `long_text`. Only list options you can defend from the context or that are genuinely universal.
-- **Plain language, their words.** No consulting jargon, no banned words. Questions a busy operator reads once and answers.
-- **Different Question Types** Ensure a mix of question types to capture different kinds of information and keep the respondent engaged. Use `long_text` for detailed explanations, `short_text` for concise answers, one or two 'multi-select' options, 'ranking' for prioritization, and `number` for quantifiable data.
-- **No pricing/commercial questions** beyond a light "what's your typical decision timeline?" in the closing section — discovery is about the work, not the deal.
-- **Always Note on Image Upload** - Tell the respondent what kind of image or file would be most helpful if they choose to upload something. For example, "If you have a current report, dashboard, or process document that illustrates this pain point, please upload it here (optional). Also let them know that 1 is the maximum file upload limit, and that they can email additional files to us if needed."
-- If the context is too thin to tailor (a bare deal with no call notes), still produce a solid general operations-discovery questionnaire for their industry, and mark any section you couldn't ground with a question like *"[NEEDS INPUT: discovery-call notes — this section is generic]"* as a `long_text` label so the partner sees it. The server gate blocks saving while `[NEEDS INPUT]` remains.
+- **Never invent options.** A `single_select` / `multi_select` / `dropdown` / `ranking` is allowed only when the candidate carried real, grounded, mutually-exclusive options you can defend from the map. If a candidate has invented or thin options, convert it to `long_text`. A choice type needs at least two real options or it gets dropped downstream.
+- **Ground every question.** If a candidate isn't grounded in the map or the call, either drop it or rewrite it as an open 'Walk us through how X works today.' Never present an industry-typical assumption as a fact about THIS company.
+- **Mix question types.** `long_text` for the detailed walk-throughs (the most valuable), `short_text` for a name/role/one-liner, `number` for counts, one or two choice questions where options are real, one `ranking` to force them to prioritise their biggest pains, `rating`/`linear_scale` for a confidence read.
+- **`required`** — true only for the handful of must-answer questions; keep most optional so a busy operator isn't blocked.
+- **One `file_upload`, optional.** Tell the respondent what file helps: 'If you have a current report, dashboard, or process document that shows this, upload it here (optional). One file is the maximum, email us any extras.'
+- **No pricing/commercial questions** beyond a light 'what's your typical decision timeline?' in the closing section. Discovery is about the work, not the deal.
+- **Plain language, their words.** No consulting jargon, no banned words, no em dashes, no negation framing, no narrative filler.
+- **If a section can't be grounded** (the map flagged it [NEEDS INPUT] or both pools came back thin), emit a single `long_text` whose label carries `[NEEDS INPUT: <what's needed>]` so the partner sees it. The server gate blocks saving while `[NEEDS INPUT]` remains.

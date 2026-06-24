@@ -253,6 +253,31 @@ enum ProjectType {
   buyout
 }
 
+// Deal-source commission base — what the 1-10% applies to. @map'd hyphenated DB
+// value per the enum-string convention (gotcha #5): JS sees the underscored id.
+enum CommissionBase {
+  deal_value @map("deal-value")
+  total_6mo  @map("total-6mo")
+  total_12mo @map("total-12mo")
+}
+
+// Lifecycle of an on-going service contract (the recurring subscription that
+// begins after the build completes — so it opens at `pending_start`).
+enum ServiceContractStatus {
+  pending_start @map("pending-start")
+  active
+  ended
+  cancelled
+}
+
+// One month's recurring commission accrual: projected (future), accrued (its
+// month has started), or paid.
+enum CommissionAccrualStatus {
+  projected
+  accrued
+  paid
+}
+
 // Work category — colours/tags a milestone or task on the board. Defaults from
 // what it's tied to (project → project, deal → pipeline, else firm/other) and
 // is editable. Firm items can carry a free sub-label (BD, Admin).
@@ -392,6 +417,10 @@ model Partner {
   channelMemberships ChannelMember[]
   messagesAuthored   Message[]
   originations       Origination[]
+  dealCommissions     DealSourceCommission[]      @relation("PartnerDealCommission")
+  projectCommissions  ProjectSourceCommission[]   @relation("PartnerProjectCommission")
+  ongoingCommissions  OngoingContractCommission[] @relation("PartnerOngoingCommission")
+  serviceContractsLed ServiceContract[]           @relation("PartnerServiceContractLead")
 
   // Team notes left on architecture-map cards (the /architecture tab).
   architectureNotes  ArchitectureNote[]
@@ -597,6 +626,7 @@ model Deal {
   tasks      Task[]
   actionDrafts ActionDraft[]
   prototypeRuns PrototypeRun[]
+  sourceCommissions DealSourceCommission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -709,6 +739,7 @@ model Client {
   contactLinks ContactLink[]
   actionDrafts ActionDraft[]
   prototypeRuns PrototypeRun[]
+  serviceContracts ServiceContract[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -760,6 +791,8 @@ model Project {
   payouts        ConsultantPayout[]
   originations   Origination[]
   actionDrafts   ActionDraft[]
+  sourceCommissions ProjectSourceCommission[]
+  serviceContract   ServiceContract?
 
   // How the standard client billing schedule is generated (Phase 4):
   // fifty_twenty_five (default, pilots/projects) or monthly_even (retainers).
@@ -1786,6 +1819,129 @@ model Origination {
 
   @@unique([projectId, partnerId])
   @@index([projectId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Deal-source commission + On-going Service Contracts (2026-06-22)
+//
+// A SEPARATE firm-money system from Origination above. A deal can carry 1-2
+// commission payees (a partner OR an external referrer), each earning 1-10% of a
+// chosen base (the build value, or the total 6/12-month value). At convert the
+// deal commissions snapshot onto the build project (ProjectSourceCommission =
+// the one-time build slice) and — for a subscription with a recurring base —
+// onto a dedicated ServiceContract that begins on a FUTURE date, with a per-month
+// accrual ledger. The ongoing contract is NOT a Project, so /financials never
+// double-counts MRR as one-time budgetFee. Commission is never deducted from
+// labour revenue and never enters the 10/15/75 allocateLaborRevenue split.
+// CHECK constraints (payee XOR, pct 1-10) live in the migration SQL — Prisma
+// can't author them — and are re-enforced in the server actions.
+// ──────────────────────────────────────────────────────────────────────
+
+model DealSourceCommission {
+  id           String         @id @default(cuid())
+  pct          Decimal        @db.Decimal(5, 2) // 1.00–10.00 per payee (not a pool share)
+  base         CommissionBase @default(deal_value)
+  externalName String? // set when partnerId is null (external referrer)
+  notes        String?
+
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealId    String
+  partner   Partner? @relation("PartnerDealCommission", fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealId])
+}
+
+model ServiceContract {
+  id         String                @id @default(cuid())
+  name       String
+  status     ServiceContractStatus @default(pending_start)
+  monthlyFee Int // whole CAD; CANONICAL monthly figure (the contract has no budgetFee)
+  termMonths Int                   @default(12)
+  startDate  DateTime // FUTURE at create — seeded to the build project's targetEndDate
+  endDate    DateTime?
+  notes      String?
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId     String  @unique // 1:1 with the build project
+  client        Client  @relation(fields: [clientId], references: [id])
+  clientId      String
+  partnerLead   Partner @relation("PartnerServiceContractLead", fields: [partnerLeadId], references: [id])
+  partnerLeadId String
+
+  commissions OngoingContractCommission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model ProjectSourceCommission {
+  id                     String         @id @default(cuid())
+  pct                    Decimal        @db.Decimal(5, 2)
+  base                   CommissionBase @default(deal_value)
+  buildAmount            Int // = round(pct/100 * build budgetFee); the ONE-TIME build slice
+  externalName           String?
+  notes                  String?
+  sourceDealCommissionId String? // provenance; null = direct project-level fallback
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+  partner   Partner? @relation("PartnerProjectCommission", fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerId String?
+  ongoing   OngoingContractCommission? // back-relation of the 1:1 link below
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([partnerId])
+}
+
+model OngoingContractCommission {
+  id              String         @id @default(cuid())
+  pct             Decimal        @db.Decimal(5, 2)
+  base            CommissionBase
+  coveredMonths   Int // 6 or 12 (= N)
+  projectedAmount Int // = round(pct/100 * monthlyFee * N)
+  externalName    String?
+
+  contract            ServiceContract          @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractId          String
+  projectCommission   ProjectSourceCommission? @relation(fields: [projectCommissionId], references: [id], onDelete: SetNull)
+  projectCommissionId String?                  @unique // 1:1 link to the build twin (one logical line, both surfaces)
+  partner             Partner?                 @relation("PartnerOngoingCommission", fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerId           String?
+
+  accruals OngoingContractCommissionAccrual[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contractId])
+}
+
+model OngoingContractCommissionAccrual {
+  id          String                  @id @default(cuid())
+  periodIndex Int // 0..N-1
+  periodStart DateTime // = startDate + periodIndex months (the placeholder→payable flip date)
+  amount      Int // = round(pct/100 * monthlyFee); remainder pushed to the LAST row
+  status      CommissionAccrualStatus @default(projected)
+  paidAt      DateTime?
+
+  commission   OngoingContractCommission @relation(fields: [commissionId], references: [id], onDelete: Cascade)
+  commissionId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([commissionId, periodIndex])
+  @@index([periodStart])
 }
 
 // ──────────────────────────────────────────────────────────────────────

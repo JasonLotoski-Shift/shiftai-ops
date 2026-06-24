@@ -20,6 +20,11 @@ import Link from "next/link";
 import { ChevronDown, Info, Zap, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
+// "General" stage — a pinned, un-numbered group rendered ABOVE the numbered
+// workflow steps (quick actions usable at any point in the deal). deal-actions
+// tags its follow-up email + book-meeting boxes with this so they sit on top.
+export const GENERAL_STAGE = "General";
+
 export type ActionBox = {
   key: string;
   icon: LucideIcon;
@@ -91,6 +96,17 @@ function Box({ action }: { action: ActionBox }) {
   const saved = !disabled && !!stepOneSavedAt;
   const ran = !disabled && !saved && !!ranAt;
 
+  // Compact, rectangular box: icon + title on one line, a single secondary line
+  // beneath. The secondary line shows the saved/ran status when present (colored),
+  // otherwise the one-line description — so every box stays a uniform two-line
+  // rectangle and the panel reads as a tidy grid of buttons. Full detail lives in
+  // the (i) tooltip.
+  const secondary = saved
+    ? `Step 1 of 2 saved · ${shortDate(stepOneSavedAt!)}`
+    : ran
+      ? `Last ran ${shortDate(ranAt!)}`
+      : description;
+
   const inner = (
     <>
       <span
@@ -107,25 +123,23 @@ function Box({ action }: { action: ActionBox }) {
       >
         <Icon size={14} strokeWidth={1.5} />
       </span>
-      <span className="min-w-0 flex flex-col gap-0.5">
-        <span className="text-[13px] text-bone leading-tight">{title}</span>
-        <span className="text-[11px] text-bone-mute leading-snug">{description}</span>
-        {saved ? (
-          <span className="text-[11px] text-signal-warming leading-snug mt-0.5">
-            Step 1 of 2 saved · {shortDate(stepOneSavedAt!)}
-          </span>
-        ) : ran ? (
-          <span className="text-[11px] text-signal-fresh leading-snug mt-0.5">
-            Last ran {shortDate(ranAt!)}
-          </span>
-        ) : null}
+      <span className="min-w-0 flex flex-col">
+        <span className="text-[13px] text-bone leading-tight truncate">{title}</span>
+        <span
+          className={cn(
+            "text-[11px] leading-snug truncate",
+            saved ? "text-signal-warming" : ran ? "text-signal-fresh" : "text-bone-mute",
+          )}
+        >
+          {secondary}
+        </span>
       </span>
     </>
   );
 
   const className = cn(
     // pr-8 leaves room for the (i) icon in the top-right when present.
-    "group flex items-start gap-3 px-3.5 py-3 text-left rounded-[var(--radius)] border transition-colors w-full",
+    "group flex items-center gap-2.5 px-3 py-2.5 text-left rounded-[var(--radius)] border transition-colors w-full",
     info ? "pr-8" : "",
     disabled
       ? "border-graphite/60 opacity-50 cursor-not-allowed"
@@ -191,6 +205,9 @@ export function ActionsPanel({
     if (!stages.includes(a.stage)) stages.push(a.stage);
   }
   const grouped = stages.length > 0;
+  // Only the workflow stages get a step number; the pinned "General" group renders
+  // first (it's collected in first-appearance order, so put General boxes first).
+  const workflowStages = stages.filter((s) => s !== GENERAL_STAGE);
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
@@ -213,23 +230,32 @@ export function ActionsPanel({
       {open &&
         (grouped ? (
           <div className="flex flex-col gap-4">
-            {stages.map((stage, i) => (
-              <div key={stage} className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-track-gold-dim/20 border border-track-gold/40 text-track-gold text-[11px] font-mono tabular-nums">
-                    {i + 1}
-                  </span>
-                  <span className="text-[12px] font-medium text-bone-dim uppercase tracking-wide">{stage}</span>
+            {stages.map((stage) => {
+              const step = workflowStages.indexOf(stage); // -1 for the General group
+              return (
+                <div key={stage} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    {step === -1 ? (
+                      <span className="text-[12px] font-medium text-bone-dim uppercase tracking-wide">{stage}</span>
+                    ) : (
+                      <>
+                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-track-gold-dim/20 border border-track-gold/40 text-track-gold text-[11px] font-mono tabular-nums">
+                          {step + 1}
+                        </span>
+                        <span className="text-[12px] font-medium text-bone-dim uppercase tracking-wide">{stage}</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {actions
+                      .filter((a) => a.stage === stage)
+                      .map((a) => (
+                        <Box key={a.key} action={a} />
+                      ))}
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {actions
-                    .filter((a) => a.stage === stage)
-                    .map((a) => (
-                      <Box key={a.key} action={a} />
-                    ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">

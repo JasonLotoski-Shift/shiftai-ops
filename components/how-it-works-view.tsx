@@ -872,6 +872,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <Calculator size={16} strokeWidth={1.5} />,
+    title: "Record who sourced a deal (commission)",
+    blurb: "Note up to two people who get a cut for bringing in a deal — a partner or an outside referrer — and the commission carries through to the project and any recurring service contract when the deal converts. Managing partners only.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "On a deal, open Deal-source commission → add up to two payees: a partner or a typed external name, each 1–10%, on the deal value or the total 6/12-month value" },
+      { tone: "claude", kind: "On convert", label: "When you Convert → Client, each commission snapshots onto the build project (the one-time build slice). If it's a subscription with a 6/12-month base, an On-going Service Contract is created with a future start date and a month-by-month commission ledger" },
+      { tone: "review", kind: "You review", label: "If a deal converted without a commission set, add it on the project's Financials tab. The recurring side lives on the Service Contracts tab (under Projects); mark each month paid as it comes due" },
+      { tone: "write", kind: "Saved", label: "DealSourceCommission / ProjectSourceCommission / ServiceContract + per-month accruals + AuditLog. Financials shows the firm-wide commission line and per-partner economics — managing partners only" },
+    ],
+  },
+  {
     icon: <FileUp size={16} strokeWidth={1.5} />,
     title: "Import contacts & scan for fit",
     blurb: "Upload a contact export, scan it against your criteria, and push the best into the pipeline.",

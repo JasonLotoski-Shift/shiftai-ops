@@ -9,7 +9,9 @@ import { DealCommitteeCard } from "@/components/deal-committee-card";
 import { DealEnrichPanel } from "@/components/deal-enrich-panel";
 import { ArtifactDeleteControl } from "@/components/artifact-delete-control";
 import { EstimateEditor } from "@/components/billing/estimate-editor";
+import { DealSourceCommissionEditor } from "@/components/billing/deal-source-commission-editor";
 import { prisma } from "@/lib/prisma";
+import { currentIsManagingPartner } from "@/lib/permissions";
 import { ranAtBySkill, savedAtBySkill } from "@/lib/action-status";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { stageLabels, industryLabels, leadSourceLabels } from "@/lib/data/seed";
@@ -143,6 +145,29 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   const partner = deal.partnerLead;
   const stale = daysSince(deal.lastTouchAt) > 30;
 
+  // Deal-source commission (firm money — managing partners only; skip the query
+  // and hide the editor otherwise).
+  const managingPartner = await currentIsManagingPartner();
+  const commissionPartners = managingPartner
+    ? await prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
+    : [];
+  const commissionRaw = managingPartner
+    ? await prisma.dealSourceCommission.findMany({
+        where: { dealId: id },
+        include: { partner: { select: { id: true, name: true } } },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const commissionRows = commissionRaw.map((r) => ({
+    id: r.id,
+    partnerId: r.partnerId,
+    externalName: r.externalName,
+    partnerName: r.partner?.name ?? r.externalName ?? "—",
+    pct: Number(r.pct),
+    base: r.base,
+    notes: r.notes,
+  }));
+
   const committeeLinks = contactLinksRaw.map((l) => ({
     id: l.id,
     relationship: l.relationship,
@@ -259,6 +284,15 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           <DealEnrichPanel deal={deal} />
 
           <EstimateEditor dealId={deal.id} estimate={estimate} tiers={tiers} />
+
+          {managingPartner && (
+            <DealSourceCommissionEditor
+              dealId={deal.id}
+              rows={commissionRows}
+              partners={commissionPartners}
+              readOnly={deal.stage === "signed"}
+            />
+          )}
 
           <Card className="border-track-gold/40 bg-track-gold-dim/5">
             <CardBody className="flex items-start gap-4">

@@ -1,12 +1,10 @@
 import { Header } from "@/components/header";
-import { Button } from "@/components/ui";
 import { PipelineTabs } from "@/components/pipeline-tabs";
 import { AddDeal } from "@/components/add-deal";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { stageAgeTier } from "@/lib/format";
 import type { ProspectLead, ProspectPerson } from "@/lib/types";
-import { Filter } from "lucide-react";
 
 // The promoted-lead enrichment SEARCH (Apollo + Firecrawl) runs synchronously
 // from this route — give it wall-clock budget.
@@ -101,13 +99,7 @@ export default async function PipelinePage({
         eyebrow="Pipeline · CRM"
         title="The board."
         actions={
-          <>
-            <Button variant="ghost" size="sm">
-              <Filter size={13} strokeWidth={1.5} />
-              Filter
-            </Button>
-            <AddDeal contacts={contacts} partners={partners} defaultPartnerId={session?.user?.partnerId} />
-          </>
+          <AddDeal contacts={contacts} partners={partners} defaultPartnerId={session?.user?.partnerId} />
         }
       />
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Mail, FileText, FileSearch, Pencil, Trash2, ClipboardList, CalendarPlus, FlaskConical, Presentation, FileQuestion, Stamp, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui";
-import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
+import { ActionsPanel, GENERAL_STAGE, type ActionBox } from "@/components/actions-panel";
 import { ContractModal } from "@/components/contract-modal";
 import { ConvertDealModal } from "@/components/convert-deal-modal";
 import { DraftProposalModal } from "@/components/draft-proposal-modal";
@@ -173,9 +173,42 @@ export function DealActionsPanel({
     open();
   };
 
-  // Boxes are grouped into numbered steps by `stage` — the deal's order of work:
-  // Discovery → Prototype → Proposal (the scope of work, then the deck built from it).
+  // Boxes are grouped: a pinned "General" group (quick comms — follow-up email +
+  // book meeting) sits on top, then the numbered workflow steps in order of work:
+  // Discovery → Prototype → Proposal → Contract.
   const actions: ActionBox[] = [
+    // ── General — quick comms, usable at any point ──
+    ...(contact
+      ? [
+          {
+            key: "followup",
+            icon: Mail,
+            title: "Follow-up email",
+            description: "Recap the call and propose the next step.",
+            onClick: () => setEmailOpen(true),
+            stage: GENERAL_STAGE,
+            info: {
+              does: "Drafts a short email that recaps the call and proposes the next step, using only what's logged.",
+              happens: "Drafts an email you edit; sending or saving logs it on the contact and files a copy.",
+            },
+            ...status("followup"),
+          } as ActionBox,
+        ]
+      : []),
+    {
+      key: "book-meeting",
+      icon: CalendarPlus,
+      title: "Book meeting",
+      description: "Draft a short message to book the next call.",
+      onClick: openReopen("book-meeting", () => setDocSkill("book-meeting")),
+      stage: GENERAL_STAGE,
+      info: {
+        does: "Drafts a short, specific message to book the next call.",
+        happens: "Drafts a note you can edit and save.",
+      },
+      ...status("book-meeting"),
+    },
+    // ── Discovery ──
     {
       key: "discovery-prep",
       icon: ClipboardList,
@@ -217,36 +250,7 @@ export function DealActionsPanel({
       },
       ...status("discovery-report"),
     },
-    ...(contact
-      ? [
-          {
-            key: "followup",
-            icon: Mail,
-            title: "Follow-up email",
-            description: "Recap the call and propose the next step.",
-            onClick: () => setEmailOpen(true),
-            stage: "Discovery",
-            info: {
-              does: "Drafts a short email that recaps the call and proposes the next step, using only what's logged.",
-              happens: "Drafts an email you edit; sending or saving logs it on the contact and files a copy.",
-            },
-            ...status("followup"),
-          } as ActionBox,
-        ]
-      : []),
-    {
-      key: "book-meeting",
-      icon: CalendarPlus,
-      title: "Book meeting",
-      description: "Draft a short message to book the next call.",
-      onClick: openReopen("book-meeting", () => setDocSkill("book-meeting")),
-      stage: "Discovery",
-      info: {
-        does: "Drafts a short, specific message to book the next call.",
-        happens: "Drafts a note you can edit and save.",
-      },
-      ...status("book-meeting"),
-    },
+    // ── Prototype ──
     {
       key: "build-prototype",
       icon: FlaskConical,

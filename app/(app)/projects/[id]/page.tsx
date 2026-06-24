@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { Header } from "@/components/header";
 import { Card, CardBody, CardHeader, Label, Badge, Button, Avatar, EmptyState } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
+import { currentIsManagingPartner } from "@/lib/permissions";
 import { formatCAD, formatDate } from "@/lib/format";
 import { ProjectTimeline } from "@/components/project-timeline";
 import { ProjectTypeEdit } from "@/components/project-type-edit";
@@ -12,6 +13,7 @@ import { ProjectFinancials } from "@/components/project-financials";
 import { EconomicsEditor } from "@/components/billing/economics-editor";
 import { DirectCostsEditor } from "@/components/billing/direct-costs-editor";
 import { OriginationEditor } from "@/components/billing/origination-editor";
+import { ProjectSourceCommissionEditor } from "@/components/billing/project-source-commission-editor";
 import { FirmEconomicsSummary } from "@/components/billing/firm-economics-summary";
 import { BillingSummaryCard } from "@/components/billing/billing-summary-card";
 import { ScopePricingPanel } from "@/components/billing/scope-pricing-panel";
@@ -216,6 +218,32 @@ export default async function ProjectDetailPage({
     partnerName: o.partner.name,
     sharePct: Number(o.sharePct),
     notes: o.notes,
+  }));
+
+  // Deal-source commission (firm money — managing partners only; gated query).
+  const managingPartner = await currentIsManagingPartner();
+  const projectCommissionRaw = managingPartner
+    ? await prisma.projectSourceCommission.findMany({
+        where: { projectId: id },
+        include: { partner: { select: { id: true, name: true } } },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const projectServiceContract = managingPartner
+    ? await prisma.serviceContract.findUnique({
+        where: { projectId: id },
+        select: { id: true, monthlyFee: true, status: true, startDate: true },
+      })
+    : null;
+  const projectCommissionRows = projectCommissionRaw.map((r) => ({
+    id: r.id,
+    partnerId: r.partnerId,
+    externalName: r.externalName,
+    partnerName: r.partner?.name ?? r.externalName ?? "—",
+    pct: Number(r.pct),
+    base: r.base,
+    buildAmount: r.buildAmount,
+    notes: r.notes,
   }));
 
   // The 10/15/75 internal allocation of labour revenue (server-side compute).
@@ -556,6 +584,36 @@ export default async function ProjectDetailPage({
             rows={originationRows}
             partners={partners}
           />
+
+          {managingPartner && (
+            <ProjectSourceCommissionEditor
+              projectId={project.id}
+              rows={projectCommissionRows}
+              partners={partners}
+              allowRecurringBase={!!projectServiceContract}
+            />
+          )}
+
+          {projectServiceContract && (
+            <Card>
+              <CardHeader>
+                <h2 className="title-md">On-going service contract</h2>
+              </CardHeader>
+              <CardBody className="flex items-center justify-between gap-3 pt-0">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[13px] text-bone">
+                    {formatCAD(projectServiceContract.monthlyFee).replace("CA$", "$")}/mo · {projectServiceContract.status.replace("_", "-")}
+                  </span>
+                  <span className="text-[11px] text-bone-mute">
+                    {projectServiceContract.status === "pending_start" ? "Starts" : "Started"} {formatDate(projectServiceContract.startDate)}
+                  </span>
+                </div>
+                <Link href={`/service-contracts/${projectServiceContract.id}`} className="label-gold hover:underline">
+                  View →
+                </Link>
+              </CardBody>
+            </Card>
+          )}
 
           <EconomicsEditor
             projectId={project.id}

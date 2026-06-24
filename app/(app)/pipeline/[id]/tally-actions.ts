@@ -21,14 +21,18 @@ import { assertNoNeedsInput } from "@/lib/no-hallucination";
 import { generate } from "@/lib/ai";
 import { buildDealContext } from "@/lib/deal-context";
 import { loadDealDriveFiles } from "@/lib/deal-drive-context";
-import { createTallyForm, parseQuestions, type SurveyQuestion } from "@/lib/tally";
+import { runDiscoveryChain } from "@/lib/discovery-research/chain";
+import { createTallyForm, type SurveyQuestion } from "@/lib/tally";
 import type { ArtifactType } from "@/lib/generated/prisma/enums";
 
 /** Generate a deep, business-specific questionnaire as STRUCTURED questions the
- *  partner reviews/edits before a form is created. Reads the WHOLE deal Drive
- *  folder (full call transcripts, notes, docs, screenshots) on top of the
- *  Prisma context, so the questions ground in what the client actually said —
- *  the interaction log only carries one-line summaries. Read-only. */
+ *  partner reviews/edits before a form is created. Runs a 4-round server-side
+ *  research chain (research the whole company across every business function →
+ *  5-6 call-anchored questions → broad whole-company coverage → critique +
+ *  dedupe + assemble), so the survey learns the overall business, not just what
+ *  the call happened to cover. Reads the WHOLE deal Drive folder (transcripts,
+ *  notes, docs, screenshots) on round 1 only. Read-only — persistence is the
+ *  separate createDiscoveryQuestionnaireForm step. */
 export async function generateQuestionnaire(
   dealId: string,
   input: { focus?: string; notes?: string },
@@ -38,23 +42,15 @@ export async function generateQuestionnaire(
 
   const { context } = await buildDealContext(dealId);
   const driveCtx = await loadDealDriveFiles(dealId);
-  const fullContext = driveCtx.text
-    ? `${context}\n\n## Files from the deal's Drive folder (call transcripts, notes, docs)\n${driveCtx.text}`
-    : context;
-  const intake = [
-    "## This discovery questionnaire",
-    `Focus / must-ask areas: ${input.focus?.trim() || "(none specified — cover their operation broadly, grounded in the call)"}`,
-    `Notes: ${input.notes?.trim() || "(none)"}`,
-  ].join("\n");
 
-  const raw = await generate({
-    skill: "discovery-questionnaire",
-    context: fullContext,
-    intake,
-    maxTokens: 8000,
+  const questions = await runDiscoveryChain({
+    context,
+    corpusText: driveCtx.text,
     images: driveCtx.images.length ? driveCtx.images : undefined,
+    focus: input.focus,
+    notes: input.notes,
+    gen: generate,
   });
-  const questions = parseQuestions(raw);
   if (questions.length === 0) throw new Error("The questionnaire came back empty or malformed — try again.");
   return { questions };
 }

@@ -9,10 +9,11 @@
 // pipeline's top-level "Cold email sent" tab (components/cold-leads.tsx) until
 // they reply (→ deal at Qualified) or get set aside (→ Filtered).
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState, Label } from "@/components/ui";
 import { LeadCard } from "@/components/lead-card";
+import { LeadFilters, leadMatchesFilter, EMPTY_LEAD_FILTER, type LeadFilterState } from "@/components/lead-filters";
 import { restoreLead } from "@/app/(app)/pipeline/leads/actions";
 import { Radar, RotateCcw } from "lucide-react";
 import type { ProspectLead } from "@/lib/types";
@@ -33,9 +34,15 @@ export function FoundLeads({
 }) {
   const [lane, setLane] = useState<Lane>("new");
   const [mode, setMode] = useState<SortMode>("score");
+  const [filter, setFilter] = useState<LeadFilterState>(EMPTY_LEAD_FILTER);
 
-  // Honor ?segment=<id> across both lanes.
-  const keep = (l: ProspectLead) => !segment || l.segmentId === segment;
+  // Filter-bar option lists are drawn from every discovery lead (both lanes) so
+  // they stay stable as you switch lanes.
+  const all = useMemo(() => [...pending, ...filtered], [pending, filtered]);
+
+  // Honor ?segment=<id> across both lanes, then the filter bar.
+  const keep = (l: ProspectLead) =>
+    (!segment || l.segmentId === segment) && leadMatchesFilter(l, filter);
   const pendingF = pending.filter(keep);
   const filteredF = filtered.filter(keep);
 
@@ -48,7 +55,9 @@ export function FoundLeads({
 
   return (
     <div className="px-8 py-8 flex flex-col gap-8">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-4">
+        <LeadFilters leads={all} value={filter} onChange={setFilter} />
+        <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-1">
           {lanes.map((l) => {
             const on = lane === l.key;
@@ -92,6 +101,7 @@ export function FoundLeads({
             );
           })}
         </div>
+      </div>
       </div>
 
       {lane === "new" && (

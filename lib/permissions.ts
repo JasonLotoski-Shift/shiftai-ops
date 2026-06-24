@@ -9,11 +9,11 @@
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isManagingPartner } from "@/lib/roles";
 
-/** True when a role line marks a managing partner (e.g. "Managing Partner · Build"). */
-export function isManagingPartner(role: string | null | undefined): boolean {
-  return (role ?? "").toLowerCase().includes("managing partner");
-}
+// Re-export the pure check so existing server-side importers of @/lib/permissions
+// are unchanged; client components must import it from @/lib/roles (prisma-free).
+export { isManagingPartner };
 
 /** Loads the current session partner's role and returns whether they're a managing partner. */
 export async function currentIsManagingPartner(): Promise<boolean> {

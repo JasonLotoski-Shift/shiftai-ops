@@ -23,11 +23,13 @@ import {
   Sparkles,
   ChevronDown,
   ChevronRight,
+  Repeat,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sigil } from "@/components/wordmark";
 import { avatarColor } from "@/components/ui";
+import { isManagingPartner } from "@/lib/roles";
 import { logout } from "@/app/(app)/account.actions";
 
 type NavItem = {
@@ -43,6 +45,7 @@ const operate: NavItem[] = [
   { href: "/tasks", label: "Task Board", icon: CheckSquare },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/service-contracts", label: "Service Contracts", icon: Repeat },
 ];
 
 // The three ways leads come into the firm — collapsible group.
@@ -172,9 +175,11 @@ export function Sidebar({
           <span className="label">Operate</span>
         </div>
         <ul>
-          {operate.map((item) => (
-            <Row key={item.href} item={item} />
-          ))}
+          {operate
+            .filter((item) => item.href !== "/service-contracts" || isManagingPartner(user.role))
+            .map((item) => (
+              <Row key={item.href} item={item} />
+            ))}
         </ul>
 
         {/* Import — collapsible group */}

@@ -23,6 +23,27 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-23",
+    tag: "new",
+    title: "Record who sourced a deal — and see the commission flow through",
+    detail:
+      "On a deal you can now record up to two people who get paid for bringing in the work — a partner or an outside referrer — each on 1 to 10% of the deal value or the total 6 or 12-month value. When the deal converts, the commission carries onto the project automatically; if it's a subscription, a new On-going Service Contract is created with a future start date and the recurring commission is tracked month by month. There's a new Service Contracts tab under Projects for the recurring side. Commission figures are visible to managing partners only.",
+  },
+  {
+    date: "2026-06-23",
+    tag: "new",
+    title: "Financials now shows a forecast and per-partner economics",
+    detail:
+      "Financials adds a forecast: your pipeline weighted by win probability, the subscription run-rate (MRR and ARR), a projected cash-in calendar for the next 12 months, and a firm-wide commission line. A new managing-partners-only Partner economics view breaks down each partner's take-home (owed and paid), origination earnings, and commission.",
+  },
+  {
+    date: "2026-06-23",
+    tag: "improved",
+    title: "Sharper discovery survey, lead filters, and a tidier Actions menu",
+    detail:
+      "The discovery questionnaire now researches the whole company across every part of the business before it writes questions, so it learns more than just what came up on the call: a handful of sharp questions on the call topics, plus broad coverage everywhere else. Promoted and AI-found leads can now be filtered by industry, who surfaced them, who's claimed them, or a name/keyword search. And the deal Actions menu puts Follow-up email and Book a meeting up top, with the rest as tighter, easier-to-scan buttons.",
+  },
+  {
     date: "2026-06-22",
     tag: "improved",
     title: "Contracts now generate as an editable Google Doc",

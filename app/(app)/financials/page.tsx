@@ -1,10 +1,15 @@
 import Link from "next/link";
-import { Receipt, Users } from "lucide-react";
+import { Receipt, Users, Wallet } from "lucide-react";
 import { Header } from "@/components/header";
 import { Card, Stat } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
 import { economicsTotals, allocateLaborRevenue, buyoutAllocation } from "@/lib/billing/economics";
+import { weightDeal, weightedPipelineTotal, mrrTotal, bucketCashIn, FORECAST_MONTHS } from "@/lib/billing/forecast";
+import { firmCommissionTotals } from "@/lib/billing/commissions";
+import { currentIsManagingPartner } from "@/lib/permissions";
+import { ForecastSummary } from "@/components/billing/forecast-summary";
+import { CommissionSummary, type CommissionFlowRow } from "@/components/billing/commission-summary";
 
 // Firm Financials — the firm-wide revenue rollup (Phase 3). Aggregates every
 // project's economics into contracted / invoiced / received / AR plus the
@@ -79,6 +84,76 @@ export default async function FinancialsPage() {
   const firmReserveTotal = sum((r) => r.firmReserve);
   const originationTotal = sum((r) => r.origination);
 
+  // ── Forecast (open to all partners — same sensitivity as the rollup above) ──
+  const openDeals = await prisma.deal.findMany({
+    where: { stage: { not: "signed" }, lostAt: null },
+    orderBy: { closeTargetDate: "asc" },
+    select: {
+      company: true,
+      valueEstimate: true,
+      probability: true,
+      estimates: { where: { status: "accepted" }, orderBy: { version: "desc" }, take: 1, select: { totalValue: true } },
+    },
+  });
+  const pipelineDeals = openDeals.map((d) => {
+    const acceptedEstimateTotal = d.estimates[0]?.totalValue ?? null;
+    const value = acceptedEstimateTotal && acceptedEstimateTotal > 0 ? acceptedEstimateTotal : d.valueEstimate;
+    const { weighted } = weightDeal({ valueEstimate: d.valueEstimate, probability: d.probability, acceptedEstimateTotal });
+    return { company: d.company, value, weighted, probability: d.probability };
+  });
+  const { total: weightedPipeline, unweightedCount } = weightedPipelineTotal(
+    openDeals.map((d) => ({ valueEstimate: d.valueEstimate, probability: d.probability, acceptedEstimateTotal: d.estimates[0]?.totalValue ?? null })),
+  );
+
+  const subProjects = await prisma.project.findMany({
+    where: { projectType: "subscription", status: { not: "closed" } },
+    select: { projectType: true, budgetFee: true, scheduleType: true, startDate: true, targetEndDate: true, serviceContract: { select: { monthlyFee: true } } },
+  });
+  const mrr = mrrTotal(subProjects.map((p) => ({ ...p, serviceContractMonthlyFee: p.serviceContract?.monthlyFee ?? null })));
+  const arr = mrr * 12;
+
+  const [plannedInstallments, openInvoices, activeContracts] = await Promise.all([
+    prisma.billingInstallment.findMany({ where: { status: "planned" }, select: { amount: true, dueDate: true, status: true } }),
+    prisma.invoice.findMany({ where: { status: { in: ["sent", "overdue"] } }, select: { amount: true, dueAt: true, status: true } }),
+    prisma.serviceContract.findMany({ where: { status: { in: ["active", "pending_start"] } }, select: { monthlyFee: true, startDate: true, termMonths: true, status: true } }),
+  ]);
+  const cashCalendar = bucketCashIn(
+    { installments: plannedInstallments, invoices: openInvoices, ongoing: activeContracts },
+    new Date(),
+    FORECAST_MONTHS,
+  );
+
+  // ── Commission flow-through (firm money — managing partners only) ──
+  const managingPartner = await currentIsManagingPartner();
+  let commissionTotals: ReturnType<typeof firmCommissionTotals> | null = null;
+  let commissionRows: CommissionFlowRow[] = [];
+  if (managingPartner) {
+    const [buildRows, accrualRows] = await Promise.all([
+      prisma.projectSourceCommission.findMany({
+        include: {
+          partner: { select: { name: true } },
+          project: { select: { name: true } },
+          ongoing: { select: { coveredMonths: true, projectedAmount: true } },
+        },
+      }),
+      prisma.ongoingContractCommissionAccrual.findMany({
+        select: { amount: true, status: true, periodStart: true, commission: { select: { partnerId: true, externalName: true } } },
+      }),
+    ]);
+    commissionTotals = firmCommissionTotals(
+      buildRows.map((r) => ({ buildAmount: r.buildAmount, partnerId: r.partnerId, externalName: r.externalName })),
+      accrualRows.map((a) => ({ amount: a.amount, status: a.status, periodStart: a.periodStart, partnerId: a.commission.partnerId, externalName: a.commission.externalName })),
+    );
+    commissionRows = buildRows.map((r) => ({
+      label: r.project.name.split("·")[0].trim(),
+      recipient: r.partner?.name ?? r.externalName ?? "—",
+      isExternal: !r.partnerId,
+      buildAmount: r.buildAmount,
+      recurringPerMonth: r.ongoing && r.ongoing.coveredMonths > 0 ? Math.round(r.ongoing.projectedAmount / r.ongoing.coveredMonths) : 0,
+      coveredMonths: r.ongoing?.coveredMonths ?? 0,
+    }));
+  }
+
   return (
     <>
       <Header
@@ -100,6 +175,15 @@ export default async function FinancialsPage() {
               <Users size={13} strokeWidth={1.5} />
               Consultant roster
             </Link>
+            {managingPartner && (
+              <Link
+                href="/financials/partners"
+                className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
+              >
+                <Wallet size={13} strokeWidth={1.5} />
+                Partner economics
+              </Link>
+            )}
           </>
         }
       />
@@ -147,6 +231,27 @@ export default async function FinancialsPage() {
             </Link>
           ))}
         </Card>
+
+        <ForecastSummary
+          weightedPipeline={weightedPipeline}
+          unweightedCount={unweightedCount}
+          mrr={mrr}
+          arr={arr}
+          pipelineDeals={pipelineDeals}
+          cashCalendar={cashCalendar}
+        />
+
+        {managingPartner && commissionTotals && (
+          <CommissionSummary
+            buildTotal={commissionTotals.buildTotal}
+            recurringProjected={commissionTotals.recurringProjected}
+            recurringAccrued={commissionTotals.recurringAccrued}
+            recurringPaid={commissionTotals.recurringPaid}
+            partnerShare={commissionTotals.partnerShare}
+            externalShare={commissionTotals.externalShare}
+            rows={commissionRows}
+          />
+        )}
       </div>
     </>
   );

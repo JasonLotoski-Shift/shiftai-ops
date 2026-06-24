@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { Button, EmptyState } from "@/components/ui";
 import { LeadCard } from "@/components/lead-card";
 import { enrichPromotedLead } from "@/app/(app)/pipeline/promoted/enrich-actions";
+import { LeadFilters, leadMatchesFilter, EMPTY_LEAD_FILTER, type LeadFilterState } from "@/components/lead-filters";
 import { Radar, Sparkles, ShieldAlert, CheckCircle2, KanbanSquare } from "lucide-react";
 import type { ProspectLead } from "@/lib/types";
 
@@ -22,9 +23,12 @@ const isEnriched = (l: ProspectLead) =>
   l.foundBy.includes("apollo") || l.foundBy.includes("firecrawl");
 
 export function PromotedLeads({ leads }: { leads: ProspectLead[] }) {
+  const [filter, setFilter] = useState<LeadFilterState>(EMPTY_LEAD_FILTER);
   // Ghosted leads are filtered out entirely; cold-emailed ones (contacted)
   // live on the "Cold email sent" tab instead — never shown twice.
-  const visible = [...leads].filter((l) => l.status !== "ghost" && l.status !== "contacted");
+  const visible = [...leads]
+    .filter((l) => l.status !== "ghost" && l.status !== "contacted")
+    .filter((l) => leadMatchesFilter(l, filter));
   // Active (still to work) on top by score; in-pipeline (added) greyed at the bottom.
   const activeLeads = visible.filter((l) => l.status === "pending").sort(byScoreDesc);
   const inPipeline = visible.filter((l) => l.status !== "pending").sort(byScoreDesc);
@@ -48,6 +52,10 @@ export function PromotedLeads({ leads }: { leads: ProspectLead[] }) {
         Leads promoted from imported contacts. Run an enrichment search to pull firmographics and
         reveal a work email, then open a lead to add it to the funnel.
       </p>
+      <LeadFilters leads={leads} value={filter} onChange={setFilter} />
+      {ordered.length === 0 ? (
+        <p className="text-[13px] text-bone-mute">No promoted leads match these filters.</p>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {ordered.map((lead) => {
           const done = lead.status !== "pending";
@@ -72,6 +80,7 @@ export function PromotedLeads({ leads }: { leads: ProspectLead[] }) {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

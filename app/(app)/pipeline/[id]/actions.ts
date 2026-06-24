@@ -21,7 +21,9 @@ import { buildDealContext } from "@/lib/deal-context";
 import { linkContact, repointDealLinksToClient } from "@/lib/contact-links";
 import { normalizeDomain } from "@/lib/apollo";
 import { validateIndustry, validateSubIndustry } from "@/lib/industries";
-import type { DealStage, Industry, ArtifactType } from "@/lib/generated/prisma/enums";
+import { requireManagingPartner } from "@/lib/permissions";
+import { commissionDollars, accrualSchedule } from "@/lib/billing/commission";
+import type { DealStage, Industry, ArtifactType, CommissionBase } from "@/lib/generated/prisma/enums";
 
 /**
  * Convert a deal in stage `proposal` or `negotiation` into a signed Client.
@@ -77,6 +79,10 @@ export async function convertDeal(
     orderBy: { version: "desc" },
     include: { lines: { orderBy: { sortOrder: "asc" } } },
   });
+
+  // Deal-source commission rows (if any) → snapshot onto the project + service
+  // contract at convert. Read-only here (outside the tx), like the estimate read.
+  const sourceCommissions = await prisma.dealSourceCommission.findMany({ where: { dealId } });
 
   // Create the Drive folder BEFORE the DB transaction so we have its ID
   // to store on the Client row. If this fails, no DB writes happen.
@@ -208,6 +214,80 @@ export async function convertDeal(
       }
     }
 
+    // ── Deal-source commission carry-forward (2026-06-22) ──
+    // Snapshot each deal commission onto the build project (the one-time build
+    // slice). A subscription with a recurring base also spawns a ServiceContract
+    // that begins on a FUTURE date (the build's target end) with a per-month
+    // accrual ledger. budgetFee is the build base; for a subscription it is also
+    // the canonical monthly fee (apply.ts subscriptionMonthDraft(value, 0)).
+    const spawnsOngoing =
+      projectType === "subscription" &&
+      project.budgetFee > 0 &&
+      sourceCommissions.some((c) => c.base !== "deal_value");
+    const monthlyFee = project.budgetFee;
+    let serviceContractId: string | null = null;
+    if (spawnsOngoing) {
+      const term = sourceCommissions.some((c) => c.base === "total_12mo") ? 12 : 6;
+      const sc = await tx.serviceContract.create({
+        data: {
+          name: `${deal.company} · Ongoing Service`,
+          status: "pending_start",
+          monthlyFee,
+          termMonths: term,
+          startDate: targetEndDate, // FUTURE — begins after the build completes
+          projectId: project.id,
+          clientId: client.id,
+          partnerLeadId: deal.partnerLeadId,
+        },
+      });
+      serviceContractId = sc.id;
+    }
+    let ongoingCommissionsCreated = 0;
+    let accrualRowsCreated = 0;
+    for (const row of sourceCommissions) {
+      const pct = Number(row.pct);
+      const dollars = commissionDollars(pct, row.base, project.budgetFee, monthlyFee);
+      const psc = await tx.projectSourceCommission.create({
+        data: {
+          projectId: project.id,
+          partnerId: row.partnerId,
+          externalName: row.externalName,
+          pct: row.pct,
+          base: row.base,
+          buildAmount: dollars.build,
+          sourceDealCommissionId: row.id,
+          notes: row.notes,
+        },
+      });
+      if (spawnsOngoing && serviceContractId && dollars.coveredMonths > 0) {
+        const occ = await tx.ongoingContractCommission.create({
+          data: {
+            contractId: serviceContractId,
+            projectCommissionId: psc.id,
+            partnerId: row.partnerId,
+            externalName: row.externalName,
+            pct: row.pct,
+            base: row.base,
+            coveredMonths: dollars.coveredMonths,
+            projectedAmount: dollars.recurringTotal,
+          },
+        });
+        ongoingCommissionsCreated++;
+        for (const a of accrualSchedule(pct, monthlyFee, dollars.coveredMonths, targetEndDate)) {
+          await tx.ongoingContractCommissionAccrual.create({
+            data: {
+              commissionId: occ.id,
+              periodIndex: a.periodIndex,
+              periodStart: a.periodStart,
+              amount: a.amount,
+              status: "projected",
+            },
+          });
+          accrualRowsCreated++;
+        }
+      }
+    }
+
     // Carry the discovery questionnaire(s) and EVERY deal doc over to the new
     // client — repoint (don't copy): clientId is added so they show on the
     // client's Deliverables tab, dealId stays for provenance (both FKs
@@ -274,6 +354,10 @@ export async function convertDeal(
         artifactsRepointed: artifactCarry.count,
         contactLinksMoved: linkCarry.moved,
         contactLinksMerged: linkCarry.merged,
+        sourceCommissionsCarried: sourceCommissions.length,
+        serviceContractId,
+        ongoingCommissionsCreated,
+        accrualRowsCreated,
       },
     });
 
@@ -292,9 +376,147 @@ export async function convertDeal(
   revalidatePath("/pipeline");
   revalidatePath("/clients");
   revalidatePath("/projects");
+  revalidatePath("/service-contracts");
   revalidatePath("/dashboard");
 
   return result;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Deal-source commission CRUD (2026-06-22) — up to two payees per deal, each a
+// partner OR an external referrer, each 1-10% of a chosen base. Firm money:
+// managing-partner gated (the deal page hides the editor too, but server actions
+// are directly invocable so the guard is the real boundary). Editable only
+// pre-sign; after convert the commission lives on the project + service contract.
+// ──────────────────────────────────────────────────────────────────────
+
+const VALID_COMMISSION_BASES: CommissionBase[] = ["deal_value", "total_6mo", "total_12mo"];
+
+async function dealCommissionActor() {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  await requireManagingPartner();
+  return partnerActor(session.user.partnerId, session.user.name ?? session.user.email ?? "Unknown");
+}
+
+function validCommissionPct(raw: number): number {
+  const pct = Math.round(Number(raw) * 100) / 100;
+  if (!Number.isFinite(pct) || pct < 1 || pct > 10) throw new Error("Commission % must be between 1 and 10");
+  return pct;
+}
+
+function validCommissionBase(raw?: string): CommissionBase {
+  if (raw && VALID_COMMISSION_BASES.includes(raw as CommissionBase)) return raw as CommissionBase;
+  throw new Error(`Invalid commission base: ${raw}`);
+}
+
+function assertPayee(input: { partnerId?: string | null; externalName?: string | null }) {
+  const hasPartner = !!input.partnerId;
+  const hasExternal = !!input.externalName?.trim();
+  if (hasPartner === hasExternal) throw new Error("Choose a partner or an external name, not both or neither");
+}
+
+export async function addDealSourceCommission(
+  dealId: string,
+  input: { partnerId?: string; externalName?: string; pct: number; base: string; notes?: string },
+): Promise<{ ok: true }> {
+  const actor = await dealCommissionActor();
+  const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, stage: true } });
+  if (!deal) throw new Error("Deal not found");
+  if (deal.stage === "signed") throw new Error("Deal is signed — edit commission on the project");
+  assertPayee(input);
+  const pct = validCommissionPct(input.pct);
+  const base = validCommissionBase(input.base);
+  const count = await prisma.dealSourceCommission.count({ where: { dealId } });
+  if (count >= 2) throw new Error("At most two commission payees per deal");
+  if (input.partnerId) {
+    const p = await prisma.partner.findUnique({ where: { id: input.partnerId }, select: { id: true } });
+    if (!p) throw new Error("Partner not found");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.dealSourceCommission.create({
+      data: {
+        dealId,
+        partnerId: input.partnerId ?? null,
+        externalName: input.partnerId ? null : input.externalName?.trim() ?? null,
+        pct,
+        base,
+        notes: input.notes?.trim() || null,
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.dealSourceCommission",
+      targetType: "DealSourceCommission",
+      targetId: created.id,
+      changes: { dealId, partnerId: input.partnerId ?? null, externalName: input.externalName ?? null, pct, base },
+    });
+  });
+
+  revalidatePath(`/pipeline/${dealId}`);
+  return { ok: true };
+}
+
+export async function updateDealSourceCommission(
+  id: string,
+  input: { partnerId?: string; externalName?: string; pct?: number; base?: string; notes?: string },
+): Promise<{ ok: true }> {
+  const actor = await dealCommissionActor();
+  const row = await prisma.dealSourceCommission.findUnique({
+    where: { id },
+    include: { deal: { select: { id: true, stage: true } } },
+  });
+  if (!row) throw new Error("Commission not found");
+  if (row.deal.stage === "signed") throw new Error("Deal is signed — edit commission on the project");
+
+  const data: { partnerId?: string | null; externalName?: string | null; pct?: number; base?: CommissionBase; notes?: string | null } = {};
+  if (input.partnerId !== undefined || input.externalName !== undefined) {
+    assertPayee({ partnerId: input.partnerId ?? null, externalName: input.externalName ?? null });
+    data.partnerId = input.partnerId ?? null;
+    data.externalName = input.partnerId ? null : input.externalName?.trim() ?? null;
+  }
+  if (input.pct !== undefined) data.pct = validCommissionPct(input.pct);
+  if (input.base !== undefined) data.base = validCommissionBase(input.base);
+  if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.dealSourceCommission.update({ where: { id }, data });
+    await writeAudit(tx, {
+      actor,
+      action: "update.dealSourceCommission",
+      targetType: "DealSourceCommission",
+      targetId: id,
+      changes: { ...data },
+    });
+  });
+
+  revalidatePath(`/pipeline/${row.deal.id}`);
+  return { ok: true };
+}
+
+export async function deleteDealSourceCommission(id: string): Promise<{ ok: true }> {
+  const actor = await dealCommissionActor();
+  const row = await prisma.dealSourceCommission.findUnique({
+    where: { id },
+    include: { deal: { select: { id: true, stage: true } } },
+  });
+  if (!row) throw new Error("Commission not found");
+  if (row.deal.stage === "signed") throw new Error("Deal is signed — edit commission on the project");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.dealSourceCommission.delete({ where: { id } });
+    await writeAudit(tx, {
+      actor,
+      action: "delete.dealSourceCommission",
+      targetType: "DealSourceCommission",
+      targetId: id,
+      changes: { dealId: row.deal.id },
+    });
+  });
+
+  revalidatePath(`/pipeline/${row.deal.id}`);
+  return { ok: true };
 }
 
 // ──────────────────────────────────────────────────────────────────────
