@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-24",
+    tag: "new",
+    title: "Tell us what to build or fix — the new Requests & Fixes board",
+    detail:
+      "There's a new Requests & Fixes tab (under Other in the sidebar). Anyone can file one: a title, a description, which part of the app it's about (pick the tab, then the section inside it if there is one), and a type — bug fix, new feature, improvement, or broken. Items sit on a simple board — Open, In progress, Done, Declined — and anyone can move one along. Use it for anything you'd otherwise just mention in passing.",
+  },
+  {
     date: "2026-06-23",
     tag: "improved",
     title: "Read every email on a client's Timeline, and email threads stop piling up",

@@ -392,6 +392,27 @@ enum RelationshipStrength {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Feature Requests & Fixes — the in-tool feedback board. Any partner files
+// an item AND can move its status (firm decision: lightweight, everyone owns
+// the board — no managing-partner gate). Brand-new enums → plain underscored
+// values, NO @map (Import-Contacts precedent; lib/types.ts mirrors verbatim).
+// ──────────────────────────────────────────────────────────────────────
+
+enum FeatureRequestType {
+  bug // "Bug fix"
+  feature // "New feature"
+  improvement
+  broken // broken / blocking
+}
+
+enum FeatureRequestStatus {
+  open
+  in_progress
+  done
+  declined // won't do / not now
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Partner — firm members. Doubles as the actor reference for owner /
 // lead fields. NextAuth tables will be added when SSO is wired —
 // Partner links via email match at first login.
@@ -440,6 +461,9 @@ model Partner {
 
   // Last time this partner opened What's new — drives the unread dot + bolding.
   whatsNewSeenAt DateTime?
+
+  // Feature Requests & Fixes filed by this partner (the in-tool feedback board).
+  featureRequests FeatureRequest[] @relation("FeatureRequestsCreated")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1164,6 +1188,39 @@ model Task {
   @@index([milestoneId])
   @@index([reviewerId])
   @@index([status])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FeatureRequest — the in-tool "Feature Requests & Fixes" board. Any partner
+// files one (description + which part of the app it's about + a type) and any
+// partner can move its status. No firm-money data → not managing-partner gated.
+// ──────────────────────────────────────────────────────────────────────
+
+model FeatureRequest {
+  id          String               @id @default(cuid())
+  title       String
+  description String
+  type        FeatureRequestType
+  status      FeatureRequestStatus @default(open)
+
+  // Which part of the app this is about. Stored as the area KEY + sub-tab LABEL
+  // from lib/feature-area-taxonomy.ts (a TS constant, NOT a DB enum) so the nav
+  // can change without a migration. areaTab "__app__" = whole app / cross-cutting;
+  // areaSubTab is null when the chosen tab has no sub-tabs.
+  areaTab    String
+  areaSubTab String?
+
+  // Who filed it (captured from the session — not a form field).
+  createdBy   Partner @relation("FeatureRequestsCreated", fields: [createdById], references: [id])
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([areaTab])
+  @@index([createdById])
+  @@index([createdAt])
 }
 
 // ──────────────────────────────────────────────────────────────────────

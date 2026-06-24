@@ -27,6 +27,24 @@ export type Partner = {
   email: string;
 };
 
+// Feature Requests & Fixes — the in-tool feedback board. areaTab/areaSubTab
+// are keys/labels from lib/feature-area-taxonomy.ts (not enums).
+export type FeatureRequestType = "bug" | "feature" | "improvement" | "broken";
+export type FeatureRequestStatus = "open" | "in_progress" | "done" | "declined";
+
+export type FeatureRequest = {
+  id: string;
+  title: string;
+  description: string;
+  type: FeatureRequestType;
+  status: FeatureRequestStatus;
+  areaTab: string;
+  areaSubTab?: string;
+  createdById: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+};
+
 export type Contact = {
   id: string;
   name: string;

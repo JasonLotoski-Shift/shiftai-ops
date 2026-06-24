@@ -35,6 +35,7 @@ import {
   ClipboardCheck,
   Stamp,
   Map as MapIcon,
+  MessageSquarePlus,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -1123,6 +1124,16 @@ const flows: Flow[] = [
       { tone: "review", kind: "Shown", label: "Red if a milestone has no owner · amber if a sub-task doesn't" },
       { tone: "trigger", kind: "You do", label: "Drag milestones + loose tasks across the columns · set sub-task stage inside" },
       { tone: "write", kind: "Saved", label: "Status + assignee + AuditLog · link icon jumps to the tied record" },
+    ],
+  },
+  {
+    icon: <MessageSquarePlus size={16} strokeWidth={1.5} />,
+    title: "File a feature request or fix",
+    blurb: "Spot a bug, want a new feature, or something feels off? File it on the Requests & Fixes board. Anyone can add one, and anyone can move it along.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Requests & Fixes (under Other) → New request · give it a title and description, pick the type (bug fix / new feature / improvement / broken), and which part of the app it's about — the tab, then the section inside it if there is one (or “Whole app” for anything cross-cutting)" },
+      { tone: "review", kind: "Anyone", label: "It lands in the Open column. Filter by area, type, or just yours; open a card to edit it. Anyone on the team can move it along — Open → In progress → Done (or Declined for a won't-do)" },
+      { tone: "write", kind: "Saved", label: "A FeatureRequest row with who filed it + an AuditLog entry on every create, edit, status move, and delete" },
     ],
   },
 ];

@@ -21,6 +21,7 @@ import {
   Target,
   BrainCircuit,
   Sparkles,
+  MessageSquarePlus,
   ChevronDown,
   ChevronRight,
   Repeat,
@@ -67,6 +68,7 @@ const firm: NavItem[] = [
 // Reference + settings.
 const other: NavItem[] = [
   { href: "/whats-new", label: "What's new", icon: Sparkles },
+  { href: "/feature-requests", label: "Requests & Fixes", icon: MessageSquarePlus },
   { href: "/how-it-works", label: "How it works", icon: BookOpen },
   { href: "/architecture", label: "Architecture", icon: Network },
   { href: "/agents", label: "Agents & MCPs", icon: Bot },
