@@ -14,6 +14,13 @@ export function formatDate(d: string | Date) {
   return date.toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" });
 }
 
+// A deal's heading. Uses the custom `name` when set, else falls back to the
+// `company` (the historical "auto-assigned" label). Single fallback point so
+// every heading stays consistent — `company` keeps showing as the company field.
+export function dealLabel(deal: { name?: string | null; company: string }): string {
+  return deal.name?.trim() || deal.company;
+}
+
 export function daysSince(d: string | Date) {
   const date = typeof d === "string" ? new Date(d) : d;
   const ms = Date.now() - date.getTime();

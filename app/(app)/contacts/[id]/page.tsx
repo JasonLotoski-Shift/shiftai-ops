@@ -5,7 +5,7 @@ import { Card, CardBody, Label, Badge, Avatar, EmptyState } from "@/components/u
 import { ContactActions } from "@/components/contact-actions";
 import { prisma } from "@/lib/prisma";
 import { savedAtBySkill } from "@/lib/action-status";
-import { formatCAD, formatDate, daysSince } from "@/lib/format";
+import { formatCAD, formatDate, daysSince, dealLabel } from "@/lib/format";
 import { interactionLabels, industryLabels, stageLabels, leadSourceLabels } from "@/lib/data/seed";
 import {
   ArrowLeft,
@@ -81,6 +81,8 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       partnerLead: true,
       deals: { orderBy: { closeTargetDate: "asc" } },
       interactions: { orderBy: { date: "desc" } },
+      // The person's company hats (employment / roles) — primary first.
+      affiliations: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] },
       // Companies this person connects to — works-there / introduced-us /
       // advises, against deals and clients (the connector-value view).
       links: {
@@ -116,7 +118,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       <Header eyebrow={contact.title} title={contact.name} />
 
       <div className="px-8 py-8 flex flex-col gap-8">
-        <ContactActions contact={contact} partnerName={partner?.name} ranAt={actionRanAt} savedAt={actionSavedAt} />
+        <ContactActions contact={contact} affiliations={contact.affiliations} partnerName={partner?.name} ranAt={actionRanAt} savedAt={actionSavedAt} />
 
         <div className="flex items-center justify-between">
           <Link href="/contacts" className="label hover:text-bone flex items-center gap-2">
@@ -154,6 +156,31 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
               </div>
             </div>
           </Card>
+
+          {contact.affiliations.length > 1 && (
+            <Card>
+              <CardBody className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <h2 className="title-md text-bone">Roles &amp; companies</h2>
+                  <span className="label">{contact.affiliations.length} roles</span>
+                </div>
+                <div className="flex flex-col">
+                  {contact.affiliations.map((aff) => (
+                    <div key={aff.id} className="flex items-center gap-3 px-2 py-3 -mx-2">
+                      <div className="w-7 h-7 bg-graphite/40 flex items-center justify-center shrink-0 text-bone-mute rounded-[var(--radius-sm)]">
+                        <Building2 size={13} strokeWidth={1.5} />
+                      </div>
+                      <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                        <span className="text-[14px] text-bone">{aff.company}</span>
+                        {aff.title && <span className="text-[11px] text-bone-mute">{aff.title}</span>}
+                      </div>
+                      {aff.isPrimary && <Badge tone="gold">Primary</Badge>}
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
 
           {contact.links.length > 0 && (
             <Card>
@@ -310,8 +337,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                       className="grid grid-cols-[1fr_120px_160px_100px] gap-4 px-2 py-3 -mx-2 rounded-[var(--radius-sm)] hover:bg-[var(--color-row-hover)] transition-colors"
                     >
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[14px] text-bone">{deal.company}</span>
-                        <span className="text-[11px] text-bone-mute">Created {formatDate(deal.createdAt)}</span>
+                        <span className="text-[14px] text-bone">{dealLabel(deal)}</span>
+                        <span className="text-[11px] text-bone-mute">
+                          {deal.name ? `${deal.company} · ` : ""}Created {formatDate(deal.createdAt)}
+                        </span>
                       </div>
                       <Badge tone="bone">{stageLabels[deal.stage]}</Badge>
                       <span className="mono text-[13px] text-track-gold tabular-nums">{formatCAD(deal.valueEstimate).replace("CA$", "$")}</span>

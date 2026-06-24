@@ -64,6 +64,7 @@ function AddDealModal({
   // When true, the inline "add a new contact" mini-form is shown instead of
   // the search results.
   const [addingContact, setAddingContact] = useState(false);
+  const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [stage, setStage] = useState("lead");
   const [value, setValue] = useState("");
@@ -127,6 +128,7 @@ function AddDealModal({
       try {
         const { id } = await createDeal({
           contactId,
+          name,
           company,
           stage,
           valueEstimate: Number(value || 0),
@@ -217,6 +219,10 @@ function AddDealModal({
               so the only active submit is the contact mini-form's. */}
           {!addingContact && (
             <>
+          <div className="flex flex-col gap-2">
+            <Label>Deal name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Optional — falls back to the company name" disabled={isPending} />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label>Company</Label>

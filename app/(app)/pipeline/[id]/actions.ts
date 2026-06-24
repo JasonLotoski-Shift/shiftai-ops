@@ -549,6 +549,7 @@ const VALID_STAGES_EDIT: DealStage[] = ["lead", "qualified", "discovery", "discu
 export async function updateDeal(
   dealId: string,
   input: {
+    name?: string | null;
     company?: string;
     valueEstimate?: number;
     stage?: string;
@@ -574,6 +575,7 @@ export async function updateDeal(
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
     select: {
+      name: true,
       company: true,
       valueEstimate: true,
       stage: true,
@@ -596,6 +598,7 @@ export async function updateDeal(
   }
 
   const data: {
+    name?: string | null;
     company?: string;
     valueEstimate?: number;
     stage?: DealStage;
@@ -614,6 +617,16 @@ export async function updateDeal(
     stageEnteredAt?: Date;
   } = {};
   const changes: Record<string, { before: unknown; after: unknown }> = {};
+
+  // Custom deal name — "" clears (falls back to company in the UI).
+  if (input.name !== undefined) {
+    const name = input.name?.trim() || null;
+    if (name && name.length > 200) throw new Error("Deal name is too long (max 200 chars)");
+    if (name !== (deal.name ?? null)) {
+      data.name = name;
+      changes.name = { before: deal.name ?? null, after: name };
+    }
+  }
 
   if (input.company !== undefined) {
     const company = input.company.trim();

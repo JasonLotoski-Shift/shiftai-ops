@@ -81,6 +81,18 @@ export type Contact = {
   importantDates?: string[]; // free text, e.g. "Birthday — March 12"
 };
 
+/* A contact's company hats (employment / roles). The isPrimary row mirrors the
+ * scalar Contact.company/title; the rest are extra affiliations (e.g. CEO of two
+ * companies). Distinct from ContactLink (the buying tie to a Deal/Client). */
+export type ContactAffiliation = {
+  id: string;
+  contactId: string;
+  company: string;
+  title?: string; // role at this company — "CEO", "VP Ops"
+  isPrimary: boolean;
+  sortOrder: number;
+};
+
 /* Contact ↔ Deal/Client link (D40). Two independent dimensions:
  * `relationship` = how the person connects to the company;
  * `role` = their pull in the buying decision (mainly for works_there).
@@ -136,6 +148,7 @@ export type DealStage = "lead" | "qualified" | "discovery" | "discussion" | "pro
 export type Deal = {
   id: string;
   contactId: string;
+  name?: string; // custom deal name; heading falls back to company when unset
   company: string;
   stage: DealStage;
   valueEstimate: number; // in CAD

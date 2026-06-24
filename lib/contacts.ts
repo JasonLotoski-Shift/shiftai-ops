@@ -9,6 +9,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { writeAudit, type Actor } from "@/lib/audit";
+import { seedPrimaryAffiliationTx } from "@/lib/contact-affiliations";
 import type {
   Industry,
   LeadSource,
@@ -102,6 +103,10 @@ export async function createContactTx(
       importantDates: (input.importantDates ?? []).map((d) => d.trim()).filter(Boolean),
     },
   });
+
+  // Seed the contact's primary company hat from the scalar company/title, so the
+  // affiliations list and the scalar agree from row one (the sync invariant).
+  await seedPrimaryAffiliationTx(tx, created.id, created.company, created.title);
 
   await writeAudit(tx, {
     actor,

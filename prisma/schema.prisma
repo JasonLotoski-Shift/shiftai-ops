@@ -517,12 +517,42 @@ model Contact {
   primaryForClients Client[]      @relation("ClientPrimaryContact")
   billingForClients Client[]      @relation("ClientBillingContact")
   links             ContactLink[]
+  // The person's company hats — one row per {company, role}. The isPrimary row
+  // mirrors the scalar `company`/`title` above (the synced source of truth all
+  // legacy reads use); the others are additional affiliations (e.g. CEO of two
+  // companies). Managed via lib/contact-affiliations.ts. Distinct from `links`,
+  // which is the buying relationship to a specific Deal/Client.
+  affiliations      ContactAffiliation[]
   clientLeadProjects Project[]    @relation("ProjectClientLead")
   tasks             Task[]
   actionDrafts      ActionDraft[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ContactAffiliation — a contact's company hats. One row per {company,
+// role}; exactly one isPrimary row, whose company/title mirror the scalar
+// Contact.company/title (kept in sync by lib/contact-affiliations.ts so the
+// 300+ existing reads of the scalar keep working). This models employment /
+// the person's roles, NOT a buying relationship to a Deal/Client (that's
+// ContactLink). Brand-new model → plain underscored fields, no @map.
+// ──────────────────────────────────────────────────────────────────────
+
+model ContactAffiliation {
+  id        String  @id @default(cuid())
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId String
+  company   String
+  title     String? // their role at this company — "CEO", "VP Ops"
+  isPrimary Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contactId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -609,6 +639,11 @@ model ContactLink {
 
 model Deal {
   id                String    @id @default(cuid())
+  // Custom deal name (optional). When set it's the deal's heading; when null the
+  // UI falls back to `company` (the historical "auto-assigned" label). One
+  // fallback point: dealLabel() in lib/format.ts. `company` is the deal's own
+  // company string (defaults from the contact on create, but independent).
+  name              String?
   company           String
   stage             DealStage
   valueEstimate     Int

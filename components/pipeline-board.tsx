@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Label, Badge, Button, Textarea, Input, Avatar } from "@/components/ui";
-import { formatCAD, daysSince, stageAgeTier, type StageAgeTier } from "@/lib/format";
+import { formatCAD, daysSince, stageAgeTier, dealLabel, type StageAgeTier } from "@/lib/format";
 import { stageOrder, stageLabels } from "@/lib/data/seed";
 import { industryLabels, INDUSTRY_VERTICALS } from "@/lib/industries";
 import type { Industry } from "@/lib/types";
@@ -336,11 +336,16 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
                         )}
                       >
                         <div className="flex justify-between items-start mb-2 gap-2">
-                          <span className="flex items-center gap-1.5 text-[13px] text-bone leading-snug">
+                          <span className="flex items-center gap-1.5 text-[13px] text-bone leading-snug min-w-0">
                             {tier !== "fresh" && (
                               <span className={cn("inline-block w-1.5 h-1.5 rounded-full shrink-0", AGE_DOT[tier])} />
                             )}
-                            {deal.company}
+                            <span className="flex flex-col min-w-0">
+                              <span className="truncate">{dealLabel(deal)}</span>
+                              {deal.name && (
+                                <span className="text-[10px] text-bone-mute truncate">{deal.company}</span>
+                              )}
+                            </span>
                           </span>
                           <span className="mono text-[12px] text-track-gold tabular-nums shrink-0">
                             {formatCAD(deal.valueEstimate).replace("CA$", "$").replace(",000", "k")}
@@ -408,7 +413,7 @@ export function PipelineBoard({ initialDeals }: PipelineBoardProps) {
           <Card className="w-full max-w-lg p-6 flex flex-col gap-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <Label gold>{nextTask.deal.company}</Label>
+                <Label gold>{dealLabel(nextTask.deal)}</Label>
                 <h2 className="text-[18px] text-bone">
                   Moved to {stageLabels[nextTask.stage]}. Action the next task?
                 </h2>

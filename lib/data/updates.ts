@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-24",
     tag: "new",
+    title: "Name a deal, and give a contact more than one company",
+    detail:
+      "Two changes. Deals can now have their own name — set it when you add a deal (or under Edit) and it becomes the deal's heading; leave it blank and it still shows the company, like before. The company is the deal's own field and doesn't have to match the contact's. And a contact can now wear more than one hat: open Edit details on a contact and add as many company + role rows as you need, with one marked Primary (the main one used across the tool). Handy for someone who's, say, CEO of two companies.",
+  },
+  {
+    date: "2026-06-24",
+    tag: "new",
     title: "Tell us what to build or fix — the new Requests & Fixes board",
     detail:
       "There's a new Requests & Fixes tab (under Other in the sidebar). Anyone can file one: a title, a description, which part of the app it's about (pick the tab, then the section inside it if there is one), and a type — bug fix, new feature, improvement, or broken. Items sit on a simple board — Open, In progress, Done, Declined — and anyone can move one along. Use it for anything you'd otherwise just mention in passing.",

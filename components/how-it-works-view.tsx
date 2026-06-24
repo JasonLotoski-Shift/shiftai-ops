@@ -151,8 +151,8 @@ const PHASES: Phase[] = [
         icon: <ClipboardCheck size={14} strokeWidth={1.5} />,
         body: (
           <ul className="flex flex-col gap-1.5">
-            <PhaseLi><b>Deal.</b> The opportunity in motion, sitting at the <Mono>discovery</Mono> / <Mono>discussion</Mono> stage on the board.</PhaseLi>
-            <PhaseLi><b>People.</b> Link the contacts on the deal: how they connect, and their pull in the decision.</PhaseLi>
+            <PhaseLi><b>Deal.</b> The opportunity in motion, sitting at the <Mono>discovery</Mono> / <Mono>discussion</Mono> stage on the board. Give it its own name if the company name isn&apos;t enough; leave it blank and it just shows the company.</PhaseLi>
+            <PhaseLi><b>People.</b> Link the contacts on the deal: how they connect, and their pull in the decision. A contact can carry more than one company + role (set under Edit details, one marked Primary) — for someone who wears two hats.</PhaseLi>
             <PhaseLi><b>Artifact.</b> Every saved draft files to the deal&apos;s Drive folder and shows on the deal; HTML documents open rendered in their own tab, and any document can be downloaded straight from the list.</PhaseLi>
             <PhaseLi><b>Interaction.</b> A logged call, the follow-up email, the meeting. The touch history.</PhaseLi>
           </ul>

@@ -28,6 +28,7 @@ function toISODate(d: Date): string {
 export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
   const router = useRouter();
 
+  const [name, setName] = useState(deal.name ?? "");
   const [company, setCompany] = useState(deal.company);
   const [value, setValue] = useState(String(deal.valueEstimate));
   const [stage, setStage] = useState<string>(deal.stage);
@@ -58,6 +59,7 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
     startTransition(async () => {
       try {
         await updateDeal(deal.id, {
+          name,
           company,
           valueEstimate: Number(value),
           stage,
@@ -97,6 +99,16 @@ export function DealEditModal({ deal, onClose }: { deal: Deal; onClose: () => vo
         </div>
 
         <form onSubmit={save} className="px-5 py-5 flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label>Deal name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Optional — falls back to the company name"
+              disabled={isPending}
+            />
+          </div>
+
           <div className="flex flex-col gap-2">
             <Label>Company <span className="text-flag-red">*</span></Label>
             <Input value={company} onChange={(e) => setCompany(e.target.value)} required disabled={isPending} />

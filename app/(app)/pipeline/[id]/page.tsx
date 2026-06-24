@@ -16,7 +16,7 @@ import { DealSourceCommissionEditor } from "@/components/billing/deal-source-com
 import { prisma } from "@/lib/prisma";
 import { currentIsManagingPartner } from "@/lib/permissions";
 import { ranAtBySkill, savedAtBySkill } from "@/lib/action-status";
-import { formatCAD, formatDate, daysSince } from "@/lib/format";
+import { formatCAD, formatDate, daysSince, dealLabel } from "@/lib/format";
 import { stageLabels, industryLabels, leadSourceLabels } from "@/lib/data/seed";
 import { ArrowLeft, Mail, Phone, Sparkles, FileText, ExternalLink, FolderOpen, Download } from "lucide-react";
 
@@ -229,8 +229,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   return (
     <>
       <Header
-        eyebrow={`Pipeline · ${stageLabels[deal.stage]}`}
-        title={deal.company}
+        eyebrow={`Pipeline · ${stageLabels[deal.stage]}${deal.name ? ` · ${deal.company}` : ""}`}
+        title={dealLabel(deal)}
         actions={<DealActions deal={deal} partner={partner} contact={contact} />}
       />
 

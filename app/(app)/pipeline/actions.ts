@@ -96,6 +96,7 @@ const VALID_STAGES: DealStage[] = ["lead", "qualified", "discovery", "discussion
 
 export async function createDeal(input: {
   contactId: string;
+  name?: string;
   company?: string;
   stage?: string;
   valueEstimate: number;
@@ -117,6 +118,8 @@ export async function createDeal(input: {
   if (!contact) throw new Error("Pick a contact for this deal");
 
   const company = input.company?.trim() || contact.company;
+  // Optional custom deal name; null falls back to company in the UI (dealLabel).
+  const name = input.name?.trim() || null;
   const stage = (input.stage && VALID_STAGES.includes(input.stage as DealStage)
     ? (input.stage as DealStage)
     : "lead");
@@ -152,6 +155,7 @@ export async function createDeal(input: {
   const deal = await prisma.$transaction(async (tx) => {
     const created = await tx.deal.create({
       data: {
+        ...(name ? { name } : {}),
         company,
         stage,
         valueEstimate: value,
@@ -182,7 +186,7 @@ export async function createDeal(input: {
       action: "create.deal",
       targetType: "Deal",
       targetId: created.id,
-      changes: { company, stage, valueEstimate: value, industry, subIndustry, contactId: contact.id, domain },
+      changes: { name, company, stage, valueEstimate: value, industry, subIndustry, contactId: contact.id, domain },
     });
 
     await writeActivity(tx, {

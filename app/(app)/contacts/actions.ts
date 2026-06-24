@@ -11,6 +11,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { createContactTx } from "@/lib/contacts";
+import { replaceAffiliationsTx, type AffiliationInput } from "@/lib/contact-affiliations";
 import { resolveContact } from "@/lib/resolve-entity";
 import { validateIndustry, validateSubIndustry } from "@/lib/industries";
 import type {
@@ -207,6 +208,10 @@ export async function createContact(input: CreateContactInput): Promise<CreateCo
 export type UpdateContactInput = {
   title?: string;
   company?: string;
+  // The contact's company hats. When supplied, this is the source of truth for
+  // company/title: the primary row syncs to the scalar, and any title/company
+  // scalar in this same call is ignored (the edit modal sends affiliations).
+  affiliations?: AffiliationInput[];
   email?: string;
   phone?: string;
   notes?: string;
@@ -248,11 +253,17 @@ export async function updateContact(contactId: string, input: UpdateContactInput
 
   const data: Record<string, unknown> = {};
 
-  if (input.title !== undefined) data.title = input.title.trim() || "—";
-  if (input.company !== undefined) {
-    const company = input.company.trim();
-    if (!company) throw new Error("Company is required");
-    data.company = company;
+  // When affiliations are supplied, the primary row governs company/title — so
+  // any scalar title/company in this same call is ignored (replaceAffiliationsTx
+  // writes the scalar). Otherwise the scalar fields edit company/title directly.
+  const hasAffiliations = input.affiliations !== undefined;
+  if (!hasAffiliations) {
+    if (input.title !== undefined) data.title = input.title.trim() || "—";
+    if (input.company !== undefined) {
+      const company = input.company.trim();
+      if (!company) throw new Error("Company is required");
+      data.company = company;
+    }
   }
   if (input.email !== undefined) {
     const email = input.email.trim();
@@ -307,12 +318,26 @@ export async function updateContact(contactId: string, input: UpdateContactInput
     }
   }
 
-  if (Object.keys(data).length === 0) {
+  // Nothing to do only when neither scalar fields nor affiliations changed.
+  if (Object.keys(data).length === 0 && !hasAffiliations) {
     return { id: contactId, updated: 0 };
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.contact.update({ where: { id: contactId }, data });
+    if (Object.keys(data).length > 0) {
+      await tx.contact.update({ where: { id: contactId }, data });
+    }
+
+    // Affiliations replace-all + scalar company/title sync (the primary row).
+    if (input.affiliations !== undefined) {
+      const normalized = await replaceAffiliationsTx(tx, contactId, input.affiliations);
+      const primary = normalized.find((r) => r.isPrimary)!;
+      before.affiliations = { company: existing.company, title: existing.title };
+      after.affiliations = {
+        count: normalized.length,
+        primary: { company: primary.company, title: primary.title },
+      };
+    }
 
     await writeAudit(tx, {
       actor,
@@ -325,5 +350,5 @@ export async function updateContact(contactId: string, input: UpdateContactInput
 
   revalidatePath(`/contacts/${contactId}`);
   revalidatePath("/contacts");
-  return { id: contactId, updated: Object.keys(data).length };
+  return { id: contactId, updated: Object.keys(data).length + (hasAffiliations ? 1 : 0) };
 }

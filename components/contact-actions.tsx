@@ -12,6 +12,8 @@ import {
   Check,
   FileInput,
   Pencil,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { ActionsPanel, type ActionBox } from "@/components/actions-panel";
@@ -34,13 +36,25 @@ type ActionKey = "email" | "log" | "edit" | "search" | "enrich";
 
 const TODAY = "2026-05-19";
 
+// A contact's company hat as the edit modal consumes it (subset of the
+// ContactAffiliation row — the page passes these in primary-first order).
+export type AffiliationRow = {
+  id: string;
+  company: string;
+  title: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+};
+
 export function ContactActions({
   contact,
+  affiliations = [],
   partnerName,
   ranAt = {},
   savedAt = {},
 }: {
   contact: Contact;
+  affiliations?: AffiliationRow[];
   partnerName?: string;
   /** box key → last run date (green "last ran" state). */
   ranAt?: Record<string, Date | undefined>;
@@ -128,7 +142,7 @@ export function ContactActions({
         />
       )}
       {open === "log" && <LogInteractionModal contact={contact} onClose={() => setOpen(null)} />}
-      {open === "edit" && <EditContactModal contact={contact} onClose={() => setOpen(null)} />}
+      {open === "edit" && <EditContactModal contact={contact} affiliations={affiliations} onClose={() => setOpen(null)} />}
       {open === "search" && <EnrichModal contact={contact} mode="web" onClose={() => setOpen(null)} />}
       {open === "enrich" && <EnrichModal contact={contact} mode="ai" onClose={() => setOpen(null)} />}
     </>
@@ -266,9 +280,25 @@ const RELATIONSHIP_STRENGTH_OPTIONS: [string, string][] = [
   ["strong", "Strong"],
 ];
 
-function EditContactModal({ contact, onClose }: { contact: Contact; onClose: () => void }) {
-  const [title, setTitle] = useState(contact.title === "—" ? "" : contact.title);
-  const [company, setCompany] = useState(contact.company);
+// One editable affiliation row in the modal (no id — recreated on save).
+type EditAffiliation = { company: string; title: string; isPrimary: boolean };
+
+function EditContactModal({
+  contact,
+  affiliations,
+  onClose,
+}: {
+  contact: Contact;
+  affiliations: AffiliationRow[];
+  onClose: () => void;
+}) {
+  // Company hats — seed from the affiliations (primary first), or synthesize one
+  // from the scalar company/title for a contact created before this existed.
+  const [affs, setAffs] = useState<EditAffiliation[]>(
+    affiliations.length > 0
+      ? affiliations.map((a) => ({ company: a.company, title: a.title ?? "", isPrimary: a.isPrimary }))
+      : [{ company: contact.company, title: contact.title === "—" ? "" : contact.title, isPrimary: true }],
+  );
   const [email, setEmail] = useState(contact.email);
   const [phone, setPhone] = useState(contact.phone ?? "");
   const [mobilePhone, setMobilePhone] = useState(contact.mobilePhone ?? "");
@@ -286,14 +316,42 @@ function EditContactModal({ contact, onClose }: { contact: Contact; onClose: () 
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // ── Affiliation row helpers ──
+  function patchAff(i: number, patch: Partial<EditAffiliation>) {
+    setAffs((prev) => prev.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
+  }
+  function setPrimary(i: number) {
+    setAffs((prev) => prev.map((a, idx) => ({ ...a, isPrimary: idx === i })));
+  }
+  function addAff() {
+    setAffs((prev) => [...prev, { company: "", title: "", isPrimary: false }]);
+  }
+  function removeAff(i: number) {
+    setAffs((prev) => {
+      const next = prev.filter((_, idx) => idx !== i);
+      // Never leave the list without a primary.
+      if (next.length > 0 && !next.some((a) => a.isPrimary)) next[0].isPrimary = true;
+      return next;
+    });
+  }
+
+  // At least one row needs a company before save is allowed.
+  const hasCompany = affs.some((a) => a.company.trim().length > 0);
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!hasCompany) {
+      setError("Add at least one company");
+      return;
+    }
     startTransition(async () => {
       try {
         await updateContact(contact.id, {
-          title,
-          company,
+          // The affiliations govern company/title (primary row syncs to scalar).
+          affiliations: affs
+            .filter((a) => a.company.trim().length > 0)
+            .map((a) => ({ company: a.company, title: a.title, isPrimary: a.isPrimary })),
           email,
           phone,
           mobilePhone,
@@ -325,15 +383,57 @@ function EditContactModal({ contact, onClose }: { contact: Contact; onClose: () 
         </div>
       ) : (
         <form onSubmit={submit} className="px-5 py-5 flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>Title</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="VP Operations" />
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label>Roles &amp; companies</Label>
+              <button
+                type="button"
+                onClick={addAff}
+                className="flex items-center gap-1 text-[12px] text-track-gold hover:text-track-gold/80"
+              >
+                <Plus size={12} strokeWidth={1.5} /> Add company
+              </button>
             </div>
             <div className="flex flex-col gap-2">
-              <Label>Company</Label>
-              <Input value={company} onChange={(e) => setCompany(e.target.value)} required />
+              {affs.map((aff, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="grid grid-cols-2 gap-2 flex-1">
+                    <Input
+                      value={aff.company}
+                      onChange={(e) => patchAff(i, { company: e.target.value })}
+                      placeholder="Company"
+                    />
+                    <Input
+                      value={aff.title}
+                      onChange={(e) => patchAff(i, { title: e.target.value })}
+                      placeholder="Role — e.g. CEO"
+                    />
+                  </div>
+                  <label className="flex items-center gap-1.5 h-9 px-1 text-[12px] text-bone-dim cursor-pointer shrink-0" title="Primary company — shown as the contact's main company">
+                    <input
+                      type="radio"
+                      name="primary-affiliation"
+                      checked={aff.isPrimary}
+                      onChange={() => setPrimary(i)}
+                      className="accent-track-gold"
+                    />
+                    Primary
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeAff(i)}
+                    disabled={affs.length === 1}
+                    className="h-9 px-1 text-bone-mute hover:text-flag-red disabled:opacity-30 disabled:hover:text-bone-mute shrink-0"
+                    title="Remove"
+                  >
+                    <Trash2 size={14} strokeWidth={1.5} />
+                  </button>
+                </div>
+              ))}
             </div>
+            <span className="text-[11px] text-bone-mute">
+              The primary company is the contact&apos;s main one (used across the tool). Add more for people who wear more than one hat.
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
@@ -400,7 +500,7 @@ function EditContactModal({ contact, onClose }: { contact: Contact; onClose: () 
           )}
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" onClick={onClose} disabled={isPending}>Cancel</Button>
-            <Button variant="primary" size="sm" type="submit" disabled={!company.trim() || !email.trim() || isPending}>
+            <Button variant="primary" size="sm" type="submit" disabled={!hasCompany || !email.trim() || isPending}>
               {isPending ? "Saving…" : "Save changes"}
             </Button>
           </div>
