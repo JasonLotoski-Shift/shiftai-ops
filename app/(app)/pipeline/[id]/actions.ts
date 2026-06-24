@@ -982,9 +982,76 @@ export async function generateProposal(
 // questionnaire in tally-actions.ts covers that step with a live Tally form.)
 // ──────────────────────────────────────────────────────────────────────
 
+// Firm-branded page shell for the discovery-prep HTML doc. The skill emits only
+// the section content (semantic HTML, the contract in skills/discovery-prep/SKILL.md);
+// this wraps it with the Shift palette (Bitumen / Bone / Track Gold), fonts, a header
+// built from server-side data, and the CSS that styles the contract's tags. Keeping
+// the CSS in code (not the prompt) means every prep looks identical and the model never
+// has to reproduce styling. `contentHtml` is trusted (model output, partner-edited,
+// internal-only); `company` is escaped for safety since it can carry stray characters.
+function wrapDiscoveryPrepHtml(company: string, contentHtml: string, dateISO: string): string {
+  const safeCompany = company.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discovery prep — ${safeCompany}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bitumen:#15191C;--bone:#F6F2E9;--bone-2:#ECE5D6;--ink:#1A1A1A;--gold:#C2A24B;--rule:#D8CDB4;--muted:#5C6872;--warn:#A5552F}
+body{font-family:'Inter',sans-serif;color:var(--ink);background:var(--bone);line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:980px;margin:0 auto;padding:0 40px}
+h1,h2,h3{font-family:'EB Garamond',serif;letter-spacing:-0.01em}
+.hero{background:var(--bitumen);color:var(--bone);padding:72px 0 60px}
+.hero .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:0.22em;color:var(--gold);font-weight:500}
+.hero h1{font-size:46px;font-weight:500;line-height:1.08;margin:16px 0 18px;color:var(--bone)}
+.hero .lede{font-size:17px;color:#CDD3D6;max-width:680px;font-weight:300}
+.hero .confidential{margin-top:24px;font-size:12px;color:#8A949B;text-transform:uppercase;letter-spacing:0.14em}
+.doc{padding:48px 0 16px}
+.doc h2{font-size:30px;font-weight:500;color:var(--ink);margin:52px 0 4px;padding-top:28px;border-top:1px solid var(--rule)}
+.doc section:first-of-type h2,.doc>h2:first-child{border-top:none;padding-top:0;margin-top:8px}
+.doc h3{font-size:19px;font-weight:600;margin:24px 0 6px;border-left:3px solid var(--gold);padding-left:14px}
+.doc p{font-size:15.5px;margin:10px 0}
+.doc ul,.doc ol{margin:16px 0 16px 2px;padding-left:0;list-style:none;counter-reset:step}
+.doc ul li{position:relative;padding:10px 0 10px 26px;border-bottom:1px solid var(--rule);font-size:15.5px}
+.doc ul li:before{content:"";position:absolute;left:0;top:18px;width:7px;height:7px;background:var(--gold);border-radius:1px}
+.doc ol li{counter-increment:step;position:relative;padding:11px 0 11px 46px;border-bottom:1px solid var(--rule);font-size:15.5px}
+.doc ol li:before{content:counter(step);position:absolute;left:0;top:10px;width:28px;height:28px;background:var(--bitumen);color:var(--bone);font-family:'EB Garamond',serif;font-size:15px;display:flex;align-items:center;justify-content:center;border-radius:2px}
+.doc strong{font-weight:600}
+.doc blockquote{margin:14px 0;padding:14px 0 14px 18px;border-left:3px solid var(--gold);background:var(--bone-2)}
+.doc blockquote{padding-right:18px}
+.doc blockquote p{font-family:'EB Garamond',serif;font-size:20px;font-style:italic;line-height:1.4;margin:0}
+.doc blockquote p.why{font-family:'Inter',sans-serif;font-size:14px;font-style:normal;color:var(--muted);margin-top:7px}
+.doc .needs{color:var(--warn);font-style:italic;font-weight:500}
+.foot{padding:36px 0 56px;font-size:12px;color:var(--muted)}
+@media(max-width:720px){.wrap{padding:0 24px}.hero h1{font-size:34px}}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+<div class="eyebrow">Discovery Call — Internal Prep</div>
+<h1>${safeCompany}</h1>
+<p class="lede">A tight read before you dial in. Get to know them, gauge where they are on AI, qualify the opportunity, and earn the next call.</p>
+<div class="confidential">Internal only · Do not share with client · ${dateISO}</div>
+</div></header>
+<main class="doc"><div class="wrap">
+${contentHtml}
+</div></main>
+<div class="wrap foot">Shift AI Partners · Internal discovery prep · Not for client distribution</div>
+</body>
+</html>`;
+}
+
 const DEAL_DOCS = {
-  "discovery-prep": { title: "Discovery prep", fileSuffix: "discovery-prep", artifactType: "report", maxTokens: 3000 },
-  "book-meeting": { title: "Meeting note", fileSuffix: "meeting-note", artifactType: "other", maxTokens: 1200 },
+  // discovery-prep emits semantic HTML body content; saveDealDoc wraps it in the
+  // firm-branded page shell (wrapDiscoveryPrepHtml) and files it as a styled .html.
+  // The token budget is higher than the old markdown brief — HTML tags add bulk.
+  "discovery-prep": { title: "Discovery prep", fileSuffix: "discovery-prep", artifactType: "report", maxTokens: 4500, ext: "html", mime: "text/html", wrap: "discovery-prep" as const },
+  "book-meeting": { title: "Meeting note", fileSuffix: "meeting-note", artifactType: "other", maxTokens: 1200, ext: "md", mime: "text/markdown", wrap: null },
 } as const;
 type DealDocSkill = keyof typeof DEAL_DOCS;
 
@@ -1026,6 +1093,8 @@ export async function saveDealDoc(dealId: string, input: { skill: string; body: 
 
   const body = input.body.trimEnd();
   if (!body.trim()) throw new Error(`${cfg.title} body is required`);
+  // Gate runs on the partner-edited body (the raw HTML fragment for discovery-prep)
+  // BEFORE it's wrapped in the page shell — the shell never adds a [NEEDS INPUT] marker.
   assertNoNeedsInput(body, cfg.title.toLowerCase());
 
   const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, company: true } });
@@ -1035,10 +1104,13 @@ export async function saveDealDoc(dealId: string, input: { skill: string; body: 
   const { folderId } = await ensureDealDriveFolder(dealId);
 
   const today = new Date().toISOString().slice(0, 10);
-  const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-${cfg.fileSuffix}.md`;
+  // discovery-prep: wrap the model's HTML fragment in the firm-branded page shell.
+  // Other deal docs save their body verbatim.
+  const fileBody = cfg.wrap === "discovery-prep" ? wrapDiscoveryPrepHtml(deal.company, body, today) : body;
+  const fileName = `${today}-${deal.company.replace(/\s+/g, "-")}-${cfg.fileSuffix}.${cfg.ext}`;
   const res = await drive.files.create({
-    requestBody: { name: fileName, parents: [folderId], mimeType: "text/markdown" },
-    media: { mimeType: "text/markdown", body: Readable.from(body) },
+    requestBody: { name: fileName, parents: [folderId], mimeType: cfg.mime },
+    media: { mimeType: cfg.mime, body: Readable.from(fileBody) },
     fields: "id, webViewLink",
     supportsAllDrives: true,
   });

@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-24",
+    tag: "improved",
+    title: "Discovery prep now saves as a clean, branded web page",
+    detail:
+      "Generate a discovery prep on a deal and it now files to Drive as a styled HTML page in the firm's colours, not a plain markdown file — open it in a browser and it reads like a proper brief. Same content and the same [NEEDS INPUT] safety check; just a better-looking deliverable. One thing to know: while you're editing the draft in the tool you'll see the underlying HTML, and the styling shows up in the saved file.",
+  },
+  {
+    date: "2026-06-24",
     tag: "new",
     title: "Name a deal, and give a contact more than one company",
     detail:

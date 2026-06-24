@@ -11,7 +11,9 @@ The firm's voice, identity, and hard rules are in the firm context above. Apply 
 
 ## What to produce
 
-Markdown, internal-facing, scannable in under a minute. These sections, in this order, nothing else:
+**HTML body content**, internal-facing, scannable in under a minute. Output **only** the body content as clean, semantic HTML — the ops tool wraps it in the firm's branded page shell (fonts, header with company + date, styling) automatically. **Do not** write `<html>`, `<head>`, `<style>`, a `<title>`, or a page header / hero / `<h1>` — those are added for you. Start straight at the first section's `<h2>`.
+
+These sections, in this order, nothing else:
 
 1. **Quick read** — 3–5 bullets: who this person is and the company, the deal value/stage, where the lead came from, last touch. Just the load-bearing facts from context.
 2. **Agenda (flow, not clock)** — the *shape* of the call as an ordered flow, one line each: open + build rapport → **let them describe their world first** (operations, team, what's painful) → dig into the pain (cost, time, where it hurts) → where systems + AI could fit → how they decide / who else is involved → close on a concrete next step. No timings.
@@ -20,7 +22,18 @@ Markdown, internal-facing, scannable in under a minute. These sections, in this 
 5. **Win the next call** — what a good outcome looks like and the close, three parts: **name the playbook out loud** (discovery → discussion doc with no pricing → proposal), **give the homework** (ask them to list pain points as plain user stories — "as a dispatcher I don't want…" — not solutions; suggest a short internal team chat to build the list), and **book the next meeting before hanging up** — a date on the calendar, not "in a couple weeks."
 6. **Watch-outs** — 2–3 one-line reminders picked from the field notes for THIS prospect (e.g. "early on AI — keep the altitude low, one step at a time" or "already price-anchored — don't reopen the number").
 
-Return only the brief — no preamble.
+### HTML formatting contract
+
+Use only these tags and classes — the shell's CSS styles them. No inline `style` attributes, no `<style>` blocks, no classes beyond the two named here.
+
+- Each section opens with an `<h2>` naming it (e.g. `<h2>Quick read</h2>`).
+- Bullets: `<ul><li>…</li></ul>`. The agenda flow (section 2): `<ol><li>…</li></ol>`.
+- Sub-labels (e.g. the three parts of "Win the next call", or a watch-out card title): `<h3>…</h3>`.
+- Prose: `<p>…</p>`. Emphasis: `<strong>…</strong>` for the load-bearing phrase, `<em>…</em>` sparingly.
+- Each qualifying question (section 3): a `<blockquote>` holding the question, optionally followed by `<p class="why">one-line why</p>` inside the same blockquote.
+- Any missing fact: `<span class="needs">[NEEDS INPUT: what's needed]</span>` — keep the exact `[NEEDS INPUT` text so the save gate catches it.
+
+Return only the HTML body — no markdown, no ```html fences, no preamble.
 
 ## Field notes — what real discovery calls taught us (reviewed 2026-06-09)
 
@@ -52,4 +65,4 @@ Distilled from transcripts of three real Shift calls. They advanced — but none
 
 ## When input is missing — never invent
 
-Don't fabricate facts about the person or company. If a section needs a specific the context doesn't have, write `[NEEDS INPUT: <what's needed>]` in place and keep going. The server-side gate blocks saving anything still flagged, so leaving the marker is correct.
+Don't fabricate facts about the person or company. If a section needs a specific the context doesn't have, write `<span class="needs">[NEEDS INPUT: <what's needed>]</span>` in place and keep going. The server-side gate blocks saving anything still flagged (it matches the `[NEEDS INPUT` text), so leaving the marker is correct.
