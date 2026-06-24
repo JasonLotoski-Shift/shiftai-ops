@@ -359,7 +359,7 @@ export type Activity = {
 export type Task = {
   id: string;
   title: string;
-  due: string; // ISO date
+  due: string | null; // ISO date, or null = no due date
   priority: "high" | "medium" | "low";
   ownerId: string; // partner.id — the owner IS the assignee
   assignedById?: string; // partner.id who assigned it (null = self/firm task)

@@ -1,6 +1,6 @@
 # Skill — Ingest email (client email → proposed records)
 
-Read a single client email (one message from a labeled thread) and **extract** it into structured records the partner will review before anything is written. You propose; the partner approves. Email is full of soft signals — interest implied, dates floated, asks half-made — so nothing here is treated as fact until a human signs off.
+Read a client email — **one message, or a whole thread** (several messages, oldest→newest, separated by `---` markers, when a reply lands on a thread already in review) — and **extract** it into structured records the partner will review before anything is written. You propose; the partner approves. Email is full of soft signals — interest implied, dates floated, asks half-made — so nothing here is treated as fact until a human signs off.
 
 The firm's voice, identity, and hard rules are in the firm context above. Apply them — especially the no-hallucination rule.
 
@@ -36,7 +36,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 ## Hard rules for this task
 
 - **Extract, don't invent.** Every item must trace to something actually written in the email. No fabricated numbers, dates, names, or commitments. A floated figure goes in `keyPoints` as a soft claim ("Mentioned a ~$X budget — unconfirmed"), never as a committed fact or a `due` date.
-- **Quote-light, signature-blind.** Ignore quoted prior messages, email signatures, disclaimers, and unsubscribe footers — extract from the new content of *this* message only.
+- **Quote-light, signature-blind.** Ignore the quoted reply-chain that email clients append *inside* a single message (the `>`-prefixed copy of earlier mail), plus signatures, disclaimers, and unsubscribe footers. **When the intake is a whole thread** (messages separated by `---` markers), DO read every message and summarize the conversation as a whole — extract action items from its latest state, and don't re-raise an ask that a later message already resolved.
 - **Title action items as a short noun phrase — the thing, not a sentence.** Name what it is so it's scannable in a list. NO leading verb, NO due date in the title (the date has its own field), NO parentheticals, NO dashes/em-dashes as separators. The who / why / by-when go in `context`. Good: `Revised SOW`, `Integration access`. Bad: `Send the revised SOW to Heather by Fri`. If it isn't tied to a client/project, keep the entity in the phrase so it stands alone: `Granite Bay re-engagement`.
 - **Dates only if stated.** Use a `due` date only when the email names one. Otherwise `null`.
 - **Don't guess direction or identity.** The system tells you who sent it and who it matched. Don't infer a different sender or invent a contact.

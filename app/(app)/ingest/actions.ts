@@ -304,6 +304,9 @@ export async function approveProposal(
       const deal = await tx.deal.findUnique({ where: { id: dealId }, select: { contactId: true } });
       if (deal?.contactId) interactionContactIds.add(deal.contactId);
     }
+    // Write the full body to the DB ONCE (the first interaction), scoped to the
+    // client/deal so the client/deal timeline can show the original words.
+    let commsBodyWritten = false;
     for (const cid of interactionContactIds) {
       const contact = await tx.contact.findUnique({ where: { id: cid }, select: { lastTouchAt: true } });
       if (!contact) continue;
@@ -313,13 +316,40 @@ export async function approveProposal(
           type: interactionType,
           date: proposal.meetingDate,
           summary,
+          body: commsBodyWritten ? null : proposal.transcript,
+          subject: proposal.title,
+          threadId: proposal.threadId,
+          clientId: clientId ?? null,
+          dealId: dealId ?? null,
           loggedBy: "AGENT · CLAUDE",
           channel: isEmail ? "gmail" : null,
         },
       });
+      commsBodyWritten = true;
       if (proposal.meetingDate > contact.lastTouchAt) {
         await tx.contact.update({ where: { id: cid }, data: { lastTouchAt: proposal.meetingDate } });
       }
+    }
+
+    // Auto-ingested mail that matched NO contact still lands — one contact-less
+    // comms row scoped by client/deal, so it shows on the client/deal timeline
+    // instead of being silently dropped (the old behavior).
+    if (interactionContactIds.size === 0 && (clientId || dealId)) {
+      await tx.interaction.create({
+        data: {
+          contactId: null,
+          type: interactionType,
+          date: proposal.meetingDate,
+          summary,
+          body: proposal.transcript,
+          subject: proposal.title,
+          threadId: proposal.threadId,
+          clientId: clientId ?? null,
+          dealId: dealId ?? null,
+          loggedBy: "AGENT · CLAUDE",
+          channel: isEmail ? "gmail" : null,
+        },
+      });
     }
 
     // 3. Tasks from approved action items. Skip any that duplicate an open task
@@ -332,12 +362,12 @@ export async function approveProposal(
         tasksSkipped.push({ title: a.title.trim(), existingId: dup.id });
         continue;
       }
-      const due = new Date(a.due);
+      const d = a.due ? new Date(a.due) : null;
       await tx.task.create({
         data: {
           title: a.title.trim(),
           priority: "medium",
-          due: Number.isNaN(due.getTime()) ? proposal.meetingDate : due,
+          due: d && !Number.isNaN(d.getTime()) ? d : null, // no stated date → no date (not the meeting date)
           context: a.context?.trim() || `From ${isEmail ? "email" : "meeting"}: ${proposal.title}`,
           ownerId: a.ownerId,
           assignedById: session.user.partnerId,

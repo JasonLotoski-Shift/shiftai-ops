@@ -16,6 +16,7 @@
 // wrapper that needs auth() lives in app/(app)/ingest/composer-actions.ts.
 
 import { prisma } from "@/lib/prisma";
+import { normalizeDomain } from "@/lib/apollo";
 import { findSimilarOpenTasks, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
 import { isUnifiedProposal } from "@/lib/ingest/types";
 import type {
@@ -75,12 +76,61 @@ function textHasPhrase(lowerHaystack: string, phrase: string): boolean {
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(lowerHaystack);
 }
 
+// Personal / free email providers — a shared domain here says nothing about
+// which company a person belongs to, so the domain pass skips these.
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
+  "yahoo.com", "yahoo.co.uk", "icloud.com", "me.com", "mac.com", "aol.com",
+  "proton.me", "protonmail.com", "msn.com", "gmx.com", "ymail.com",
+]);
+
+// What we need from a matched contact to surface the engagement(s) they belong
+// to: their primary client, their deals, AND every company they're linked to via
+// ContactLink (committee / intro-path members, not just the designated primary).
+const CONTACT_MATCH_SELECT = {
+  id: true,
+  name: true,
+  company: true,
+  primaryForClients: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 3 },
+  deals: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 3 },
+  links: {
+    select: {
+      client: { select: { id: true, company: true } },
+      deal: { select: { id: true, company: true } },
+    },
+    take: 10,
+  },
+} as const;
+
+type MatchedContact = {
+  id: string;
+  name: string;
+  company: string;
+  primaryForClients: { id: string; company: string }[];
+  deals: { id: string; company: string }[];
+  links: {
+    client: { id: string; company: string } | null;
+    deal: { id: string; company: string } | null;
+  }[];
+};
+
+/** Bare, normalized email domain — "" for free providers or a malformed address. */
+function companyDomainOf(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at === -1) return "";
+  const dom = normalizeDomain(email.slice(at + 1));
+  return dom && !FREE_EMAIL_DOMAINS.has(dom) ? dom : "";
+}
+
 /**
- * Detect candidate target records named in a body of text. Two complementary
- * passes: (a) emails scraped from the text → Contact → its Client/Deal (high
- * precision); (b) company / contact NAMES mentioned → Client / Deal / Contact.
- * Results are deduped; clients are surfaced first so a single matched client is
- * the natural focus. No auth — the caller (a server action) gates access.
+ * Detect candidate target records named in a body of text. Complementary passes:
+ * (a) emails scraped from the text → Contact → its client(s)/deal(s) incl.
+ * ContactLink committee; (a2) the email DOMAIN → Client/Deal/Contact (catches
+ * unknown senders + multi-party threads where the exact address isn't on file);
+ * (b) company / contact NAMES mentioned → Client / Deal / Contact; (c) the sole
+ * active project of a matched client. Results are deduped; clients are surfaced
+ * first so a single matched client is the natural focus. Suggestions only — the
+ * caller (a server action) gates access, and nothing auto-files.
  */
 export async function resolveTargetsFromText(input: {
   content: string;
@@ -98,28 +148,46 @@ export async function resolveTargetsFromText(input: {
   const add = (t: DetectedTarget) => {
     if (!byKind[t.kind].has(t.id)) byKind[t.kind].set(t.id, t);
   };
+  // Surface the engagement(s) a matched contact belongs to: primary client first,
+  // then linked clients, then deals (primary-led ordering within each kind).
+  const addContactCompanies = (c: MatchedContact) => {
+    for (const cl of c.primaryForClients) add({ kind: "client", id: cl.id, label: cl.company });
+    for (const l of c.links) if (l.client) add({ kind: "client", id: l.client.id, label: l.client.company });
+    for (const d of c.deals) add({ kind: "deal", id: d.id, label: `${d.company} (deal)` });
+    for (const l of c.links) if (l.deal) add({ kind: "deal", id: l.deal.id, label: `${l.deal.company} (deal)` });
+  };
 
-  // ── Pass (a): emails → contacts → their client/deal ──
+  // ── Pass (a): emails → contacts → their client(s)/deal(s) ──
   const explicit = emailsFromText(input.emailBlock ?? "");
   const emails = explicit.length ? explicit : emailsFromText(input.content ?? "");
   let emailContacts = 0;
   if (emails.length) {
     const matched = await prisma.contact.findMany({
       where: { email: { in: emails, mode: "insensitive" } },
-      select: {
-        id: true,
-        name: true,
-        company: true,
-        primaryForClients: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 1 },
-        deals: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 1 },
-      },
+      select: CONTACT_MATCH_SELECT,
     });
     emailContacts = matched.length;
     for (const c of matched) {
       add({ kind: "contact", id: c.id, label: `${c.name} · ${c.company}` });
-      const client = c.primaryForClients[0];
-      if (client) add({ kind: "client", id: client.id, label: client.company });
-      else if (c.deals[0]) add({ kind: "deal", id: c.deals[0].id, label: `${c.deals[0].company} (deal)` });
+      addContactCompanies(c);
+    }
+  }
+
+  // ── Pass (a2): email DOMAIN → client / deal / contact. High-precision and
+  // survives unknown individuals — bob@acme.com whose exact address isn't on file
+  // still resolves to the Acme deal if acme.com is on it. Free-mail skipped. ──
+  const domains = [...new Set(emails.map(companyDomainOf).filter(Boolean))];
+  if (domains.length) {
+    const [dClients, dDeals, dContacts] = await Promise.all([
+      prisma.client.findMany({ where: { domain: { in: domains } }, select: { id: true, company: true } }),
+      prisma.deal.findMany({ where: { domain: { in: domains } }, select: { id: true, company: true } }),
+      prisma.contact.findMany({ where: { domain: { in: domains } }, select: CONTACT_MATCH_SELECT, take: 20 }),
+    ]);
+    for (const cl of dClients) add({ kind: "client", id: cl.id, label: cl.company });
+    for (const d of dDeals) add({ kind: "deal", id: d.id, label: `${d.company} (deal)` });
+    for (const c of dContacts) {
+      add({ kind: "contact", id: c.id, label: `${c.name} · ${c.company}` });
+      addContactCompanies(c);
     }
   }
 
@@ -132,15 +200,7 @@ export async function resolveTargetsFromText(input: {
     const [clients, deals, contacts] = await Promise.all([
       prisma.client.findMany({ select: { id: true, company: true } }),
       prisma.deal.findMany({ select: { id: true, company: true } }),
-      prisma.contact.findMany({
-        select: {
-          id: true,
-          name: true,
-          company: true,
-          primaryForClients: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 1 },
-          deals: { select: { id: true, company: true }, orderBy: { updatedAt: "desc" }, take: 1 },
-        },
-      }),
+      prisma.contact.findMany({ select: CONTACT_MATCH_SELECT }),
     ]);
 
     const companyHit = (company: string) =>
@@ -158,18 +218,43 @@ export async function resolveTargetsFromText(input: {
       const nameLc = c.name.trim().toLowerCase();
       if (nameLc.length >= 4 && textHasPhrase(haystack, nameLc)) {
         add({ kind: "contact", id: c.id, label: `${c.name} · ${c.company}` });
-        const client = c.primaryForClients[0];
-        if (client) add({ kind: "client", id: client.id, label: client.company });
-        else if (c.deals[0]) add({ kind: "deal", id: c.deals[0].id, label: `${c.deals[0].company} (deal)` });
+        addContactCompanies(c);
       }
     }
   }
 
-  // Order: clients → deals → contacts. A matched client leads (the focus).
-  const targets = [...byKind.client.values(), ...byKind.deal.values(), ...byKind.contact.values()];
+  // ── Pass (c): project — once a client is resolved, attach its SOLE active
+  // project as a suggestion. A no-guess heuristic: clients with several active
+  // projects stay a manual pick. Closes the gap where projects never resolved. ──
+  const clientIds = [...byKind.client.keys()];
+  if (clientIds.length) {
+    const projects = await prisma.project.findMany({
+      where: { clientId: { in: clientIds }, status: { not: "closed" } },
+      select: { id: true, name: true, clientId: true },
+    });
+    const perClient = new Map<string, { id: string; name: string }[]>();
+    for (const p of projects) {
+      if (!p.clientId) continue;
+      const arr = perClient.get(p.clientId) ?? [];
+      arr.push({ id: p.id, name: p.name });
+      perClient.set(p.clientId, arr);
+    }
+    for (const arr of perClient.values()) {
+      if (arr.length === 1) add({ kind: "project", id: arr[0].id, label: arr[0].name });
+    }
+  }
+
+  // Order: clients → projects → deals → contacts. A matched client leads (focus);
+  // its sole project rides just behind so milestone/task scope can default to it.
+  const targets = [
+    ...byKind.client.values(),
+    ...byKind.project.values(),
+    ...byKind.deal.values(),
+    ...byKind.contact.values(),
+  ];
 
   // Ambiguous = the partner must choose THE focus: more than one client matched,
-  // or more than one participant came in via email.
+  // or more than one participant came in via a known email.
   const ambiguous = byKind.client.size > 1 || emailContacts > 1;
 
   return { targets, ambiguous };
@@ -209,6 +294,7 @@ export async function computeCrossReference(
   const suggestedClientId = firstOf("client");
   const suggestedDealId = firstOf("deal");
   const suggestedContactId = firstOf("contact");
+  const suggestedProjectId = firstOf("project");
 
   const taskOverlaps: CrossRefTaskOverlap[] = [];
   const milestoneOverlaps: CrossRefMilestoneOverlap[] = [];
@@ -285,6 +371,7 @@ export async function computeCrossReference(
     suggestedContactId,
     suggestedClientId,
     suggestedDealId,
+    suggestedProjectId,
     taskOverlaps,
     milestoneOverlaps,
   };

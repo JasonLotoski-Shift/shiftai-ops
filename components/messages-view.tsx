@@ -451,7 +451,11 @@ function MessageRow({
           <div className="min-w-0 flex-1">
             <p className={cn("text-[13px]", m.task.done ? "text-bone-mute line-through" : "text-bone")}>{m.task.title}</p>
             <p className="text-[11px] text-bone-mute">
-              {m.body} · due {new Date(m.task.due).toLocaleDateString("en-CA", { month: "short", day: "numeric" })} · {m.task.priority}
+              {m.body}
+              {m.task.due
+                ? ` · due ${new Date(m.task.due).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}`
+                : ""}{" "}
+              · {m.task.priority}
             </p>
           </div>
           {m.link && <ArrowUpRight size={14} strokeWidth={1.5} className="shrink-0 text-bone-mute" />}

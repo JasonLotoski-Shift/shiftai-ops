@@ -229,18 +229,18 @@ const tools: Tool[] = [
         title: { type: "string" },
         ownerId: { type: "string", description: "Partner id (assignee)" },
         priority: { type: "string", description: "high|medium|low" },
-        due: { type: "string", description: "YYYY-MM-DD" },
+        due: { type: "string", description: "YYYY-MM-DD (optional — omit for no due date)" },
         context: { type: "string" },
         clientId: { type: "string" },
         projectId: { type: "string" },
       },
-      required: ["title", "ownerId", "due"],
+      required: ["title", "ownerId"],
     },
     handler: async (a) => {
       const owner = await prisma.partner.findUnique({ where: { id: str(a.ownerId) }, select: { id: true, name: true } });
       if (!owner) throw new Error("Owner (partner) not found");
-      const due = new Date(str(a.due)!);
-      if (Number.isNaN(due.getTime())) throw new Error("Invalid due date");
+      const due = a.due ? new Date(str(a.due)!) : null;
+      if (due && Number.isNaN(due.getTime())) throw new Error("Invalid due date");
       // Dedupe: an agent has no human to confirm, so skip an EXACT open-task twin
       // in the same scope and return the existing id rather than creating a copy.
       const existingTask = await findDuplicateOpenTask(prisma, {

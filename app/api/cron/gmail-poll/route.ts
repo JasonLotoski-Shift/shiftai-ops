@@ -23,6 +23,7 @@ import {
   fetchAttachment,
 } from "@/lib/gmail";
 import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract-file";
+import { resolveTargetsFromText } from "@/lib/ingest/cross-reference";
 import type { ExtractedProposal } from "@/app/(app)/ingest/actions";
 
 export const dynamic = "force-dynamic";
@@ -87,31 +88,38 @@ function parseProposal(raw: string): ExtractedProposal {
   };
 }
 
-async function matchByEmails(emails: string[]): Promise<{
+// Resolve the engagement an email belongs to via the SHARED matcher
+// (exact email → company domain → ContactLink committee → company/contact names
+// → the client's sole active project). The old exact-one-contact gate dropped
+// every multi-party thread to unassigned; this ranks all signals and pre-fills
+// the proposal with the best guess — a SUGGESTION the partner confirms at
+// approval (propose-never-auto-write; nothing is written to a client here).
+async function matchEmail(input: { emails: string[]; body: string; subject: string }): Promise<{
   contactId: string | null;
   clientId: string | null;
   dealId: string | null;
+  projectId: string | null;
   contactLabel: string | null;
 }> {
-  if (!emails.length) return { contactId: null, clientId: null, dealId: null, contactLabel: null };
-  const contacts = await prisma.contact.findMany({
-    where: { email: { in: emails, mode: "insensitive" } },
-    select: {
-      id: true,
-      name: true,
-      company: true,
-      primaryForClients: { select: { id: true }, take: 1, orderBy: { updatedAt: "desc" } },
-      deals: { select: { id: true }, take: 1, orderBy: { updatedAt: "desc" } },
-    },
+  const empty = { contactId: null, clientId: null, dealId: null, projectId: null, contactLabel: null };
+  if (!input.emails.length && !input.body.trim()) return empty;
+  const { targets } = await resolveTargetsFromText({
+    content: input.body,
+    emailBlock: input.emails.join("\n"),
+    title: input.subject,
   });
-  if (contacts.length !== 1) return { contactId: null, clientId: null, dealId: null, contactLabel: null }; // 0 or ambiguous → unassigned
-  const c = contacts[0];
-  const clientId = c.primaryForClients[0]?.id ?? null;
+  const firstOf = (k: "client" | "deal" | "contact" | "project") => targets.find((t) => t.kind === k);
+  const client = firstOf("client");
+  const deal = firstOf("deal");
+  const contact = firstOf("contact");
+  const project = firstOf("project");
   return {
-    contactId: c.id,
-    clientId,
-    dealId: clientId ? null : c.deals[0]?.id ?? null,
-    contactLabel: `${c.name}${c.company ? ` · ${c.company}` : ""}`,
+    contactId: contact?.id ?? null,
+    clientId: client?.id ?? null,
+    // Prefer a client; a deal only stands in when no client matched (old behavior).
+    dealId: client ? null : deal?.id ?? null,
+    projectId: client ? project?.id ?? null : null,
+    contactLabel: contact?.label ?? client?.label ?? deal?.label ?? null,
   };
 }
 
@@ -138,6 +146,7 @@ export async function GET(req: Request) {
 
   for (const conn of conns) {
     let created = 0;
+    let appended = 0;
     try {
       const gmail = gmailForRefreshToken(decryptSecret(conn.refreshToken));
       const labelId = await resolveLabelId(gmail, label);
@@ -162,6 +171,9 @@ export async function GET(req: Request) {
       }
 
       for (const id of ids) {
+        // The per-MESSAGE externalId still guards the FIRST message of a thread
+        // (and standalone mail) from a re-poll. Appended replies are guarded by
+        // the messageIds[] check below — their id is never an externalId.
         const exists = await prisma.ingestProposal.findUnique({ where: { externalId: id }, select: { id: true } });
         if (exists) continue;
 
@@ -171,7 +183,32 @@ export async function GET(req: Request) {
         if (external.length === 0) continue; // internal-only — don't ingest
 
         const direction = isInternal(email.from) ? "sent" : "received";
-        const match = await matchByEmails(external);
+        const threadId = email.threadId || null;
+
+        // Thread-collapse: if this thread already has a PENDING proposal, this
+        // reply appends to it (one growing card) instead of spawning a new one.
+        const pendingThread = threadId
+          ? await prisma.ingestProposal.findFirst({
+              where: { source: "gmail", threadId, status: "pending" },
+              select: {
+                id: true,
+                transcript: true,
+                proposal: true,
+                matchedContactId: true,
+                matchedClientId: true,
+                matchedDealId: true,
+                matchedProjectId: true,
+              },
+            })
+          : null;
+
+        // Idempotency for an APPENDED message (its id isn't the externalId): skip
+        // if we've already folded it into this thread (survives a mid-poll retry).
+        const seenIds: string[] =
+          pendingThread && Array.isArray((pendingThread.proposal as { messageIds?: unknown }).messageIds)
+            ? ((pendingThread.proposal as { messageIds: string[] }).messageIds)
+            : [];
+        if (pendingThread && seenIds.includes(id)) continue;
 
         // Read supported attachments (capped: <=5 files, ~15MB total). Text files
         // are parsed into the body; images are read by Claude vision. Per-attachment
@@ -208,23 +245,68 @@ export async function GET(req: Request) {
         }
         if (attachNotes.length) fullBody += `\n\n## Attachment notes\n${attachNotes.join("\n")}`;
 
-        const ctx = [
-          "## Email",
-          `Subject: ${email.subject || "(no subject)"}`,
-          `From: ${email.from}`,
-          `To: ${email.to.join(", ") || "—"}`,
-          `Date: ${email.date.toISOString().slice(0, 10)}`,
-          `Direction: ${direction === "sent" ? "We sent this" : "We received this"}`,
-          "",
-          "## Matched contact",
-          match.contactLabel ?? "No known contact matched — unassigned.",
-        ].join("\n");
+        const match = await matchEmail({ emails: external, body: email.body, subject: email.subject });
+        const buildCtx = (isThread: boolean) =>
+          [
+            "## Email",
+            `Subject: ${email.subject || "(no subject)"}`,
+            `From: ${email.from}`,
+            `To: ${email.to.join(", ") || "—"}`,
+            `Date: ${email.date.toISOString().slice(0, 10)}`,
+            `Direction: ${direction === "sent" ? "We sent this" : "We received this"}`,
+            isThread ? "This is a REPLY on an existing thread — the intake is the WHOLE conversation, oldest first. Summarize the thread as a whole and extract action items from its latest state." : "",
+            "",
+            "## Matched contact",
+            match.contactLabel ?? "No known contact matched — unassigned.",
+          ]
+            .filter(Boolean)
+            .join("\n");
+
+        if (pendingThread) {
+          // ── Append to the thread + re-extract over the whole conversation ──
+          const combined = `${pendingThread.transcript}\n\n---\n\n## Reply · ${email.date.toISOString().slice(0, 10)} · from ${email.from}\n${fullBody}`;
+          let proposal: ExtractedProposal;
+          try {
+            const rawOut = await generate({
+              skill: "ingest-email",
+              context: buildCtx(true),
+              intake: `## Email thread (oldest first)\n${combined}`,
+              maxTokens: 2000,
+              images: emailImages.length ? emailImages : undefined,
+            });
+            proposal = parseProposal(rawOut);
+          } catch {
+            // Keep the prior extraction on a model failure — never lose the thread.
+            proposal = parseProposal(JSON.stringify(pendingThread.proposal));
+          }
+          await prisma.ingestProposal.update({
+            where: { id: pendingThread.id },
+            data: {
+              transcript: combined,
+              proposal: { ...proposal, direction, messageIds: [...seenIds, id] } as object,
+              // Never clobber a partner-confirmed match — only fill what's empty.
+              matchedContactId: pendingThread.matchedContactId ?? match.contactId,
+              matchedClientId: pendingThread.matchedClientId ?? match.clientId,
+              matchedDealId: pendingThread.matchedDealId ?? match.dealId,
+              matchedProjectId: pendingThread.matchedProjectId ?? match.projectId,
+            },
+          });
+          appended++;
+          continue;
+        }
+
+        // ── New thread (or no thread). Flag a reply that lands on an ALREADY-FILED
+        // thread so the review card can offer a one-click "append to the record". ──
+        const priorAnswered = threadId
+          ? (await prisma.interaction.findFirst({ where: { threadId }, select: { id: true } })) ??
+            (await prisma.ingestProposal.findFirst({ where: { source: "gmail", threadId, status: "approved" }, select: { id: true } }))
+          : null;
 
         let proposal: ExtractedProposal;
         try {
           const rawOut = await generate({
             skill: "ingest-email",
-            context: ctx,
+            context: buildCtx(false),
             intake: `## Email body\n${fullBody}`,
             maxTokens: 2000,
             images: emailImages.length ? emailImages : undefined,
@@ -238,15 +320,17 @@ export async function GET(req: Request) {
           data: {
             source: "gmail",
             externalId: id,
+            threadId,
             title: email.subject || "(no subject)",
             meetingDate: email.date,
             transcript: fullBody,
-            proposal: { ...proposal, direction } as object,
+            proposal: { ...proposal, direction, messageIds: [id], ...(priorAnswered ? { replyToThread: true } : {}) } as object,
             ingestType: "email",
             status: "pending",
             matchedContactId: match.contactId,
             matchedClientId: match.clientId,
             matchedDealId: match.dealId,
+            matchedProjectId: match.projectId,
             createdBy: "AGENT · CLAUDE",
           },
         });
@@ -267,16 +351,20 @@ export async function GET(req: Request) {
         await prisma.partnerGmailAuth.update({ where: { partnerId: conn.partnerId }, data: { lastError: null } }).catch(() => {});
       }
 
-      if (created > 0) {
+      if (created > 0 || appended > 0) {
+        const parts = [
+          created > 0 ? `${created} new email${created > 1 ? "s" : ""}` : null,
+          appended > 0 ? `${appended} thread update${appended > 1 ? "s" : ""}` : null,
+        ].filter(Boolean);
         await notifyPartner(
           prisma,
           conn.partnerId,
           "approval_needed",
-          `${created} new email${created > 1 ? "s" : ""} ready to review on Ingest`,
+          `${parts.join(" + ")} ready to review on Ingest`,
           { link: "/ingest" },
         );
       }
-      summary[conn.email] = created;
+      summary[conn.email] = appended > 0 ? `${created} new, ${appended} appended` : created;
       total += created;
     } catch (e) {
       const msg = e instanceof Error ? e.message.slice(0, 300) : "poll failed";

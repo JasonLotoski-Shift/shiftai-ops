@@ -671,8 +671,8 @@ export async function demoteMilestoneToTask(milestoneId: string) {
       data: {
         title: milestone.title,
         priority: "medium",
-        // due is required on Task; reuse the milestone date or default to now.
-        due: milestone.dueDate ?? new Date(),
+        // Carry the milestone's date if it has one, else leave the task undated.
+        due: milestone.dueDate ?? null,
         status: boardStatus,
         done: boardStatus === "done",
         category: milestone.category,
@@ -728,7 +728,7 @@ export async function createMilestoneTask(input: {
   title: string;
   ownerId?: string; // optional — a sub-task can sit unassigned
   priority: string;
-  due: string; // ISO date "YYYY-MM-DD"
+  due?: string; // ISO date "YYYY-MM-DD" — optional; omit/empty = no due date
   context?: string;
 }) {
   const session = await auth();
@@ -742,8 +742,8 @@ export async function createMilestoneTask(input: {
   if (!VALID_PRIORITIES.includes(input.priority as TaskPriority)) {
     throw new Error(`Invalid priority: ${input.priority}`);
   }
-  const due = new Date(input.due);
-  if (Number.isNaN(due.getTime())) throw new Error(`Invalid due date: ${input.due}`);
+  const due = input.due ? new Date(input.due) : null;
+  if (due && Number.isNaN(due.getTime())) throw new Error(`Invalid due date: ${input.due}`);
 
   const milestone = await prisma.milestone.findUnique({
     where: { id: input.milestoneId },
@@ -916,7 +916,7 @@ export async function createDeliverableTask(input: {
   title: string;
   ownerId: string; // the assignee
   priority: string;
-  due: string; // ISO date "YYYY-MM-DD"
+  due?: string; // ISO date "YYYY-MM-DD" — optional; omit/empty = no due date
   context?: string;
 }) {
   const session = await auth();
@@ -930,8 +930,8 @@ export async function createDeliverableTask(input: {
   if (!VALID_PRIORITIES.includes(input.priority as TaskPriority)) {
     throw new Error(`Invalid priority: ${input.priority}`);
   }
-  const due = new Date(input.due);
-  if (Number.isNaN(due.getTime())) throw new Error(`Invalid due date: ${input.due}`);
+  const due = input.due ? new Date(input.due) : null;
+  if (due && Number.isNaN(due.getTime())) throw new Error(`Invalid due date: ${input.due}`);
 
   const artifact = await prisma.artifact.findUnique({
     where: { id: input.artifactId },
@@ -975,7 +975,7 @@ export async function createDeliverableTask(input: {
         ownerId: owner.id,
         assignedById,
         priority: input.priority,
-        due: due.toISOString(),
+        due: due?.toISOString() ?? null,
         hasContext: Boolean(context),
       },
     });

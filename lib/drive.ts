@@ -122,25 +122,38 @@ export async function uploadAsGoogleDoc(
 
 // Brand a generated contract Google Doc to the firm letterhead (light-mode doc
 // spec in the brand guide): 1" margins, Inter body, a running header with the
-// SHIFT AI PARTNERS wordmark (AI in Track Gold), and a footer with the domain +
-// a confidential line. Runs via the Docs API AFTER Drive imports the HTML —
-// page setup (margins/fonts/header/footer) is exactly what the HTML importer
-// can't do. Best-effort: callers wrap it so a branding hiccup never blocks the
-// saved contract (the Doc still exists, just unbranded).
+// SHIFT AI wordmark image and a hairline divider, and a footer with the domain +
+// a confidential line. Runs via the Docs API AFTER Drive imports the HTML — page
+// setup (margins/fonts/header/footer/logo) is exactly what the HTML importer
+// can't do. Idempotent: reuses an existing header/footer and clears it first, so
+// re-branding a doc is safe. Best-effort: callers wrap it so a branding hiccup
+// never blocks the saved contract (the Doc still exists, just unbranded).
 const PT = (n: number): docs_v1.Schema$Dimension => ({ magnitude: n, unit: "PT" });
 const rgb = (hex: number): docs_v1.Schema$OptionalColor => ({
   color: { rgbColor: { red: ((hex >> 16) & 255) / 255, green: ((hex >> 8) & 255) / 255, blue: (hex & 255) / 255 } },
 });
-const GOLD = rgb(0xc9a961); // Track Gold
-const INK = rgb(0x15171a); // Ink
 const MUTED = rgb(0x5a574f);
+const HAIRLINE = rgb(0xb0b0b0);
+// SHIFT AI wordmark (Logo-Dark-Primary, the light-surface/letterhead variant),
+// hosted as a public PNG in the firm's shared Drive. Native 1165x350.
+const LOGO_URL = "https://lh3.googleusercontent.com/d/1JjuI6KOv4NhVk9zNJ8ZPpvrJTufOVE4B";
+const LOGO_W = 150;
+const LOGO_H = 45;
 
 export async function brandGoogleDoc(fileId: string, opts: { clientName: string }): Promise<void> {
-  // Body extent, so we can set the body font over the whole range.
-  const doc = await docs.documents.get({ documentId: fileId, fields: "body(content(endIndex))" });
-  const content = doc.data.body?.content ?? [];
+  // Current state: body extent + any existing header/footer (so a re-run reuses them).
+  const doc = (
+    await docs.documents.get({
+      documentId: fileId,
+      fields: "body(content(endIndex)),documentStyle(defaultHeaderId,defaultFooterId)",
+    })
+  ).data;
+  const content = doc.body?.content ?? [];
   const bodyEnd = content.length ? content[content.length - 1].endIndex ?? 1 : 1;
+  let headerId = doc.documentStyle?.defaultHeaderId ?? undefined;
+  let footerId = doc.documentStyle?.defaultFooterId ?? undefined;
 
+  // Margins + Inter body; create the header/footer only if the doc has none yet.
   const setup: docs_v1.Schema$Request[] = [
     {
       updateDocumentStyle: {
@@ -148,11 +161,9 @@ export async function brandGoogleDoc(fileId: string, opts: { clientName: string 
         fields: "marginTop,marginBottom,marginLeft,marginRight",
       },
     },
-    { createHeader: { type: "DEFAULT" } },
-    { createFooter: { type: "DEFAULT" } },
   ];
   if (bodyEnd > 2) {
-    setup.splice(1, 0, {
+    setup.push({
       updateTextStyle: {
         range: { startIndex: 1, endIndex: bodyEnd - 1 },
         textStyle: { weightedFontFamily: { fontFamily: "Inter" } },
@@ -160,43 +171,80 @@ export async function brandGoogleDoc(fileId: string, opts: { clientName: string 
       },
     });
   }
+  if (!headerId) setup.push({ createHeader: { type: "DEFAULT" } });
+  if (!footerId) setup.push({ createFooter: { type: "DEFAULT" } });
   const res = await docs.documents.batchUpdate({ documentId: fileId, requestBody: { requests: setup } });
-  const replies = res.data.replies ?? [];
-  const headerId = replies.find((r) => r.createHeader)?.createHeader?.headerId ?? undefined;
-  const footerId = replies.find((r) => r.createFooter)?.createFooter?.footerId ?? undefined;
+  for (const r of res.data.replies ?? []) {
+    if (r.createHeader?.headerId) headerId = r.createHeader.headerId;
+    if (r.createFooter?.footerId) footerId = r.createFooter.footerId;
+  }
 
-  const fill: docs_v1.Schema$Request[] = [];
+  // Clear any existing header/footer content so re-running doesn't stack it up.
+  const segs = (await docs.documents.get({ documentId: fileId, fields: "headers,footers" })).data;
+  const segEnd = (id: string, map?: Record<string, { content?: docs_v1.Schema$StructuralElement[] }> | null): number => {
+    const c = map?.[id]?.content ?? [];
+    return c.length ? c[c.length - 1].endIndex ?? 1 : 1;
+  };
+  const clears: docs_v1.Schema$Request[] = [];
   if (headerId) {
-    const wm = "SHIFT AI PARTNERS";
-    const ai = wm.indexOf("AI");
-    fill.push({ insertText: { location: { segmentId: headerId, index: 0 }, text: wm } });
-    fill.push({
-      updateTextStyle: {
-        range: { segmentId: headerId, startIndex: 0, endIndex: wm.length },
-        textStyle: { bold: true, fontSize: PT(12), weightedFontFamily: { fontFamily: "Big Shoulders Display" }, foregroundColor: INK },
-        fields: "bold,fontSize,weightedFontFamily,foregroundColor",
-      },
-    });
-    fill.push({
-      updateTextStyle: {
-        range: { segmentId: headerId, startIndex: ai, endIndex: ai + 2 },
-        textStyle: { foregroundColor: GOLD },
-        fields: "foregroundColor",
-      },
-    });
+    const e = segEnd(headerId, segs.headers);
+    if (e > 1) clears.push({ deleteContentRange: { range: { segmentId: headerId, startIndex: 0, endIndex: e - 1 } } });
   }
   if (footerId) {
+    const e = segEnd(footerId, segs.footers);
+    if (e > 1) clears.push({ deleteContentRange: { range: { segmentId: footerId, startIndex: 0, endIndex: e - 1 } } });
+  }
+  if (clears.length) await docs.documents.batchUpdate({ documentId: fileId, requestBody: { requests: clears } });
+
+  // Footer: domain + confidential line.
+  if (footerId) {
     const ft = `shiftai.partners   ·   Confidential — prepared for ${opts.clientName}`;
-    fill.push({ insertText: { location: { segmentId: footerId, index: 0 }, text: ft } });
-    fill.push({
-      updateTextStyle: {
-        range: { segmentId: footerId, startIndex: 0, endIndex: ft.length },
-        textStyle: { fontSize: PT(8), weightedFontFamily: { fontFamily: "Inter" }, foregroundColor: MUTED },
-        fields: "fontSize,weightedFontFamily,foregroundColor",
+    await docs.documents.batchUpdate({
+      documentId: fileId,
+      requestBody: {
+        requests: [
+          { insertText: { location: { segmentId: footerId, index: 0 }, text: ft } },
+          {
+            updateTextStyle: {
+              range: { segmentId: footerId, startIndex: 0, endIndex: ft.length },
+              textStyle: { fontSize: PT(8), weightedFontFamily: { fontFamily: "Inter" }, foregroundColor: MUTED },
+              fields: "fontSize,weightedFontFamily,foregroundColor",
+            },
+          },
+        ],
       },
     });
   }
-  if (fill.length) await docs.documents.batchUpdate({ documentId: fileId, requestBody: { requests: fill } });
+
+  // Header: the SHIFT AI logo image + a hairline divider. Best-effort — if the
+  // hosted image can't be fetched, the rest of the letterhead still applies.
+  if (headerId) {
+    try {
+      await docs.documents.batchUpdate({
+        documentId: fileId,
+        requestBody: {
+          requests: [
+            {
+              insertInlineImage: {
+                location: { segmentId: headerId, index: 0 },
+                uri: LOGO_URL,
+                objectSize: { width: PT(LOGO_W), height: PT(LOGO_H) },
+              },
+            },
+            {
+              updateParagraphStyle: {
+                range: { segmentId: headerId, startIndex: 0, endIndex: 1 },
+                paragraphStyle: { borderBottom: { color: HAIRLINE, width: PT(0.75), padding: PT(6), dashStyle: "SOLID" } },
+                fields: "borderBottom",
+              },
+            },
+          ],
+        },
+      });
+    } catch (e) {
+      console.error("contract logo header skipped:", e instanceof Error ? e.message : e);
+    }
+  }
 }
 
 // Upload any binary Buffer (image, doc, …) to a Drive folder under its own

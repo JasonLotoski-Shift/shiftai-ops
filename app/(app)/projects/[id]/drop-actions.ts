@@ -253,7 +253,7 @@ export async function approveProjectProposal(proposalId: string, selections: App
       return {
         title: t.title.trim(),
         priority: toTaskPriority(t.priority),
-        due: d && !Number.isNaN(d.getTime()) ? d : new Date(),
+        due: d && !Number.isNaN(d.getTime()) ? d : null, // no stated date → no date (not today)
         context: t.context?.trim() || `From drop: ${proposal.title}`,
       };
     });

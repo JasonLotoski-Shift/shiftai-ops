@@ -32,6 +32,39 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   });
   if (!client) notFound();
 
+  // Comms timeline — everything scoped to this client (the new clientId stamp on
+  // ingested mail/meetings) OR logged on any contact linked to the company.
+  const contactIds = [client.primaryContactId, ...client.contactLinks.map((l) => l.contactId)].filter(
+    (x): x is string => !!x,
+  );
+  const interactions = await prisma.interaction.findMany({
+    where: {
+      OR: [{ clientId: client.id }, ...(contactIds.length ? [{ contactId: { in: contactIds } }] : [])],
+    },
+    orderBy: { date: "desc" },
+    take: 100,
+    include: { contact: { select: { name: true } } },
+  });
+  const clientComms = interactions.map((it) => ({
+    id: it.id,
+    date: it.date.toISOString(),
+    type: it.type,
+    summary: it.summary,
+    body: it.body,
+    subject: it.subject,
+    loggedBy: it.loggedBy,
+    contactName: it.contact?.name ?? null,
+  }));
+  const clientDocs = client.artifacts.map((a) => ({
+    id: a.id,
+    date: a.createdAt.toISOString(),
+    title: a.title,
+    type: a.type,
+    driveUrl: a.driveUrl,
+    createdBy: a.createdBy,
+    generatedFromSkill: a.generatedFromSkill,
+  }));
+
   // Picker universe for the add-person flow — every contact on file.
   const allContacts = await prisma.contact.findMany({
     select: { id: true, name: true, title: true, company: true },
@@ -104,6 +137,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           clientProjects={client.projects}
           clientInvoices={client.invoices}
           clientArtifacts={client.artifacts}
+          clientComms={clientComms}
+          clientDocs={clientDocs}
           contactLinks={client.contactLinks}
           allContacts={allContacts}
         />

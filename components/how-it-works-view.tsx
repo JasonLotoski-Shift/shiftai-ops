@@ -901,8 +901,8 @@ const flows: Flow[] = [
     steps: [
       { tone: "trigger", kind: "You do", label: "+ Ingest → pick type, target records, paste content/email/files" },
       { tone: "claude", kind: "Claude", label: "Proposes updates across contact, client, project, deal — incl. overwrites, new people it spotted, and how they connect to the deal or client" },
-      { tone: "review", kind: "You review", label: "Approve each addition; every overwrite shows old → new; people + links wait in the same queue" },
-      { tone: "write", kind: "Saved", label: "Records updated + Contacts/links + Interaction/Tasks/Milestones + AuditLog. A copy of any uploaded files/screenshots also lands in the client or deal Drive folder, and screenshots feed the discovery report + prototype as visual input" },
+      { tone: "review", kind: "You review", label: "Approve each addition; every overwrite shows old → new. Tasks start unchecked — tick the ones worth keeping (or add one from a key point); an unmatched owner stays unassigned instead of landing on you. People + links wait in the same queue" },
+      { tone: "write", kind: "Saved", label: "Records updated + Contacts/links + Interaction/Tasks/Milestones + AuditLog. The full email/meeting text is saved to the record and shows on the client/deal Timeline tab (expand any entry to read the original words). A copy of any uploaded files/screenshots also lands in the Drive folder, and screenshots feed the discovery report + prototype as visual input" },
     ],
   },
   {
@@ -922,9 +922,9 @@ const flows: Flow[] = [
     blurb: "Label a client thread in Gmail and it lands on Ingest for review — your inbox stays private.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Settings → Connect Gmail (once), then label any client thread “ops-log”" },
-      { tone: "claude", kind: "Claude", label: "Every 6 hours (or hit “Check Gmail” on Ingest to run it now): reads only labeled threads, matches the client/contact, drafts a summary + action items" },
-      { tone: "review", kind: "You review", label: "Each email waits on Ingest as a pending item — approve like a meeting" },
-      { tone: "write", kind: "Saved", label: "Logs a sent/received email Interaction (+ Tasks/enrichment) + AuditLog; never reads unlabeled mail" },
+      { tone: "claude", kind: "Claude", label: "Every 6 hours (or hit “Check Gmail” on Ingest to run it now): reads only labeled threads, matches the client/contact/deal — and the project — by email, company domain, and who's on the thread (no longer gives up on multi-party threads), drafts a summary + action items" },
+      { tone: "review", kind: "You review", label: "One labeled thread is ONE growing card — replies append to it (and re-summarize the whole conversation) instead of stacking up as separate items. Approve like a meeting" },
+      { tone: "write", kind: "Saved", label: "Logs a sent/received email Interaction with the full body (readable on the Timeline) + Tasks/enrichment + AuditLog; never reads unlabeled mail" },
     ],
   },
   {

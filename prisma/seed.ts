@@ -275,7 +275,7 @@ async function main() {
       data: {
         id: t.id,
         title: t.title,
-        due: new Date(t.due),
+        due: t.due ? new Date(t.due) : null,
         priority: t.priority as any,
         relatedTo: t.relatedTo,
         done: t.done,

@@ -19,18 +19,41 @@ import { ratio, tokenJaccard } from "@/lib/resolve-entity";
 // The client handed to a prisma.$transaction(async (tx) => …) callback.
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
+// A leading filler verb carries no identity ("Send proposal" === "Proposal");
+// the firm's titling rule already wants noun phrases, so stripping one leading
+// verb mostly cleans up imperfect/legacy titles. Conservative on purpose.
+const LEADING_VERBS = new Set([
+  "send", "sending", "chase", "review", "reviewing", "follow", "draft", "drafting",
+  "prepare", "preparing", "schedule", "scheduling", "create", "creating", "share",
+  "sharing", "get", "confirm", "confirming", "make", "provide", "add", "update",
+  "email", "call", "ping", "reach", "arrange", "book", "finalize", "finalise",
+  "complete", "write", "writing", "set", "setup", "do",
+]);
+// Particles stripped ONLY right after a leading verb ("follow up X" → "X").
+const VERB_PARTICLES = new Set(["up", "out", "on", "in", "over", "through"]);
+const ARTICLES = new Set(["the", "a", "an"]);
+
 /**
  * Normalize a title for comparison: lowercase, strip surrounding quotes, drop
- * trailing punctuation, collapse internal whitespace. Two titles that normalize
- * to the same string are treated as the same task/milestone.
+ * trailing punctuation, collapse whitespace, then drop a single leading filler
+ * verb (+ its particle) and any articles so "Send the proposal" / "Send proposal"
+ * / "the proposal" all normalize equal. Two titles that normalize to the same
+ * string are treated as the same task/milestone. Never collapses to empty.
  */
 export function normalizeTitle(raw: string): string {
-  return raw
+  const base = raw
     .toLowerCase()
     .replace(/['"`]/g, "")
     .replace(/[.,;:!?]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
+  let tokens = base.split(" ").filter(Boolean);
+  if (tokens.length > 1 && LEADING_VERBS.has(tokens[0])) {
+    tokens = tokens.slice(1);
+    if (tokens.length > 1 && VERB_PARTICLES.has(tokens[0])) tokens = tokens.slice(1);
+  }
+  tokens = tokens.filter((t) => !ARTICLES.has(t));
+  return tokens.join(" ").trim() || base;
 }
 
 export type DuplicateHit = { id: string; title: string };

@@ -462,6 +462,11 @@ export async function extractUnified(input: {
 // must receive the underscored identifier or Prisma aborts the whole tx.
 const VALID_MILESTONE_STATUSES = new Set(["pending", "in_progress", "complete", "at_risk"]);
 
+// TaskPriority is a closed enum — a stray value (the model is free-form here)
+// would cast through `as TaskPriority` and abort the whole create. Validate, else
+// fall back to medium.
+const VALID_TASK_PRIORITIES = new Set(["high", "medium", "low"]);
+
 // ── 5. approveUnified — the partner-approval gate. One transaction; applies
 // every approved record change + task, files the content to Drive, marks the
 // proposal approved, audits. ──
@@ -542,6 +547,12 @@ export async function approveUnified(
   // Contacts that already received an interaction this run — so the deal-link
   // step below never double-logs the same contact.
   const interactedContacts = new Set<string>();
+  // The deal this ingest logs against (hoisted so the per-contact interactions
+  // can stamp dealId too, not just the deal-link step). The full body is written
+  // to the DB ONCE (the first interaction) and scoped to the client/deal so the
+  // client/deal timeline can show the original words; the rest carry only summary.
+  const dealLinkId = selections.dealId ?? proposal.matchedDealId ?? null;
+  let commsBodyWritten = false;
 
   await prisma.$transaction(async (tx) => {
     // ── Records ──
@@ -573,9 +584,15 @@ export async function approveUnified(
                   type: it.type as InteractionType,
                   date: when,
                   summary: it.summary,
+                  body: commsBodyWritten ? null : proposal.transcript,
+                  subject: proposal.title,
+                  threadId: proposal.threadId,
+                  clientId: focusClientId,
+                  dealId: dealLinkId,
                   loggedBy: "AGENT · CLAUDE",
                 },
               });
+              commsBodyWritten = true;
               interactionsCreated++;
               if (when > maxDate) maxDate = when;
             }
@@ -762,7 +779,7 @@ export async function approveUnified(
     // Log the summary as an interaction on the deal's PRIMARY contact
     // (interactions are contact-scoped, so "against the deal" = on its contact).
     // Skipped if that contact already got an interaction above (no double-log).
-    const dealLinkId = selections.dealId ?? proposal.matchedDealId ?? null;
+    // dealLinkId is hoisted above so the records loop can stamp it too.
     if (dealLinkId) {
       const deal = await tx.deal.findUnique({ where: { id: dealLinkId }, select: { contactId: true } });
       if (deal?.contactId && !interactedContacts.has(deal.contactId)) {
@@ -782,9 +799,15 @@ export async function approveUnified(
               type: dealInteractionType,
               date: proposal.meetingDate,
               summary,
+              body: commsBodyWritten ? null : proposal.transcript,
+              subject: proposal.title,
+              threadId: proposal.threadId,
+              clientId: focusClientId,
+              dealId: dealLinkId,
               loggedBy: "AGENT · CLAUDE",
             },
           });
+          commsBodyWritten = true;
           interactionsCreated++;
           interactedContacts.add(deal.contactId);
           affected.contacts.add(deal.contactId);
@@ -798,16 +821,16 @@ export async function approveUnified(
 
     // ── Tasks ──
     for (const t of selections.tasks) {
-      if (!t.title?.trim() || !t.ownerId) continue;
+      if (!t.title?.trim()) continue; // owner may be empty → the task lands UNASSIGNED
       const d = t.due ? new Date(t.due) : null;
-      const due = d && !Number.isNaN(d.getTime()) ? d : proposal.meetingDate;
+      const due = d && !Number.isNaN(d.getTime()) ? d : null; // no stated date → no date (not the source date)
 
       if (t.reassignTaskId) {
         const existing = await tx.task.findUnique({ where: { id: t.reassignTaskId }, select: { ownerId: true } });
         if (existing) {
           await tx.task.update({
             where: { id: t.reassignTaskId },
-            data: { ownerId: t.ownerId, assignedById: partnerId },
+            data: { ownerId: t.ownerId || null, assignedById: partnerId },
           });
           tasksReassigned++;
           replaceDetail.push({ field: "task.owner", before: existing.ownerId ?? "", after: t.ownerId });
@@ -827,10 +850,10 @@ export async function approveUnified(
       await tx.task.create({
         data: {
           title: t.title.trim(),
-          priority: (t.priority as TaskPriority) ?? ("medium" as TaskPriority),
+          priority: (VALID_TASK_PRIORITIES.has(t.priority) ? t.priority : "medium") as TaskPriority,
           due,
           context: t.context?.trim() || `From ingest: ${proposal.title}`,
-          ownerId: t.ownerId,
+          ownerId: t.ownerId || null, // empty → unassigned (not the reviewer)
           assignedById: partnerId,
           clientId: t.clientId,
           projectId: t.projectId,

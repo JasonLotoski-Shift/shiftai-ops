@@ -198,7 +198,6 @@ export default function UnifiedProposalCard({
   partners,
   clients,
   deals,
-  currentPartnerId,
 }: UnifiedProposalCardProps) {
   const router = useRouter();
   const data = proposal.data;
@@ -211,7 +210,8 @@ export default function UnifiedProposalCard({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Resolve an ownerHint name → a partner id (first/full-name match), else current.
+  // Resolve an ownerHint name → a partner id (first/full-name match). No match →
+  // "" = UNASSIGNED (the partner picks an owner); never silently the reviewer.
   const resolveOwner = useMemo(
     () => (hint: string | null): string => {
       if (hint) {
@@ -223,9 +223,9 @@ export default function UnifiedProposalCard({
         );
         if (first) return first.id;
       }
-      return currentPartnerId || partners[0]?.id || "";
+      return "";
     },
-    [partners, currentPartnerId],
+    [partners],
   );
 
   // Per-record selection state (default: every item checked).
@@ -240,10 +240,26 @@ export default function UnifiedProposalCard({
     })),
   );
 
-  // Per-task selection + resolved owner (default: checked, owner from hint).
+  // Per-task selection + resolved owner. Default UNCHECKED — the partner promotes
+  // the tasks worth keeping (fewer-but-better), nothing auto-lands on the board.
   const [tasks, setTasks] = useState<TaskState[]>(() =>
-    data.tasks.map((t) => ({ keep: true, ownerId: resolveOwner(t.ownerHint) })),
+    data.tasks.map((t) => ({ keep: false, ownerId: resolveOwner(t.ownerHint) })),
   );
+
+  // Tasks the partner promoted from a key point (the model didn't propose them).
+  // Scoped to the proposal's matched client/project so they land on the right record.
+  const [extraTasks, setExtraTasks] = useState<{ title: string; ownerId: string }[]>([]);
+  function promoteKeyPoint(text: string) {
+    const title = text.trim();
+    if (!title) return;
+    setExtraTasks((prev) => (prev.some((t) => t.title === title) ? prev : [...prev, { title, ownerId: "" }]));
+  }
+  function setExtraOwner(i: number, ownerId: string) {
+    setExtraTasks((prev) => prev.map((t, j) => (j === i ? { ...t, ownerId } : t)));
+  }
+  function removeExtraTask(i: number) {
+    setExtraTasks((prev) => prev.filter((_, j) => j !== i));
+  }
 
   // New people + links (default: checked, seeded from the model's suggestions).
   const [people, setPeople] = useState<PersonState[]>(() =>
@@ -393,7 +409,7 @@ export default function UnifiedProposalCard({
 
     const approvedTasks: ApprovedTask[] = data.tasks
       .map((t, ti) => ({ t, st: tasks[ti] }))
-      .filter(({ st }) => st?.keep && st.ownerId)
+      .filter(({ st }) => st?.keep) // owner may be "" → server lands it unassigned
       .map(({ t, st }) => ({
         title: t.title,
         context: t.context,
@@ -405,6 +421,22 @@ export default function UnifiedProposalCard({
         milestoneId: t.milestoneId,
         reassignTaskId: t.reassignTaskId,
       }));
+
+    // Tasks promoted from key points — inherit the proposal's matched scope.
+    for (const et of extraTasks) {
+      if (!et.title.trim()) continue;
+      approvedTasks.push({
+        title: et.title.trim(),
+        context: "",
+        priority: "medium",
+        due: null,
+        ownerId: et.ownerId,
+        clientId: proposal.matchedClientId,
+        projectId: proposal.matchedProjectId,
+        milestoneId: null,
+        reassignTaskId: null,
+      });
+    }
 
     // Only the checked people/links; partner-edited relationship/role survive.
     const approvedContacts: ApprovedProposedContact[] = proposedContacts
@@ -557,15 +589,25 @@ export default function UnifiedProposalCard({
             )}
           </div>
 
-          {/* Key points (read-only) */}
+          {/* Key points — each can be promoted to a task (the model proposes
+              tasks conservatively; you add the ones that matter). */}
           {data.keyPoints.length > 0 && (
             <div className="flex flex-col gap-2">
               <Label>Key points</Label>
               <ul className="flex flex-col gap-1">
                 {data.keyPoints.map((k, i) => (
-                  <li key={i} className="text-[12px] text-bone-dim flex items-start gap-2">
+                  <li key={i} className="group text-[12px] text-bone-dim flex items-start gap-2">
                     <span className="text-track-gold mt-0.5">·</span>
-                    {k}
+                    <span className="flex-1 min-w-0">{k}</span>
+                    <button
+                      type="button"
+                      onClick={() => promoteKeyPoint(k)}
+                      disabled={isPending}
+                      title="Add as a task"
+                      className="shrink-0 text-[11px] text-bone-mute hover:text-track-gold transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      + task
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -862,13 +904,14 @@ export default function UnifiedProposalCard({
                           )}
                         </div>
                       </div>
-                      <div className="grid grid-cols-[120px] gap-3 pl-7">
+                      <div className="grid grid-cols-[140px] gap-3 pl-7">
                         <Select
                           value={st.ownerId}
                           onChange={(e) => patchTask(ti, (s) => ({ ...s, ownerId: e.target.value }))}
                           disabled={isPending}
                           className="h-8 text-[12px]"
                         >
+                          {!reassign && <option value="">Unassigned</option>}
                           {partners.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.name.split(" ")[0]}
@@ -879,6 +922,53 @@ export default function UnifiedProposalCard({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Tasks promoted from key points */}
+          {extraTasks.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label gold>
+                <span className="inline-flex items-center gap-1.5">
+                  <ListChecks size={12} strokeWidth={1.5} />
+                  Added from key points ({extraTasks.length})
+                </span>
+              </Label>
+              <div className="flex flex-col gap-2">
+                {extraTasks.map((et, i) => (
+                  <div
+                    key={i}
+                    className="bg-bitumen rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] px-4 py-3 flex items-start gap-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[13px] text-bone leading-snug">{et.title}</span>
+                      <div className="grid grid-cols-[140px] gap-3 mt-2">
+                        <Select
+                          value={et.ownerId}
+                          onChange={(e) => setExtraOwner(i, e.target.value)}
+                          disabled={isPending}
+                          className="h-8 text-[12px]"
+                        >
+                          <option value="">Unassigned</option>
+                          {partners.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name.split(" ")[0]}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeExtraTask(i)}
+                      disabled={isPending}
+                      className="shrink-0 text-[11px] text-bone-mute hover:text-flag-red transition-colors"
+                    >
+                      remove
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}

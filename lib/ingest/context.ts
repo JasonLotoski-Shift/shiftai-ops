@@ -45,7 +45,7 @@ export type TargetData =
       data: Record<string, unknown>;
       milestones: { id: string; title: string; status: string }[];
       deliverables: string[];
-      openTasks: { id: string; title: string; owner: string; due: string }[];
+      openTasks: { id: string; title: string; owner: string; due: string | null }[];
     }
   | { kind: "deal"; id: string; label: string; data: Record<string, unknown>; people: LinkedPerson[] };
 
@@ -165,7 +165,7 @@ export async function fetchTargetData(ref: TargetRef): Promise<TargetData | null
         id: t.id,
         title: t.title,
         owner: t.owner?.name ?? "—",
-        due: formatDate(t.due),
+        due: t.due ? formatDate(t.due) : null,
       })),
     };
   }
@@ -264,7 +264,7 @@ export function buildIngestContext(args: BuildIngestContextArgs): string {
       lines.push(t.deliverables.length ? "Current deliverables:" : "Current deliverables: (none)");
       for (const d of t.deliverables) lines.push(`  - "${d}"`);
       lines.push(t.openTasks.length ? "Open tasks (use the id for reassignTaskId):" : "Open tasks: (none)");
-      for (const ot of t.openTasks) lines.push(`  - [${ot.id}] "${ot.title}" — owner: ${ot.owner}, due ${ot.due}`);
+      for (const ot of t.openTasks) lines.push(`  - [${ot.id}] "${ot.title}" — owner: ${ot.owner}${ot.due ? `, due ${ot.due}` : ""}`);
     } else {
       // deal
       lines.push(`stage: ${display(t.data.stage)}`);

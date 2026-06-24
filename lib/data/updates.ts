@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-23",
+    tag: "improved",
+    title: "Read every email on a client's Timeline, and email threads stop piling up",
+    detail:
+      "Every client and pipeline deal now has a Timeline tab: the full text of each email, meeting note, and document, newest first — expand any entry to read the exact words a client wrote, right in the tool (no more hunting in Drive). When you label a Gmail thread, replies now fold into ONE growing review card instead of creating a separate ingest per message. Documents keep a history: re-upload a new version with the Replace button and the older versions tuck under one record instead of cluttering the list as look-alikes. And tasks with no real deadline now show “No date” instead of looking overdue — the board's due dates mean something again.",
+  },
+  {
+    date: "2026-06-23",
     tag: "new",
     title: "Record who sourced a deal — and see the commission flow through",
     detail:
@@ -42,6 +49,13 @@ export const updates: Update[] = [
     title: "Sharper discovery survey, lead filters, and a tidier Actions menu",
     detail:
       "The discovery questionnaire now researches the whole company across every part of the business before it writes questions, so it learns more than just what came up on the call: a handful of sharp questions on the call topics, plus broad coverage everywhere else. Promoted and AI-found leads can now be filtered by industry, who surfaced them, who's claimed them, or a name/keyword search. And the deal Actions menu puts Follow-up email and Book a meeting up top, with the rest as tighter, easier-to-scan buttons.",
+  },
+  {
+    date: "2026-06-22",
+    tag: "improved",
+    title: "Ingest matches better and proposes fewer, cleaner tasks",
+    detail:
+      "Ingest now figures out which client, deal, and project an email or note belongs to far more reliably. It matches on the company's email domain (so a new person at a known client still lands on the right record), looks across everyone linked to a deal — not just the main contact — and pre-fills the client's project when there's only one active. Labeled Gmail threads with several people on them no longer get dropped as “unassigned.” On the review screen, proposed tasks now start unchecked — you tick the few worth keeping (or turn a key point into a task in one click) instead of getting a long pre-checked list. A task whose owner the note didn't name now stays unassigned rather than quietly landing on whoever's reviewing, and near-duplicate tasks (“Send proposal” vs “Send the proposal”) are caught.",
   },
   {
     date: "2026-06-22",

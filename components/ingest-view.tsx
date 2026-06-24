@@ -406,7 +406,7 @@ function ProposalCard({
       title: a.title,
       ownerId: currentPartnerId ?? partners[0]?.id ?? "",
       context: a.context,
-      due: a.due ?? p.meetingDate.slice(0, 10),
+      due: a.due ?? "", // no stated date → leave empty (don't pre-fill the source date)
     })),
   );
 

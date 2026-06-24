@@ -300,7 +300,7 @@ export function TasksViews({ initialTasks, partners, projects, currentPartnerId 
                 </Badge>
               </div>
               <div className="flex items-center justify-end gap-2 pt-0.5">
-                <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
+                <span className="mono text-[11px] text-bone-mute tabular-nums">{t.due ? formatDate(t.due) : "No date"}</span>
                 <span title={t.owner.name} className="inline-flex">
                   <Avatar initials={t.owner.initials} size="sm" />
                 </span>

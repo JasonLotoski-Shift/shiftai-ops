@@ -43,7 +43,7 @@ export async function createTask(input: {
   title: string;
   ownerId?: string; // the assignee — optional (a task can sit unassigned)
   priority: string;
-  due: string; // ISO date "YYYY-MM-DD"
+  due?: string; // ISO date "YYYY-MM-DD" — optional; omit/empty = no due date
   context?: string;
   relatedTo?: string;
   clientId?: string;
@@ -68,8 +68,8 @@ export async function createTask(input: {
   if (!VALID_PRIORITIES.includes(input.priority as TaskPriority)) {
     throw new Error(`Invalid priority: ${input.priority}`);
   }
-  const due = new Date(input.due);
-  if (Number.isNaN(due.getTime())) throw new Error(`Invalid due date: ${input.due}`);
+  const due = input.due ? new Date(input.due) : null;
+  if (due && Number.isNaN(due.getTime())) throw new Error(`Invalid due date: ${input.due}`);
 
   const status = (input.status as TaskStatus) ?? "todo";
   if (!VALID_TASK_STATUSES.includes(status)) throw new Error(`Invalid status: ${input.status}`);
@@ -164,7 +164,7 @@ export async function createTask(input: {
         ownerId: owner?.id ?? null,
         assignedById,
         priority: input.priority,
-        due: due.toISOString(),
+        due: due?.toISOString() ?? null,
         hasContext: Boolean(context),
         projectId,
         dealId,
@@ -384,9 +384,13 @@ export async function updateTask(
     data.priority = input.priority as TaskPriority;
   }
   if (input.due !== undefined) {
-    const d = new Date(input.due);
-    if (Number.isNaN(d.getTime())) throw new Error(`Invalid due date: ${input.due}`);
-    data.due = d;
+    if (!input.due) {
+      data.due = null; // empty clears the date back to "no date"
+    } else {
+      const d = new Date(input.due);
+      if (Number.isNaN(d.getTime())) throw new Error(`Invalid due date: ${input.due}`);
+      data.due = d;
+    }
   }
   if (input.category !== undefined) {
     if (!VALID_CATEGORIES.includes(input.category as WorkCategory)) throw new Error(`Invalid category: ${input.category}`);

@@ -1,5 +1,7 @@
 # Ingest & Records Upgrades - Implementation Plan
 
+> **⛔ SUPERSEDED / SHIPPED (2026-06-22).** Everything this doc planned has landed: the records/relationship model + ContactLink (migration `20260610061421_records_relationship_model`), OpsEvent telemetry (`20260609064102_add_ops_event`), attachment reading (#3), the cross-reference button (#4), and the v2 unified composer skill. The only un-finished carry-over is migrating the Gmail/Fireflies **polls** from the v1 `ExtractedProposal` shape to v2 `UnifiedProposal` — that work moves to the live plan. **Do not build from this doc; it is a record of completed work.** Live plan for the next round (email-thread collapse, task quality, entity matching, email/document archive): [ingest-records-redesign-v2.md](ingest-records-redesign-v2.md).
+
 > **Status (2026-06-09).** #4 (cross-reference) and #3 (attachments / files + images) are **built + shipped to main**. #1 (beef-up records) and #2 (contacts / relationships) are **planned, not built** — and have been **re-scoped with Jason** into the unified model in the next section, which **supersedes the field proposals in Appendix Plans 3 & 4**. Both need a prod migration (Jason's approval). `OpsEvent` is already migrated, so a new migration is a clean diff (the "bundling" worry in the appendices is now moot).
 > **Invariants:** see CLAUDE.md — local `prisma migrate` hits PROD Supabase (approval required); propose-never-auto-write; every mutation writes an AuditLog via writeAudit.
 

@@ -238,6 +238,7 @@ export type CrossReferenceResult = {
   suggestedContactId: string | null;
   suggestedClientId: string | null;
   suggestedDealId: string | null;
+  suggestedProjectId: string | null; // sole active project of the matched client, else null
   taskOverlaps: CrossRefTaskOverlap[];
   milestoneOverlaps: CrossRefMilestoneOverlap[]; // always [] for v1
 };

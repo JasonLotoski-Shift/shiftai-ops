@@ -33,7 +33,7 @@ export type ChatMessage = {
   authorInitials: string | null;
   kind: MessageKindValue;
   link: string | null;
-  task: { id: string; title: string; done: boolean; due: string; priority: string } | null;
+  task: { id: string; title: string; done: boolean; due: string | null; priority: string } | null;
 };
 
 const MESSAGE_SELECT = {
@@ -55,7 +55,7 @@ type RawMessage = {
   kind: MessageKindValue;
   link: string | null;
   author: { name: string; initials: string } | null;
-  task: { id: string; title: string; done: boolean; due: Date; priority: string } | null;
+  task: { id: string; title: string; done: boolean; due: Date | null; priority: string } | null;
 };
 
 function shape(m: RawMessage): ChatMessage {
@@ -73,7 +73,7 @@ function shape(m: RawMessage): ChatMessage {
           id: m.task.id,
           title: m.task.title,
           done: m.task.done,
-          due: m.task.due.toISOString(),
+          due: m.task.due ? m.task.due.toISOString() : null,
           priority: m.task.priority,
         }
       : null,

@@ -1,13 +1,16 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/header";
-import { Card, CardBody, Label, Badge, Hairline, Avatar, EmptyState } from "@/components/ui";
+import { Card, CardBody, Label, Badge, Hairline, Avatar } from "@/components/ui";
 import { DealActions, DealActionsPanel } from "@/components/deal-actions";
 import { MarkRepliedButton } from "@/components/mark-replied-button";
 import { DiscoverySurveyCard } from "@/components/discovery-survey-card";
 import { DealCommitteeCard } from "@/components/deal-committee-card";
 import { DealEnrichPanel } from "@/components/deal-enrich-panel";
 import { ArtifactDeleteControl } from "@/components/artifact-delete-control";
+import { ArtifactReplaceControl } from "@/components/artifact-replace-control";
+import { Timeline } from "@/components/timeline";
+import { groupArtifactVersions } from "@/lib/artifact-versions";
 import { EstimateEditor } from "@/components/billing/estimate-editor";
 import { DealSourceCommissionEditor } from "@/components/billing/deal-source-commission-editor";
 import { prisma } from "@/lib/prisma";
@@ -15,7 +18,7 @@ import { currentIsManagingPartner } from "@/lib/permissions";
 import { ranAtBySkill, savedAtBySkill } from "@/lib/action-status";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import { stageLabels, industryLabels, leadSourceLabels } from "@/lib/data/seed";
-import { ArrowLeft, Mail, Phone, Sparkles, Activity, FileText, ExternalLink, FolderOpen, Download } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Sparkles, FileText, ExternalLink, FolderOpen, Download } from "lucide-react";
 
 // The proposal engine's Opus build chain (server actions on this route) can run
 // 60–120s. Extend the function timeout to the max (honored on hosts that allow
@@ -60,6 +63,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         createdBy: true,
         generatedFromSkill: true,
         type: true,
+        supersedesId: true,
       },
     }),
     prisma.discoverySurvey.findFirst({
@@ -83,6 +87,43 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     savedAtBySkill({ dealId: id }),
   ]);
   const hasPrototype = !!prototype;
+
+  // Comms timeline — everything scoped to this deal (the new dealId stamp on
+  // ingested mail/meetings) OR logged on the deal's contact / committee.
+  const dealContactIds = [deal.contactId, ...contactLinksRaw.map((l) => l.contactId)].filter(
+    (x): x is string => !!x,
+  );
+  const dealInteractions = await prisma.interaction.findMany({
+    where: {
+      OR: [{ dealId: deal.id }, ...(dealContactIds.length ? [{ contactId: { in: dealContactIds } }] : [])],
+    },
+    orderBy: { date: "desc" },
+    take: 100,
+    include: { contact: { select: { name: true } } },
+  });
+  const dealComms = dealInteractions.map((it) => ({
+    id: it.id,
+    date: it.date.toISOString(),
+    type: it.type,
+    summary: it.summary,
+    body: it.body,
+    subject: it.subject,
+    loggedBy: it.loggedBy,
+    contactName: it.contact?.name ?? null,
+  }));
+  // Collapse re-uploaded versions to one record (heads only) for both the
+  // timeline and the Documents card.
+  const docHeads = groupArtifactVersions(artifacts);
+  const dealDocs = docHeads.map(({ head: a }) => ({
+    id: a.id,
+    date: a.createdAt.toISOString(),
+    title: a.title,
+    type: a.type,
+    driveUrl: a.driveUrl,
+    createdBy: a.createdBy,
+    generatedFromSkill: a.generatedFromSkill,
+  }));
+
   const surveyUrl =
     surveyRaw && (surveyRaw.status === "sent" || surveyRaw.status === "responded") ? surveyRaw.tallyFormUrl ?? undefined : undefined;
   const surveyCard = surveyRaw
@@ -314,41 +355,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
             </CardBody>
           </Card>
 
-          <Card>
-            <div className="px-5 pt-5 pb-3">
-              <span className="title-md">Activity</span>
-            </div>
-            <div className="flex flex-col">
-              {(() => {
-                const activity = [
-                  { ts: deal.lastTouchAt, actor: partner?.name ?? "—", detail: "Touch logged — most recent activity" },
-                  { ts: deal.createdAt, actor: partner?.name ?? "—", detail: `Deal created · stage: ${stageLabels[deal.stage]}` },
-                ];
-                if (activity.length === 0) {
-                  return (
-                    <EmptyState
-                      icon={<Activity size={22} strokeWidth={1.5} />}
-                      title="No activity yet"
-                      hint="Logged touches and stage changes will appear here."
-                      compact
-                    />
-                  );
-                }
-                return activity.map((a, i) => (
-                  <div
-                    key={i}
-                    className="px-5 py-3 hover:bg-[var(--color-row-hover)]"
-                  >
-                    <div className="flex items-baseline justify-between mb-1">
-                      <Label>{a.actor}</Label>
-                      <span className="label">{formatDate(a.ts)}</span>
-                    </div>
-                    <p className="text-[13px] text-bone-dim">{a.detail}</p>
-                  </div>
-                ));
-              })()}
-            </div>
-          </Card>
+          <Timeline comms={dealComms} docs={dealDocs} />
         </div>
 
         <div className="flex flex-col gap-6">
@@ -433,7 +440,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                 </a>
               )}
             </div>
-            {artifacts.length === 0 ? (
+            {docHeads.length === 0 ? (
               <CardBody className="pt-0">
                 <p className="text-[12px] text-bone-mute">
                   Nothing filed yet. Discovery prep, proposals, and reports save here (and to Drive)
@@ -442,8 +449,9 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               </CardBody>
             ) : (
               <div className="flex flex-col pb-2">
-                {artifacts.map((a) => (
-                  <div key={a.id} className="flex items-stretch group/doc">
+                {docHeads.map(({ head: a, versions }) => (
+                  <div key={a.id} className="flex flex-col">
+                  <div className="flex items-stretch group/doc">
                   <a
                     href={`/api/artifacts/${a.id}/view`}
                     target="_blank"
@@ -458,6 +466,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                       <span className="text-[11px] text-bone-mute">
                         {formatDate(a.createdAt)}
                         {a.generatedFromSkill ? ` · ${a.generatedFromSkill}` : ""}
+                        {versions.length > 0 ? ` · v${versions.length + 1}` : ""}
                       </span>
                     </span>
                     <ExternalLink size={12} strokeWidth={1.5} className="text-bone-mute mt-1 shrink-0" />
@@ -471,10 +480,36 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
                   >
                     <Download size={14} strokeWidth={1.5} />
                   </a>
+                  <ArtifactReplaceControl
+                    artifactId={a.id}
+                    className="self-center pl-2 opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
+                  />
                   <ArtifactDeleteControl
                     artifactId={a.id}
                     className="self-center pl-2 pr-4 opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
                   />
+                  </div>
+                  {versions.length > 0 && (
+                    <details className="px-5 pb-1 -mt-1">
+                      <summary className="text-[11px] text-bone-mute hover:text-bone cursor-pointer pl-7">
+                        {versions.length} earlier version{versions.length > 1 ? "s" : ""}
+                      </summary>
+                      <div className="flex flex-col gap-1 pl-7 pt-1">
+                        {versions.map((v) => (
+                          <a
+                            key={v.id}
+                            href={`/api/artifacts/${v.id}/view`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] text-bone-mute hover:text-track-gold flex items-center gap-2"
+                          >
+                            <FileText size={11} strokeWidth={1.5} />
+                            {formatDate(v.createdAt)} · {v.createdBy}
+                          </a>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                   </div>
                 ))}
               </div>

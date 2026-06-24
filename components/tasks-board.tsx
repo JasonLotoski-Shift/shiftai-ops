@@ -57,7 +57,7 @@ export type BoardSubTask = {
   status: StatusKey;
   done: boolean;
   priority: string;
-  due: string;
+  due: string | null;
   context: string | null;
   ownerId: string | null;
   owner: OwnerRef;
@@ -89,7 +89,7 @@ export type BoardOrphanTask = {
   status: StatusKey;
   done: boolean;
   priority: string;
-  due: string;
+  due: string | null;
   context: string | null;
   category: WorkCategory;
   categoryLabel: string | null;
@@ -996,7 +996,7 @@ function OrphanTaskCard({
       </div>
 
       <div className="flex items-center justify-between gap-2 pt-1">
-        <span className="mono text-[11px] text-bone-mute tabular-nums">{formatDate(t.due)}</span>
+        <span className="mono text-[11px] text-bone-mute tabular-nums">{t.due ? formatDate(t.due) : "No date"}</span>
         {t.owner ? (
           <span title={t.owner.name} className="inline-flex">
             <Avatar initials={t.owner.initials} size="sm" />
@@ -1093,7 +1093,7 @@ function EditTaskModal({
   const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>(
     task.priority as (typeof PRIORITIES)[number],
   );
-  const [due, setDue] = useState(dueISO(task.due));
+  const [due, setDue] = useState(task.due ? dueISO(task.due) : "");
   const [context, setContext] = useState(task.context ?? "");
   // 2a — re-parent to a milestone (moves the card off the board into the epic).
   const [milestoneId, setMilestoneId] = useState("");

@@ -6,6 +6,9 @@ import { Card, CardBody, Label, Badge, Button, Tabs, Avatar, EmptyState, Stat } 
 import { industryLabels } from "@/lib/data/seed";
 import { formatCAD, formatDate } from "@/lib/format";
 import { ArtifactDeleteControl } from "@/components/artifact-delete-control";
+import { ArtifactReplaceControl } from "@/components/artifact-replace-control";
+import { Timeline, type TimelineComm, type TimelineDoc } from "@/components/timeline";
+import { groupArtifactVersions } from "@/lib/artifact-versions";
 import {
   generateCompanyEnrichment,
   applyCompanyEnrichment,
@@ -49,6 +52,8 @@ interface ClientDetailTabsProps {
   clientProjects: Project[];
   clientInvoices: Invoice[];
   clientArtifacts: Artifact[];
+  clientComms: TimelineComm[];
+  clientDocs: TimelineDoc[];
   contactLinks: ClientContactLinkItem[];
   allContacts: ContactPickerOption[];
 }
@@ -61,6 +66,8 @@ export function ClientDetailTabs({
   clientProjects,
   clientInvoices,
   clientArtifacts,
+  clientComms,
+  clientDocs,
   contactLinks,
   allContacts,
 }: ClientDetailTabsProps) {
@@ -77,8 +84,9 @@ export function ClientDetailTabs({
       <Tabs
         tabs={[
           { key: "profile", label: "Company profile" },
+          { key: "timeline", label: `Timeline (${clientComms.length})` },
           { key: "engagement", label: "Engagement & billing" },
-          { key: "deliverables", label: `Deliverables (${clientArtifacts.length})` },
+          { key: "deliverables", label: `Deliverables (${groupArtifactVersions(clientArtifacts).length})` },
         ]}
         active={tab}
         onChange={setTab}
@@ -87,6 +95,7 @@ export function ClientDetailTabs({
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 flex flex-col gap-6">
           {tab === "profile" && <CompanyProfile client={client} />}
+          {tab === "timeline" && <Timeline comms={clientComms} docs={clientDocs} />}
           {tab === "engagement" && (
             <Engagement
               client={client}
@@ -633,10 +642,13 @@ const reviewTone: Record<
 };
 
 function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
-  const aiCount = artifacts.filter((a) => a.createdBy.startsWith("AGENT")).length;
-  const draftCount = artifacts.filter((a) => a.reviewStatus === "draft").length;
+  // Collapse re-uploaded versions to one record (heads); count/stats off the heads.
+  const heads = groupArtifactVersions(artifacts);
+  const headArtifacts = heads.map((h) => h.head);
+  const aiCount = headArtifacts.filter((a) => a.createdBy.startsWith("AGENT")).length;
+  const draftCount = headArtifacts.filter((a) => a.reviewStatus === "draft").length;
 
-  if (artifacts.length === 0) {
+  if (heads.length === 0) {
     return (
       <Card>
         <EmptyState
@@ -652,7 +664,7 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
     <>
       <div className="grid grid-cols-3 gap-4">
         <Card className="p-5">
-          <Stat label="Total" value={artifacts.length} />
+          <Stat label="Total" value={heads.length} />
         </Card>
         <Card className="p-5">
           <div className="flex flex-col gap-2">
@@ -677,11 +689,12 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
         <div className="px-5 pt-4 pb-2 flex justify-between items-center">
           <span className="title-md">All deliverables (newest first)</span>
         </div>
-        {artifacts.map((ar, i) => {
+        {heads.map(({ head: ar, versions }) => {
           const Icon = artifactIcon[ar.type] ?? FileText;
           const isAgent = ar.createdBy.startsWith("AGENT");
           return (
-            <div key={ar.id} className="flex items-stretch group/doc">
+            <div key={ar.id} className="flex flex-col">
+            <div className="flex items-stretch group/doc">
             <a
               href={ar.driveUrl}
               target="_blank"
@@ -693,7 +706,12 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
               </div>
 
               <div className="min-w-0 flex flex-col gap-1 self-center">
-                <div className="text-[14px] text-bone truncate">{ar.title}</div>
+                <div className="text-[14px] text-bone truncate">
+                  {ar.title}
+                  {versions.length > 0 && (
+                    <span className="ml-2 text-[11px] text-track-gold">v{versions.length + 1}</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 text-[11px] text-bone-mute">
                   <span className="mono uppercase tracking-[0.08em]">{ar.type}</span>
                   {ar.fileName && (
@@ -727,10 +745,36 @@ function Deliverables({ artifacts }: { artifacts: Artifact[] }) {
                 <ExternalLink size={12} strokeWidth={1.5} />
               </div>
             </a>
+            <ArtifactReplaceControl
+              artifactId={ar.id}
+              className="self-center pl-3 opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
+            />
             <ArtifactDeleteControl
               artifactId={ar.id}
-              className="self-center pl-3 pr-4 opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
+              className="self-center pl-2 pr-4 opacity-0 group-hover/doc:opacity-100 focus-within:opacity-100 transition-opacity"
             />
+            </div>
+            {versions.length > 0 && (
+              <details className="px-5 pb-2 -mt-1">
+                <summary className="text-[11px] text-bone-mute hover:text-bone cursor-pointer pl-[44px]">
+                  {versions.length} earlier version{versions.length > 1 ? "s" : ""}
+                </summary>
+                <div className="flex flex-col gap-1 pl-[44px] pt-1">
+                  {versions.map((v) => (
+                    <a
+                      key={v.id}
+                      href={v.driveUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-bone-mute hover:text-track-gold flex items-center gap-2"
+                    >
+                      <FileText size={11} strokeWidth={1.5} />
+                      {formatDate(v.createdAt)} · {v.createdBy}
+                    </a>
+                  ))}
+                </div>
+              </details>
+            )}
             </div>
           );
         })}

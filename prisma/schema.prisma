@@ -510,17 +510,38 @@ model Interaction {
   type     InteractionType
   date     DateTime
   summary  String
+  // Full original text (email/meeting body). Source of truth for "show me the
+  // thread"; `summary` stays the collapsed one-liner. Nullable — legacy rows + a
+  // manual log have no body.
+  body     String?
+  // Email subject + the source message/meeting id (dedup; NON-unique — app-level
+  // dedup, see lib/ingest). threadId groups a Gmail thread's messages so a client
+  // page can show one growing conversation and the poll can detect "already filed".
+  subject    String?
+  externalId String?
+  threadId   String?
   // Free-text actor — partner name OR agent label like "AGENT · CLAUDE".
   // Not a Partner FK because agents aren't Partners (yet).
   loggedBy String
   channel  String?
 
-  contact   Contact @relation(fields: [contactId], references: [id])
-  contactId String
+  // Comms is now scoped to whichever of contact / client / deal apply. contactId
+  // is NULLABLE: auto-ingested mail that matched no contact still lands, scoped by
+  // client/deal (the polymorphic-scope convention used by Task / ContactLink).
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  contactId String?
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  deal      Deal?    @relation(fields: [dealId], references: [id])
+  dealId    String?
 
   createdAt DateTime @default(now())
 
   @@index([contactId, date])
+  @@index([clientId, date])
+  @@index([dealId, date])
+  @@index([threadId])
+  @@index([externalId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -620,6 +641,7 @@ model Deal {
   partnerLeadId String
 
   artifacts  Artifact[]
+  interactions Interaction[]
   estimates  Estimate[]
   discoverySurveys DiscoverySurvey[]
   contactLinks ContactLink[]
@@ -734,6 +756,7 @@ model Client {
   invoices   Invoice[]
   tasks      Task[]
   artifacts  Artifact[]
+  interactions Interaction[]
   milestones Milestone[]
   discoverySurveys DiscoverySurvey[]
   contactLinks ContactLink[]
@@ -1074,7 +1097,9 @@ model Activity {
 model Task {
   id            String       @id @default(cuid())
   title         String
-  due           DateTime
+  // Nullable: an ingested task with no stated deadline shows "no date" instead of
+  // a fake one (was stamped with the source date, so everything looked overdue).
+  due           DateTime?
   priority      TaskPriority
   relatedTo     String?
   // Board column. `done` is kept in sync (done === status "done") so existing
@@ -1203,12 +1228,20 @@ model Artifact {
   // Tasks scoped to this deliverable (deliverable card → add task → assign).
   tasks Task[]
 
+  // Versioning: a "replace / new version" upload creates a NEW row pointing at the
+  // one it supersedes, so a document is ONE record with a history instead of N
+  // look-alike rows. A "head" = an artifact with no live row pointing at it.
+  supersedesId String?
+  supersedes   Artifact?  @relation("ArtifactVersions", fields: [supersedesId], references: [id])
+  supersededBy Artifact[] @relation("ArtifactVersions")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([clientId, createdAt])
   @@index([projectId, createdAt])
   @@index([dealId, createdAt])
+  @@index([supersedesId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1707,6 +1740,12 @@ model IngestProposal {
   matchedDealId    String?
   matchedProjectId String?
 
+  // Gmail thread id — groups a thread's messages so the poll collapses replies into
+  // ONE growing proposal (append + re-extract) instead of one proposal per message.
+  // externalId stays the per-MESSAGE idempotency key; appended message ids live in
+  // the proposal JSON (messageIds[]). Null for paste/meeting (no thread).
+  threadId String?
+
   createdBy  String // partner label or "AGENT · CLAUDE"
   reviewedBy String?
   reviewedAt DateTime?
@@ -1715,6 +1754,8 @@ model IngestProposal {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+  @@index([threadId])
+  @@index([source, status])
 }
 
 // Per-partner Gmail OAuth connection (label-based email ingest). One row per
