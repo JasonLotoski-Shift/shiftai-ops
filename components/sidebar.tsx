@@ -79,12 +79,12 @@ type SidebarUser = { name: string; initials: string; role: string };
 
 export function Sidebar({
   user,
-  totalUnreadMessages = 0,
+  hasUnreadMessages = false,
   whatsNewUnread = false,
   gmailConnected = true,
 }: {
   user: SidebarUser;
-  totalUnreadMessages?: number;
+  hasUnreadMessages?: boolean;
   whatsNewUnread?: boolean;
   gmailConnected?: boolean;
 }) {
@@ -127,7 +127,7 @@ export function Sidebar({
 
     const active = isActive(item.href);
     const showDot =
-      (item.href === "/messages" && totalUnreadMessages > 0) ||
+      (item.href === "/messages" && hasUnreadMessages) ||
       (item.href === "/whats-new" && whatsNewUnread);
     // Task Board is a primary surface — keep it visually loud (bold + near-white)
     // at all times. What's-new only emphasizes while there's an unread update.

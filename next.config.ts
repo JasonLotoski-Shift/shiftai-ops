@@ -3,6 +3,15 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Hold the client-side Router Cache for dynamic pages a few seconds so a quick
+  // back/forward bounce between tabs reuses the last render instead of re-hitting
+  // the DB on every click. Kept short (10s) on purpose: /financials and /pipeline
+  // are shared firm-money screens, and your own edits already revalidate your
+  // cache — so this window only ever affects ANOTHER partner who navigates away
+  // and straight back inside 10s. The default is 0 (every nav refetches).
+  experimental: {
+    staleTimes: { dynamic: 10 },
+  },
   // @react-pdf/renderer (invoice PDF render) ships native-ish deps + a wasm
   // layout engine; let Next require it at runtime instead of bundling it.
   serverExternalPackages: ["@react-pdf/renderer"],

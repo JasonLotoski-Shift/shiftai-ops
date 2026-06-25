@@ -18,12 +18,27 @@ export default async function AppLayout({
   // after a data wipe), so the chip never shows the wrong person.
   const session = await auth();
   const partnerId = session?.user?.partnerId;
-  const partner = partnerId
-    ? await prisma.partner.findUnique({
-        where: { id: partnerId },
-        select: { name: true, initials: true, role: true, whatsNewSeenAt: true },
-      })
-    : null;
+
+  // The partner chip, the Gmail-connect state, and the channel memberships are
+  // mutually independent reads — fire them in ONE parallel wave instead of
+  // awaiting each in series. This layout is force-dynamic and runs on every
+  // route, so each saved round-trip is felt on every navigation.
+  const [partner, gmailAuthRow, memberships] = partnerId
+    ? await Promise.all([
+        prisma.partner.findUnique({
+          where: { id: partnerId },
+          select: { name: true, initials: true, role: true, whatsNewSeenAt: true },
+        }),
+        prisma.partnerGmailAuth.findUnique({
+          where: { partnerId },
+          select: { id: true },
+        }),
+        prisma.channelMember.findMany({
+          where: { partnerId },
+          select: { channelId: true, lastReadAt: true },
+        }),
+      ])
+    : [null, null, [] as { channelId: string; lastReadAt: Date | null }[]];
 
   const fallbackName = session?.user?.name ?? session?.user?.email ?? "Signed in";
   const user = {
@@ -34,33 +49,25 @@ export default async function AppLayout({
 
   // Has this partner connected Gmail for email logging? Drives the red
   // "Connect Gmail" nudge on the Settings nav row until they do.
-  const gmailConnected = partnerId
-    ? !!(await prisma.partnerGmailAuth.findUnique({
-        where: { partnerId },
-        select: { id: true },
-      }))
-    : true; // no partner → nothing to nudge
+  const gmailConnected = partnerId ? !!gmailAuthRow : true; // no partner → nothing to nudge
 
-  // (a) Total unread messages across this partner's channel memberships —
-  // mirrors the per-channel count logic on the Messages page.
-  let totalUnreadMessages = 0;
-  if (partnerId) {
-    const memberships = await prisma.channelMember.findMany({
-      where: { partnerId },
-      select: { channelId: true, lastReadAt: true },
-    });
-    const counts = await Promise.all(
-      memberships.map((m) =>
-        prisma.message.count({
+  // (a) Does this partner have ANY unread message across their channels? The
+  // sidebar only needs a yes/no for a red dot, so resolve it with a single
+  // index-backed findFirst (EXISTS-style — short-circuits on the first hit)
+  // over all their channels at once. This replaces the old N+1 that fired one
+  // COUNT per channel on every page load; the displayed total was never used.
+  const hasUnreadMessages =
+    memberships.length > 0
+      ? !!(await prisma.message.findFirst({
           where: {
-            channelId: m.channelId,
-            ...(m.lastReadAt ? { createdAt: { gt: m.lastReadAt } } : {}),
+            OR: memberships.map((m) => ({
+              channelId: m.channelId,
+              ...(m.lastReadAt ? { createdAt: { gt: m.lastReadAt } } : {}),
+            })),
           },
-        }),
-      ),
-    );
-    totalUnreadMessages = counts.reduce((sum, n) => sum + n, 0);
-  }
+          select: { id: true },
+        }))
+      : false;
 
   // (b) What's new unread — the newest update is newer than when this partner
   // last viewed the changelog.
@@ -77,7 +84,7 @@ export default async function AppLayout({
     <div className="min-h-screen flex bg-bitumen">
       <Sidebar
         user={user}
-        totalUnreadMessages={totalUnreadMessages}
+        hasUnreadMessages={hasUnreadMessages}
         whatsNewUnread={whatsNewUnread}
         gmailConnected={gmailConnected}
       />

@@ -89,6 +89,21 @@ export function CardBody({ className, children, ...props }: HTMLAttributes<HTMLD
 }
 
 /* ──────────────────────────────────────────────────────────────────────
+   Skeleton — shimmer placeholder block for loading states.
+   Size it with className (h-/w-); shape defaults to the standard radius.
+   ────────────────────────────────────────────────────────────────────── */
+
+export function Skeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      aria-hidden
+      className={cn("animate-pulse rounded-[var(--radius)] bg-graphite/50", className)}
+      {...props}
+    />
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
    Label (mono section label — "— SECTOR 03 / CASE STUDY")
    ────────────────────────────────────────────────────────────────────── */
 
