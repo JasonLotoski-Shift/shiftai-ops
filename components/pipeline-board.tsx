@@ -18,7 +18,25 @@ import type {
 } from "@/lib/generated/prisma/models";
 import type { DealStage, LeadSource } from "@/lib/generated/prisma/enums";
 
-type DealWithRel = Deal & { contact: Contact; partnerLead: Partner };
+// Narrowed shape mirroring the `select` in app/(app)/pipeline/page.tsx — must
+// match PipelineTabs' DealWithRel (tsc enforces it at the call boundary).
+type DealWithRel = Pick<
+  Deal,
+  | "id"
+  | "company"
+  | "name"
+  | "stage"
+  | "valueEstimate"
+  | "industry"
+  | "subIndustry"
+  | "stageEnteredAt"
+  | "partnerLeadId"
+  | "coldOutreachAt"
+  | "outreachRepliedAt"
+> & {
+  contact: Pick<Contact, "name" | "sourceCategory">;
+  partnerLead: Pick<Partner, "initials" | "name">;
+};
 
 // Stages a card can be dropped into. "signed" is the convert flow, not a drop.
 const DROP_STAGES = stageOrder.filter((s) => s !== "signed");

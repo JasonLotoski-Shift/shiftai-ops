@@ -7,7 +7,6 @@ import { Card, Label, Badge, Tabs, SearchInput, EmptyState } from "@/components/
 import { formatDate } from "@/lib/format";
 import type {
   ActivityModel as Activity,
-  ClientModel as Client,
   NewsItemModel as NewsItem,
   ProjectModel as Project,
   TeamUpdateModel as TeamUpdate,
@@ -52,7 +51,14 @@ const quickActions: QuickAction[] = [
 // originationPct is a Prisma Decimal in the DB; it's serialized to a number in
 // the page before crossing to this client component (Decimals can't be passed
 // to Client Components). This view doesn't read it, but the type must match.
-type ProjectWithClient = Omit<Project, "originationPct"> & { originationPct: number; client: Client };
+type ProjectWithClient = {
+  id: string;
+  name: string;
+  phase: Project["phase"];
+  status: Project["status"];
+  originationPct: number;
+  client: { company: string };
+};
 type PickRecord = { id: string; label: string; sub?: string };
 
 interface DashboardViewsProps {

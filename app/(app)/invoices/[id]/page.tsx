@@ -14,24 +14,29 @@ import { ArrowLeft, FileOutput } from "lucide-react";
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const invoice = await prisma.invoice.findUnique({
-    where: { id },
-    include: {
-      client: true,
-      project: {
-        include: {
-          partnerLead: true,
+  // Invoice + its change-log thread are independent reads — one parallel wave.
+  // Pass `id` (the route param) to the thread loader, NOT invoice.id, so it
+  // doesn't have to wait on the invoice query.
+  const [invoice, thread] = await Promise.all([
+    prisma.invoice.findUnique({
+      where: { id },
+      include: {
+        client: true,
+        project: {
+          include: {
+            partnerLead: true,
+          },
         },
       },
-    },
-  });
+    }),
+    getInvoiceThread(id),
+  ]);
   if (!invoice) notFound();
 
   const client = invoice.client;
   const project = invoice.project;
   const partner = project.partnerLead;
   const overdueDays = invoice.status === "overdue" ? daysSince(invoice.dueAt) : 0;
-  const thread = await getInvoiceThread(invoice.id);
 
   return (
     <>

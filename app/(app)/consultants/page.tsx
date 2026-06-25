@@ -7,14 +7,16 @@ import { RosterEditor } from "@/components/consultants/roster-editor";
 // The firm's pay rate card. Reachable from Billing — manage the people we pay
 // on projects (team members + external sub-consultants) and their fixed rates.
 export default async function ConsultantsPage() {
-  const consultants = await prisma.consultant.findMany({
-    orderBy: [{ active: "desc" }, { name: "asc" }],
-    include: { partner: { select: { id: true, name: true } } },
-  });
-  const partners = await prisma.partner.findMany({
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  const [consultants, partners] = await Promise.all([
+    prisma.consultant.findMany({
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+      include: { partner: { select: { id: true, name: true } } },
+    }),
+    prisma.partner.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   const rows = consultants.map((c) => ({
     id: c.id,

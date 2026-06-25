@@ -42,6 +42,20 @@ export default async function IngestPage({
         status: "pending",
         OR: [{ ingestType: null }, { ingestType: { not: "scope-pricing" } }],
       },
+      // Only the columns the review list renders — omits the heavy `transcript`
+      // (full Gmail thread body); the approve/detail path re-fetches it by id.
+      select: {
+        id: true,
+        source: true,
+        title: true,
+        meetingDate: true,
+        createdBy: true,
+        matchedContactId: true,
+        matchedClientId: true,
+        matchedProjectId: true,
+        matchedDealId: true,
+        proposal: true,
+      },
       orderBy: { createdAt: "desc" },
     }),
     prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),

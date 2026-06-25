@@ -8,16 +8,10 @@ export default async function FeatureRequestsPage() {
   const session = await auth();
   const currentPartnerId = session?.user?.partnerId ?? "";
 
-  const [requests, partners] = await Promise.all([
-    prisma.featureRequest.findMany({
-      include: { createdBy: { select: { id: true, name: true, initials: true } } },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.partner.findMany({
-      select: { id: true, name: true, initials: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+  const requests = await prisma.featureRequest.findMany({
+    include: { createdBy: { select: { id: true, name: true, initials: true } } },
+    orderBy: { createdAt: "desc" },
+  });
 
   // Coerce dates to ISO strings for the client component.
   const items = requests.map((r) => ({
@@ -62,7 +56,6 @@ export default async function FeatureRequestsPage() {
 
       <FeatureRequestsBoard
         items={items}
-        partners={partners}
         currentPartnerId={currentPartnerId}
       />
     </div>

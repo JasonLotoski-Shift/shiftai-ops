@@ -37,14 +37,28 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const contactIds = [client.primaryContactId, ...client.contactLinks.map((l) => l.contactId)].filter(
     (x): x is string => !!x,
   );
-  const interactions = await prisma.interaction.findMany({
-    where: {
-      OR: [{ clientId: client.id }, ...(contactIds.length ? [{ contactId: { in: contactIds } }] : [])],
-    },
-    orderBy: { date: "desc" },
-    take: 100,
-    include: { contact: { select: { name: true } } },
-  });
+  // Comms timeline, the add-person picker universe, and the action-status reads
+  // are all independent — one parallel wave instead of three serial round trips.
+  const [interactions, allContacts, clientRanAt, clientSavedAt] = await Promise.all([
+    prisma.interaction.findMany({
+      where: {
+        OR: [{ clientId: client.id }, ...(contactIds.length ? [{ contactId: { in: contactIds } }] : [])],
+      },
+      orderBy: { date: "desc" },
+      take: 100,
+      include: { contact: { select: { name: true } } },
+    }),
+    // Picker universe for the add-person flow — every contact on file.
+    prisma.contact.findMany({
+      select: { id: true, name: true, title: true, company: true },
+      orderBy: { name: "asc" },
+    }),
+    // Actions panel run-status (green) + saved step-1 drafts (orange). Box keys
+    // map to generatedFromSkill: discovery-report → "discovery-report", sow → "sow".
+    ranAtBySkill({ clientId: id }),
+    savedAtBySkill({ clientId: id }),
+  ]);
+
   const clientComms = interactions.map((it) => ({
     id: it.id,
     date: it.date.toISOString(),
@@ -64,19 +78,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     createdBy: a.createdBy,
     generatedFromSkill: a.generatedFromSkill,
   }));
-
-  // Picker universe for the add-person flow — every contact on file.
-  const allContacts = await prisma.contact.findMany({
-    select: { id: true, name: true, title: true, company: true },
-    orderBy: { name: "asc" },
-  });
-
-  // Actions panel run-status (green) + saved step-1 drafts (orange). Box keys
-  // map to generatedFromSkill: discovery-report → "discovery-report", sow → "sow".
-  const [clientRanAt, clientSavedAt] = await Promise.all([
-    ranAtBySkill({ clientId: id }),
-    savedAtBySkill({ clientId: id }),
-  ]);
   const actionRanAt: Record<string, Date | undefined> = {
     "discovery-report": clientRanAt["discovery-report"],
     sow: clientRanAt["sow"],

@@ -11,9 +11,19 @@ import type { Industry, EngagementStatus } from "@/lib/types";
 export default async function ClientsPage() {
   const [clients, contacts, partners, session] = await Promise.all([
     prisma.client.findMany({
-      include: {
-        partnerLead: true,
-        projects: { where: { status: { not: "closed" } }, select: { id: true } },
+      // Only the columns the list row renders. The open-project tally is the
+      // sole use of the projects relation, so a `_count` (same where-clause)
+      // replaces materializing id rows.
+      select: {
+        id: true,
+        company: true,
+        industry: true,
+        subIndustry: true,
+        revenue: true,
+        contractValue: true,
+        status: true,
+        partnerLead: { select: { initials: true, name: true } },
+        _count: { select: { projects: { where: { status: { not: "closed" } } } } },
       },
       orderBy: { contractSignedAt: "desc" },
     }),
@@ -38,7 +48,7 @@ export default async function ClientsPage() {
     // DB stores hyphenated via @map, but the client returns underscored
     // identifiers — convert to the UI EngagementStatus form for display/match.
     status: c.status.replace("_", "-") as EngagementStatus,
-    activeProjects: c.projects.length,
+    activeProjects: c._count.projects,
     partnerLeadInitials: c.partnerLead.initials,
     partnerLeadFirstName: c.partnerLead.name.split(" ")[0],
   }));

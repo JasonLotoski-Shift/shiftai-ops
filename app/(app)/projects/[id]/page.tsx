@@ -84,11 +84,22 @@ export default async function ProjectDetailPage({
     }),
     auth(),
   ]);
-  const rosterConsultantsRaw = await prisma.consultant.findMany({
-    where: { active: true },
-    select: { id: true, name: true, role: true, defaultPayRateCents: true },
-    orderBy: { name: "asc" },
-  });
+  if (!project) notFound();
+
+  // The Financials tab is the ONLY consumer of the roster, the pending scope
+  // proposal, the rate tiers, the billing change-log, and the commission /
+  // service-contract reads. The page opens on Overview by default, so skip all
+  // of them unless that tab is open (the page re-renders on tab change, so they
+  // load live when Financials opens). Each defaults to empty/false off-tab.
+  const wantFinancials = tab === "financials";
+
+  const rosterConsultantsRaw = wantFinancials
+    ? await prisma.consultant.findMany({
+        where: { active: true },
+        select: { id: true, name: true, role: true, defaultPayRateCents: true },
+        orderBy: { name: "asc" },
+      })
+    : [];
   const rosterConsultants = rosterConsultantsRaw.map((c) => ({
     id: c.id,
     name: c.name,
@@ -97,11 +108,13 @@ export default async function ProjectDetailPage({
   }));
 
   // Latest pending scope-pricing proposal for this project (review surface).
-  const pendingScope = await prisma.ingestProposal.findFirst({
-    where: { matchedProjectId: id, ingestType: "scope-pricing", status: "pending" },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, proposal: true },
-  });
+  const pendingScope = wantFinancials
+    ? await prisma.ingestProposal.findFirst({
+        where: { matchedProjectId: id, ingestType: "scope-pricing", status: "pending" },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, proposal: true },
+      })
+    : null;
   let pendingScopeProp: {
     id: string;
     total: number | null;
@@ -135,8 +148,6 @@ export default async function ProjectDetailPage({
       })),
     };
   }
-  if (!project) notFound();
-
   const currentPartnerId = session?.user?.partnerId ?? "";
 
   const client = project.client;
@@ -186,7 +197,14 @@ export default async function ProjectDetailPage({
     }));
   const hasPayouts = project.payouts.length > 0;
 
-  const billingThread = await getProjectBillingThread(id);
+  const billingThread = wantFinancials
+    ? await getProjectBillingThread(id, {
+        installmentIds: project.installments.map((i) => i.id),
+        lineIds: project.economicsLines.map((l) => l.id),
+        payoutIds: project.payouts.map((p) => p.id),
+        invoiceIds: project.invoices.map((i) => i.id),
+      })
+    : [];
 
   // Economics lines → client-safe shape (Decimal hours → number).
   const economicsRows = project.economicsLines.map((l) => ({
@@ -202,12 +220,14 @@ export default async function ProjectDetailPage({
     rateTierId: l.rateTierId,
   }));
 
-  // Rate card (firm tiers) for the economics line tier picker.
-  const tiers = await prisma.rateTier.findMany({
-    where: { active: true },
-    orderBy: { sortOrder: "asc" },
-    select: { id: true, name: true, billRateCents: true, payRateCents: true },
-  });
+  // Rate card (firm tiers) for the economics line tier picker (Financials tab).
+  const tiers = wantFinancials
+    ? await prisma.rateTier.findMany({
+        where: { active: true },
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, name: true, billRateCents: true, payRateCents: true },
+      })
+    : [];
 
   // Direct costs + origination rows for the Financials tab.
   const directCostRows = project.directCosts.map((c) => ({ id: c.id, label: c.label, amount: c.amount, notes: c.notes }));
@@ -220,8 +240,9 @@ export default async function ProjectDetailPage({
     notes: o.notes,
   }));
 
-  // Deal-source commission (firm money — managing partners only; gated query).
-  const managingPartner = await currentIsManagingPartner();
+  // Deal-source commission (firm money — managing partners only; Financials tab
+  // only). On Overview, skip the managing-partner check and both reads entirely.
+  const managingPartner = wantFinancials ? await currentIsManagingPartner() : false;
   const projectCommissionRaw = managingPartner
     ? await prisma.projectSourceCommission.findMany({
         where: { projectId: id },

@@ -19,22 +19,53 @@ import { CommissionSummary, type CommissionFlowRow } from "@/components/billing/
 const cad = (n: number) => formatCAD(n).replace("CA$", "$");
 
 export default async function FinancialsPage() {
-  const projects = await prisma.project.findMany({
-    orderBy: { startDate: "desc" },
-    select: {
-      id: true,
-      name: true,
-      budgetFee: true,
-      status: true,
-      projectType: true,
-      originationPct: true,
-      isFirstContract: true,
-      client: { select: { company: true } },
-      economicsLines: { select: { hours: true, payRateCents: true, billRateCents: true, isExtra: true } },
-      directCosts: { select: { amount: true } },
-      invoices: { select: { amount: true, status: true } },
-    },
-  });
+  // Every firm-financials read is mutually independent — fetch them in ONE
+  // parallel wave instead of awaiting each in series (was ~5 sequential round
+  // trips to us-west-2 before the rollup could compute).
+  const [
+    projects,
+    openDeals,
+    subProjects,
+    plannedInstallments,
+    openInvoices,
+    activeContracts,
+    managingPartner,
+  ] = await Promise.all([
+    prisma.project.findMany({
+      orderBy: { startDate: "desc" },
+      select: {
+        id: true,
+        name: true,
+        budgetFee: true,
+        status: true,
+        projectType: true,
+        originationPct: true,
+        isFirstContract: true,
+        client: { select: { company: true } },
+        economicsLines: { select: { hours: true, payRateCents: true, billRateCents: true, isExtra: true } },
+        directCosts: { select: { amount: true } },
+        invoices: { select: { amount: true, status: true } },
+      },
+    }),
+    prisma.deal.findMany({
+      where: { stage: { not: "signed" }, lostAt: null },
+      orderBy: { closeTargetDate: "asc" },
+      select: {
+        company: true,
+        valueEstimate: true,
+        probability: true,
+        estimates: { where: { status: "accepted" }, orderBy: { version: "desc" }, take: 1, select: { totalValue: true } },
+      },
+    }),
+    prisma.project.findMany({
+      where: { projectType: "subscription", status: { not: "closed" } },
+      select: { projectType: true, budgetFee: true, scheduleType: true, startDate: true, targetEndDate: true, serviceContract: { select: { monthlyFee: true } } },
+    }),
+    prisma.billingInstallment.findMany({ where: { status: "planned" }, select: { amount: true, dueDate: true, status: true } }),
+    prisma.invoice.findMany({ where: { status: { in: ["sent", "overdue"] } }, select: { amount: true, dueAt: true, status: true } }),
+    prisma.serviceContract.findMany({ where: { status: { in: ["active", "pending_start"] } }, select: { monthlyFee: true, startDate: true, termMonths: true, status: true } }),
+    currentIsManagingPartner(),
+  ]);
 
   const rows = projects.map((p) => {
     const totals = economicsTotals(
@@ -85,16 +116,6 @@ export default async function FinancialsPage() {
   const originationTotal = sum((r) => r.origination);
 
   // ── Forecast (open to all partners — same sensitivity as the rollup above) ──
-  const openDeals = await prisma.deal.findMany({
-    where: { stage: { not: "signed" }, lostAt: null },
-    orderBy: { closeTargetDate: "asc" },
-    select: {
-      company: true,
-      valueEstimate: true,
-      probability: true,
-      estimates: { where: { status: "accepted" }, orderBy: { version: "desc" }, take: 1, select: { totalValue: true } },
-    },
-  });
   const pipelineDeals = openDeals.map((d) => {
     const acceptedEstimateTotal = d.estimates[0]?.totalValue ?? null;
     const value = acceptedEstimateTotal && acceptedEstimateTotal > 0 ? acceptedEstimateTotal : d.valueEstimate;
@@ -105,18 +126,9 @@ export default async function FinancialsPage() {
     openDeals.map((d) => ({ valueEstimate: d.valueEstimate, probability: d.probability, acceptedEstimateTotal: d.estimates[0]?.totalValue ?? null })),
   );
 
-  const subProjects = await prisma.project.findMany({
-    where: { projectType: "subscription", status: { not: "closed" } },
-    select: { projectType: true, budgetFee: true, scheduleType: true, startDate: true, targetEndDate: true, serviceContract: { select: { monthlyFee: true } } },
-  });
   const mrr = mrrTotal(subProjects.map((p) => ({ ...p, serviceContractMonthlyFee: p.serviceContract?.monthlyFee ?? null })));
   const arr = mrr * 12;
 
-  const [plannedInstallments, openInvoices, activeContracts] = await Promise.all([
-    prisma.billingInstallment.findMany({ where: { status: "planned" }, select: { amount: true, dueDate: true, status: true } }),
-    prisma.invoice.findMany({ where: { status: { in: ["sent", "overdue"] } }, select: { amount: true, dueAt: true, status: true } }),
-    prisma.serviceContract.findMany({ where: { status: { in: ["active", "pending_start"] } }, select: { monthlyFee: true, startDate: true, termMonths: true, status: true } }),
-  ]);
   const cashCalendar = bucketCashIn(
     { installments: plannedInstallments, invoices: openInvoices, ongoing: activeContracts },
     new Date(),
@@ -124,7 +136,6 @@ export default async function FinancialsPage() {
   );
 
   // ── Commission flow-through (firm money — managing partners only) ──
-  const managingPartner = await currentIsManagingPartner();
   let commissionTotals: ReturnType<typeof firmCommissionTotals> | null = null;
   let commissionRows: CommissionFlowRow[] = [];
   if (managingPartner) {

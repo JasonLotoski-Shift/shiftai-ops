@@ -30,22 +30,21 @@ function toEntries(rows: Awaited<ReturnType<typeof prisma.auditLog.findMany>>): 
 // Every billing-relevant change on a project: project-level billing actions
 // (fee, schedule, payouts, scope-pricing approval) + its installments,
 // economics lines, payouts, and invoices.
-export async function getProjectBillingThread(projectId: string): Promise<AuditEntry[]> {
-  const [installments, lines, payouts, invoices] = await Promise.all([
-    prisma.billingInstallment.findMany({ where: { projectId }, select: { id: true } }),
-    prisma.projectEconomicsLine.findMany({ where: { projectId }, select: { id: true } }),
-    prisma.consultantPayout.findMany({ where: { projectId }, select: { id: true } }),
-    prisma.invoice.findMany({ where: { projectId }, select: { id: true } }),
-  ]);
-
+export async function getProjectBillingThread(
+  projectId: string,
+  ids: { installmentIds: string[]; lineIds: string[]; payoutIds: string[]; invoiceIds: string[] },
+): Promise<AuditEntry[]> {
+  // The project page already loaded these child rows — pass their ids in rather
+  // than re-querying them here (was 4 extra round trips before the auditLog
+  // read; now just the one).
   const rows = await prisma.auditLog.findMany({
     where: {
       OR: [
         { targetType: "Project", targetId: projectId },
-        { targetType: "BillingInstallment", targetId: { in: installments.map((i) => i.id) } },
-        { targetType: "ProjectEconomicsLine", targetId: { in: lines.map((i) => i.id) } },
-        { targetType: "ConsultantPayout", targetId: { in: payouts.map((i) => i.id) } },
-        { targetType: "Invoice", targetId: { in: invoices.map((i) => i.id) } },
+        { targetType: "BillingInstallment", targetId: { in: ids.installmentIds } },
+        { targetType: "ProjectEconomicsLine", targetId: { in: ids.lineIds } },
+        { targetType: "ConsultantPayout", targetId: { in: ids.payoutIds } },
+        { targetType: "Invoice", targetId: { in: ids.invoiceIds } },
       ],
     },
     orderBy: { ts: "desc" },

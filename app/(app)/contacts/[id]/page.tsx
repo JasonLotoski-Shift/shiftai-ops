@@ -75,25 +75,30 @@ function linkPhrase(relationship: string, company: string): string {
 export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const contact = await prisma.contact.findUnique({
-    where: { id },
-    include: {
-      partnerLead: true,
-      deals: { orderBy: { closeTargetDate: "asc" } },
-      interactions: { orderBy: { date: "desc" } },
-      // The person's company hats (employment / roles) — primary first.
-      affiliations: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] },
-      // Companies this person connects to — works-there / introduced-us /
-      // advises, against deals and clients (the connector-value view).
-      links: {
-        include: {
-          deal: { select: { id: true, company: true } },
-          client: { select: { id: true, company: true } },
+  // Contact record + its saved step-1 drafts are independent — one parallel wave.
+  const [contact, contactSavedAt] = await Promise.all([
+    prisma.contact.findUnique({
+      where: { id },
+      include: {
+        partnerLead: true,
+        deals: { orderBy: { closeTargetDate: "asc" } },
+        interactions: { orderBy: { date: "desc" }, select: { id: true, type: true, date: true, summary: true, loggedBy: true, channel: true } },
+        // The person's company hats (employment / roles) — primary first.
+        affiliations: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] },
+        // Companies this person connects to — works-there / introduced-us /
+        // advises, against deals and clients (the connector-value view).
+        links: {
+          include: {
+            deal: { select: { id: true, company: true } },
+            client: { select: { id: true, company: true } },
+          },
+          orderBy: { createdAt: "asc" },
         },
-        orderBy: { createdAt: "asc" },
       },
-    },
-  });
+    }),
+    // Saved step-1 email drafts (orange) — contact-scoped (ActionDraft.contactId).
+    savedAtBySkill({ contactId: id }),
+  ]);
   if (!contact) notFound();
 
   const partner = contact.partnerLead;
@@ -106,9 +111,8 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   // two-step contact action is Draft email. The email Artifact is scoped to the
   // contact's client/deal (Artifact has no contactId), so the contact-true
   // "last ran" signal is the most recent email_sent interaction logged here.
-  // Saved step-1 drafts ARE contact-scoped (ActionDraft.contactId), so those
-  // come from savedAtBySkill.
-  const contactSavedAt = await savedAtBySkill({ contactId: id });
+  // Saved step-1 drafts ARE contact-scoped (ActionDraft.contactId) — fetched in
+  // the Promise.all above as contactSavedAt.
   const lastEmailSent = log.find((i) => i.type === "email_sent")?.date;
   const actionRanAt: Record<string, Date | undefined> = { email: lastEmailSent };
   const actionSavedAt: Record<string, Date | undefined> = { email: contactSavedAt["draft-email"] };

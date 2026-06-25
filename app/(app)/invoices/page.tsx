@@ -8,7 +8,16 @@ import { formatCAD, formatDate, daysSince } from "@/lib/format";
 export default async function InvoicesPage() {
   const [invoices, projects] = await Promise.all([
     prisma.invoice.findMany({
-      include: { client: true },
+      // Only the columns the register renders; client narrowed to company.
+      select: {
+        id: true,
+        number: true,
+        amount: true,
+        issuedAt: true,
+        dueAt: true,
+        status: true,
+        client: { select: { company: true } },
+      },
       orderBy: { issuedAt: "desc" },
     }),
     prisma.project.findMany({

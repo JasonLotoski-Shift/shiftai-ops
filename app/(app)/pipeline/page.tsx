@@ -14,7 +14,45 @@ type LeadRow = Awaited<ReturnType<typeof loadLeads>>[number];
 
 function loadLeads() {
   return prisma.prospectLead.findMany({
-    include: { segment: { select: { id: true, name: true } } },
+    // Explicit select of exactly what toLead() maps, MINUS `sources` — the raw
+    // Apollo org record (tens of KB/row) that no consumer reads. Dropping it
+    // here keeps it out of the RSC payload on every pipeline load.
+    select: {
+      id: true,
+      companyName: true,
+      domain: true,
+      website: true,
+      industryTags: true,
+      revenueEstimate: true,
+      employeeEstimate: true,
+      headquarters: true,
+      enrichedAt: true,
+      segmentId: true,
+      segment: { select: { id: true, name: true } },
+      score: true,
+      rationale: true,
+      disqualified: true,
+      status: true,
+      people: true,
+      foundBy: true,
+      createdBy: true,
+      generatedFromSkill: true,
+      origin: true,
+      promotedBy: true,
+      convertedContactId: true,
+      convertedDealId: true,
+      reviewedBy: true,
+      reviewedAt: true,
+      claimedById: true,
+      claimedBy: true,
+      claimedAt: true,
+      outreachSubject: true,
+      outreachDraft: true,
+      outreachPersonIndex: true,
+      outreachSentAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
     orderBy: { score: "desc" },
   });
 }
@@ -38,7 +76,7 @@ function toLead(row: LeadRow): ProspectLead {
     status: row.status,
     people: (row.people as unknown as ProspectPerson[]) ?? [],
     foundBy: row.foundBy,
-    sources: (row.sources as Record<string, unknown> | null) ?? null,
+    sources: null, // dropped from the query (see loadLeads) — never read downstream
     createdBy: row.createdBy,
     generatedFromSkill: row.generatedFromSkill ?? undefined,
     origin: row.origin,
@@ -67,7 +105,25 @@ export default async function PipelinePage({
   const { tab, segment } = await searchParams;
   const [deals, contacts, partners, leadRows, session] = await Promise.all([
     prisma.deal.findMany({
-      include: { contact: true, partnerLead: true },
+      // Only the columns the board + tabs render; the relations are narrowed
+      // hard — `contact: true` previously pulled the entire wide Contact row
+      // (persona, key facts, background…) per deal. Mirrored by DealWithRel in
+      // pipeline-tabs.tsx / pipeline-board.tsx.
+      select: {
+        id: true,
+        company: true,
+        name: true,
+        stage: true,
+        valueEstimate: true,
+        industry: true,
+        subIndustry: true,
+        stageEnteredAt: true,
+        partnerLeadId: true,
+        coldOutreachAt: true,
+        outreachRepliedAt: true,
+        contact: { select: { name: true, sourceCategory: true } },
+        partnerLead: { select: { initials: true, name: true } },
+      },
       orderBy: { closeTargetDate: "asc" },
     }),
     prisma.contact.findMany({

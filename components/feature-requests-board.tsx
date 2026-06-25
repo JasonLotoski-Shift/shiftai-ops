@@ -43,8 +43,6 @@ export type FeatureRequestItem = {
   updatedAt: string;
 };
 
-type PartnerLite = { id: string; name: string; initials: string };
-
 // ── Display maps ──────────────────────────────────────────────────────
 const TYPE_LABELS: Record<string, string> = {
   bug: "Bug fix",
@@ -89,7 +87,6 @@ export function FeatureRequestsBoard({
   currentPartnerId,
 }: {
   items: FeatureRequestItem[];
-  partners: PartnerLite[];
   currentPartnerId: string;
 }) {
   const [createOpen, setCreateOpen] = useState(false);

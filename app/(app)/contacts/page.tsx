@@ -12,7 +12,17 @@ import type { Industry } from "@/lib/types";
 export default async function ContactsPage() {
   const [contacts, partners, session] = await Promise.all([
     prisma.contact.findMany({
-      include: { partnerLead: true },
+      // Only the columns the list row renders — drops ~21 unused wide columns.
+      select: {
+        id: true,
+        name: true,
+        title: true,
+        company: true,
+        industry: true,
+        subIndustry: true,
+        lastTouchAt: true,
+        partnerLead: { select: { initials: true, name: true } },
+      },
       orderBy: { lastTouchAt: "desc" },
     }),
     prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),

@@ -21,7 +21,26 @@ import type {
 } from "@/lib/generated/prisma/models";
 import type { ProspectLead } from "@/lib/types";
 
-type DealWithRel = Deal & { contact: Contact; partnerLead: Partner };
+// The narrowed shape the board/tabs actually render — mirrors the `select` in
+// app/(app)/pipeline/page.tsx. tsc enforces these stay in sync where the page
+// passes `deals` in, and where this component passes them to PipelineBoard.
+type DealWithRel = Pick<
+  Deal,
+  | "id"
+  | "company"
+  | "name"
+  | "stage"
+  | "valueEstimate"
+  | "industry"
+  | "subIndustry"
+  | "stageEnteredAt"
+  | "partnerLeadId"
+  | "coldOutreachAt"
+  | "outreachRepliedAt"
+> & {
+  contact: Pick<Contact, "name" | "sourceCategory">;
+  partnerLead: Pick<Partner, "initials" | "name">;
+};
 
 type PipelineTab = "board" | "leads" | "promoted" | "cold";
 
