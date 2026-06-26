@@ -7,7 +7,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ExternalLink, FileWarning } from "lucide-react";
+import { Plus, ExternalLink, FileWarning, Download, Repeat } from "lucide-react";
 import { Card, Stat, Badge, Button, EmptyState, Tabs } from "@/components/ui";
 import { formatCAD, formatDate, daysSince } from "@/lib/format";
 import {
@@ -18,7 +18,7 @@ import {
   EXPENSE_STATUS_LABELS,
 } from "@/lib/finance";
 import type { BillStatus, ExpenseCategory, ExpenseKind, ExpenseStatus } from "@/lib/types";
-import { markBillPaid, markExpenseReimbursed, markExpensePaid } from "@/app/(app)/financials/finance-actions";
+import { markBillPaid, markExpenseReimbursed, markExpensePaid, exportLedgerCsv } from "@/app/(app)/financials/finance-actions";
 import { markInvoicePaid } from "@/app/(app)/invoices/[id]/actions";
 import { UploadFinanceModal } from "@/components/billing/upload-finance-modal";
 
@@ -53,6 +53,8 @@ type ExpenseRow = {
   needsPhoto: boolean;
   driveUrl: string | null;
   paidByName: string | null;
+  recurring?: boolean;
+  renewalDate?: string | null;
 };
 
 export type ApArProps = {
@@ -95,9 +97,14 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
   const [pendingId, startPaid] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const outstandingBills = bills.filter((b) => b.status === "received" || b.status === "approved");
   const paidBillsCount = bills.length - outstandingBills.length;
+  // Subscriptions get their own card so recurring SaaS/phone/office spend is
+  // visible at a glance; the Expenses card shows everything else.
+  const subscriptions = expenses.filter((e) => e.kind === "subscription");
+  const otherExpenses = expenses.filter((e) => e.kind !== "subscription");
 
   const totals = useMemo(() => {
     const ar = invoices.reduce((s, i) => s + i.amount, 0);
@@ -137,6 +144,22 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
     });
   }
 
+  // Pull the full ledger as CSV and download it (no server file — a Blob link).
+  async function onExport() {
+    setExporting(true);
+    try {
+      const { filename, csv } = await exportLedgerCsv();
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const buckets: AgingBucket[] = ["current", "d30", "d60", "d90"];
 
   return (
@@ -148,7 +171,11 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
           <Card className="p-5"><Stat label="Net position" value={cad(totals.net)} delta="AR − AP" gold={totals.net >= 0} /></Card>
           <Card className="p-5"><Stat label="Expenses · MTD" value={cad(totals.mtd)} delta={totals.owed > 0 ? `${cad(totals.owed)} owed to team` : "this month"} /></Card>
         </div>
-        <div className="pl-4 self-start">
+        <div className="pl-4 self-start flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={onExport} disabled={exporting}>
+            <Download size={14} strokeWidth={1.5} />
+            {exporting ? "Exporting…" : "Export CSV"}
+          </Button>
           <Button variant="primary" size="sm" onClick={() => setModal(true)}>
             <Plus size={14} strokeWidth={1.5} />
             Upload Expense / Invoice / Receipt
@@ -258,13 +285,48 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
         )}
       </Card>
 
-      {/* Expenses — receipts + subscriptions */}
+      {/* Subscriptions — recurring SaaS / phone / office */}
+      {subscriptions.length > 0 && (
+        <Card>
+          <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+            <h2 className="title-md flex items-center gap-2"><Repeat size={14} strokeWidth={1.5} className="text-track-gold" /> Subscriptions</h2>
+            <span className="label">{subscriptions.length} · {cad(subscriptions.reduce((s, e) => s + e.amount, 0))} logged</span>
+          </div>
+          <div className="grid grid-cols-[1.4fr_160px_120px_120px_140px] gap-4 px-5 py-2">
+            <span className="text-[11px] text-bone-dim">Service</span>
+            <span className="text-[11px] text-bone-dim">Category</span>
+            <span className="text-[11px] text-bone-dim text-right">Amount</span>
+            <span className="text-[11px] text-bone-dim text-right">Renews</span>
+            <span className="text-[11px] text-bone-dim text-right">Status</span>
+          </div>
+          {subscriptions.map((e) => (
+            <div key={e.id} className="grid grid-cols-[1.4fr_160px_120px_120px_140px] gap-4 px-5 py-3.5 border-t border-graphite/40 items-center">
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="text-[13px] text-bone truncate">{e.vendor ?? EXPENSE_CATEGORY_LABELS[e.category]}</span>
+                {e.driveUrl && (
+                  <a href={e.driveUrl} target="_blank" rel="noreferrer" className="text-bone-mute hover:text-track-gold shrink-0" title="Open receipt">
+                    <ExternalLink size={12} strokeWidth={1.5} />
+                  </a>
+                )}
+              </span>
+              <span className="text-[12px] text-bone-dim self-center truncate">{EXPENSE_CATEGORY_LABELS[e.category]}</span>
+              <span className="mono text-[14px] text-bone tabular-nums text-right">{cad(e.amount)}</span>
+              <span className="mono text-[12px] text-bone-dim tabular-nums text-right">{e.renewalDate ? formatDate(e.renewalDate) : "—"}</span>
+              <div className="flex justify-end">
+                <Badge tone={e.status === "paid" || e.status === "reimbursed" ? "steel" : "neutral"}>{EXPENSE_STATUS_LABELS[e.status]}</Badge>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {/* Expenses — receipts (subscriptions are in their own card above) */}
       <Card>
         <div className="px-5 pt-4 pb-2 flex items-center justify-between">
           <h2 className="title-md">Expenses</h2>
-          <span className="label">{expenses.length} total{totals.owed > 0 ? ` · ${cad(totals.owed)} owed` : ""}</span>
+          <span className="label">{otherExpenses.length} total{totals.owed > 0 ? ` · ${cad(totals.owed)} owed` : ""}</span>
         </div>
-        {expenses.length === 0 ? (
+        {otherExpenses.length === 0 ? (
           <EmptyState icon={<FileWarning size={26} strokeWidth={1.5} />} title="No expenses yet" hint="Upload a receipt or log an expense to start tracking spend by category." compact />
         ) : (
           <>
@@ -275,7 +337,7 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
               <span className="text-[11px] text-bone-dim text-right">Date</span>
               <span className="text-[11px] text-bone-dim text-right">Status</span>
             </div>
-            {expenses.map((e) => {
+            {otherExpenses.map((e) => {
               const settled = e.status === "reimbursed" || e.status === "paid";
               const tone = settled ? "steel" : e.status === "approved" ? "gold" : "neutral";
               return (

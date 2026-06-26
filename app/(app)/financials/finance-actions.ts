@@ -515,3 +515,46 @@ export async function scanReceipt(input: { base64: string; mediaType: string }):
     confidence: conf === "high" || conf === "medium" || conf === "low" ? conf : null,
   };
 }
+
+// ── Accountant CSV export (Phase 3) ────────────────────────────────────────
+// One unified money ledger (AR invoices + AP bills + expenses) as CSV for the
+// bookkeeper. MP-gated; read-only. The client turns the string into a download.
+
+function csvCell(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+const csvRow = (cells: unknown[]) => cells.map(csvCell).join(",");
+
+export async function exportLedgerCsv(): Promise<{ filename: string; csv: string }> {
+  await requireManagingPartner();
+  const [invoices, bills, expenses] = await Promise.all([
+    prisma.invoice.findMany({
+      orderBy: { issuedAt: "desc" },
+      select: { number: true, amount: true, total: true, issuedAt: true, paidAt: true, status: true, client: { select: { company: true } } },
+    }),
+    prisma.bill.findMany({
+      orderBy: { createdAt: "desc" },
+      select: { vendor: true, number: true, amount: true, total: true, issuedAt: true, createdAt: true, paidAt: true, status: true, category: true, description: true, driveUrl: true },
+    }),
+    prisma.expense.findMany({
+      orderBy: { spentAt: "desc" },
+      select: { vendor: true, category: true, amount: true, total: true, spentAt: true, reimbursedAt: true, status: true, description: true, driveUrl: true, paidBy: { select: { name: true } } },
+    }),
+  ]);
+
+  const iso = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+  const catLabel = (c: ExpenseCategory | null) => (c ? EXPENSE_CATEGORY_LABELS[c] : "");
+  const rows = [csvRow(["Type", "Date", "Party", "Number", "Category", "Description", "Amount_CAD", "Status", "Paid_Date", "Drive_URL"])];
+  for (const i of invoices) {
+    rows.push(csvRow(["AR", iso(i.issuedAt), i.client.company, i.number, "", "", i.total || i.amount, i.status, iso(i.paidAt), ""]));
+  }
+  for (const b of bills) {
+    rows.push(csvRow(["AP", iso(b.issuedAt ?? b.createdAt), b.vendor, b.number ?? "", catLabel(b.category), b.description ?? "", b.total || b.amount, b.status, iso(b.paidAt), b.driveUrl ?? ""]));
+  }
+  for (const e of expenses) {
+    rows.push(csvRow(["Expense", iso(e.spentAt), e.vendor ?? e.paidBy?.name ?? "", "", catLabel(e.category), e.description ?? "", e.total || e.amount, e.status, iso(e.reimbursedAt), e.driveUrl ?? ""]));
+  }
+
+  return { filename: `shift-financials-${iso(new Date())}.csv`, csv: rows.join("\n") };
+}

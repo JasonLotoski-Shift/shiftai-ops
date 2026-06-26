@@ -889,8 +889,8 @@ const flows: Flow[] = [
     blurb: "Financials → AP / AR holds what we owe (vendor bills + team expenses) next to what's owed to us (invoices). Add any of them with one Upload action. Managing partners only.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Financials → AP / AR → Upload Expense / Invoice / Receipt → pick a type. Invoice = a vendor bill we owe; Expense / Receipt = a team spend (travel, meals, business development, fuel/mileage, or a subscription)" },
-      { tone: "trigger", kind: "You do", label: "Add a photo or PDF and fill in the details (vendor, amount, date, category). No photo handy? Save anyway — it's flagged “needs photo” so you can add it later. Mileage can be entered as $/km at the CRA rate or as a fuel receipt" },
-      { tone: "review", kind: "You review", label: "The bill shows under Payable, the expense under Expenses, with aging so overdue items stand out. When you pay a bill, hit Mark paid (reimburse a team expense the same way)" },
+      { tone: "claude", kind: "Claude", label: "Add a PHOTO of the receipt/invoice and it scans itself — vendor, amount, date and category come back filled in for you to check, instead of typing them (no photo handy? save anyway, flagged “needs photo”). PDFs are entered by hand. Mileage can be $/km at the CRA rate or a fuel receipt" },
+      { tone: "review", kind: "You review", label: "The bill shows under Payable, the expense under Expenses (recurring ones in their own Subscriptions list), with aging so overdue items stand out. When you pay a bill, hit Mark paid (reimburse a team expense the same way). Export CSV hands the whole ledger to your bookkeeper" },
       { tone: "write", kind: "Saved", label: "Bill / Expense + the receipt filed to the firm's Drive (00-Firm-Financials, by year) + Artifact + AuditLog. Marking a bill paid moves its file to a Paid folder and stamps the payment date into the filename" },
     ],
   },

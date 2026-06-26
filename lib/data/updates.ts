@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-25",
+    tag: "improved",
+    title: "Receipts scan themselves, plus a Subscriptions view and CSV export",
+    detail:
+      "Three additions to the AP / AR tab. Add a photo of a receipt or invoice and it now reads itself — vendor, amount, date and category come back filled in for you to check, instead of typing them by hand (snap, confirm, save). Recurring costs like Miro, Claude, phones and the office get their own Subscriptions list with renewal dates, so that spend is visible at a glance. And an Export CSV button hands the whole ledger — invoices, bills and expenses — to your bookkeeper in one file.",
+  },
+  {
+    date: "2026-06-25",
     tag: "new",
     title: "New Firm Knowledge section — one home for what the firm knows",
     detail:
