@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { BrainCircuit } from "lucide-react";
 import { Header } from "@/components/header";
 import { Card, Stat } from "@/components/ui";
 import { FirmKnowledgeBrowser, type KnowledgeRow, type CategoryCard } from "@/components/firm-knowledge-browser";
@@ -99,7 +101,19 @@ export default async function FirmKnowledgePage() {
 
   return (
     <>
-      <Header eyebrow="The firm's central brain" title="Firm knowledge." />
+      <Header
+        eyebrow="The firm's central brain"
+        title="Firm knowledge."
+        actions={
+          <Link
+            href="/firm-knowledge/memory"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius)] bg-asphalt border border-graphite text-bone text-[13px] hover:border-bone-mute transition-colors"
+          >
+            <BrainCircuit size={14} strokeWidth={1.5} />
+            Recent memory
+          </Link>
+        }
+      />
 
       <div className="px-8 py-8 flex flex-col gap-8">
         <div className="grid grid-cols-4 gap-4">

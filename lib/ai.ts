@@ -19,6 +19,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { logOps } from "./ops";
+import { fetchApprovedMemoryBlocks } from "./knowledge-context";
 
 // Sonnet by default: these are drafts a partner reviews before sending, volume is
 // low (three partners), and Sonnet is the cost/quality sweet spot. Pass model to
@@ -69,14 +70,19 @@ export async function buildSystemBlocks(
   skill: string,
   extraCached?: string,
 ): Promise<CachedSystemBlock[]> {
-  const [firmContext, skillContent] = await Promise.all([
+  const [firmContext, skillContent, recentMemory] = await Promise.all([
     loadFirmContext(),
     loadSkill(skill),
+    fetchApprovedMemoryBlocks().catch(() => null), // never block a skill on memory
   ]);
   const blocks: CachedSystemBlock[] = [
     { type: "text", text: firmContext, cache_control: { type: "ephemeral" } },
     { type: "text", text: skillContent, cache_control: { type: "ephemeral" } },
   ];
+  // Tier-1 recent memory — loads for every skill once partners approve content.
+  if (recentMemory) {
+    blocks.push({ type: "text", text: recentMemory, cache_control: { type: "ephemeral" } });
+  }
   if (extraCached && extraCached.trim()) {
     blocks.push({ type: "text", text: extraCached, cache_control: { type: "ephemeral" } });
   }
@@ -108,9 +114,10 @@ const WEB_SEARCH_TOOL = { type: "web_search_20250305" as const, name: "web_searc
 const DEFAULT_WEB_SEARCH_MAX_USES = 5;
 
 async function buildMessageParams(input: GenerateInput) {
-  const [firmContext, skillContent] = await Promise.all([
+  const [firmContext, skillContent, recentMemory] = await Promise.all([
     loadFirmContext(),
     loadSkill(input.skill),
+    fetchApprovedMemoryBlocks().catch(() => null), // never block a skill on memory
   ]);
 
   const userText = input.context
@@ -144,6 +151,10 @@ async function buildMessageParams(input: GenerateInput) {
     system: [
       { type: "text" as const, text: firmContext, cache_control: { type: "ephemeral" as const } },
       { type: "text" as const, text: skillContent, cache_control: { type: "ephemeral" as const } },
+      // Tier-1 recent memory — present only once partners approve content (else omitted).
+      ...(recentMemory
+        ? [{ type: "text" as const, text: recentMemory, cache_control: { type: "ephemeral" as const } }]
+        : []),
     ],
     messages: [{ role: "user" as const, content: userContent }],
     ...(input.webSearch

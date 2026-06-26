@@ -164,6 +164,15 @@ enum KnowledgeConfidence {
   low
 }
 
+// Firm Knowledge — the fixed set of recent-memory blocks (Tier-1, always in
+// context). One row per key; the set is curated, not user-extensible.
+enum MemoryBlockKey {
+  firm_state
+  active_engagements
+  recent_decisions
+  watch_list
+}
+
 enum AgentPlanStatus {
   idea
   active
@@ -486,6 +495,7 @@ model Partner {
   // Firm Knowledge — categories this partner stewards + artifacts they own.
   knowledgeCategoriesOwned KnowledgeCategory[] @relation("KnowledgeCategorySteward")
   artifactsOwned           Artifact[]          @relation("ArtifactOwner")
+  memoryBlocksApproved     MemoryBlock[]       @relation("MemoryBlockApprover")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1358,6 +1368,44 @@ model KnowledgeCategory {
 
   @@index([parentId])
   @@index([stewardId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// MemoryBlock — Tier-1 recent memory. A fixed, curated set of small blocks
+// (one row per MemoryBlockKey) that load into EVERY skill's context as a
+// cached system block. `draftBody` is the work-in-progress; `approvedBody`
+// is what skills actually read — so editing never leaks unreviewed content
+// into AI context. Phase 2 is manual (partners write + approve); a later
+// phase adds a weekly cron that regenerates drafts from the week's activity.
+// ──────────────────────────────────────────────────────────────────────
+
+model MemoryBlock {
+  id          String         @id @default(cuid())
+  key         MemoryBlockKey @unique
+  label       String
+  description String // one line: what it holds / when a skill should read it
+
+  // draftBody = editable; approvedBody = what loads into skill context (the
+  // only field a skill ever sees). They diverge while edits await approval.
+  draftBody    String  @default("")
+  approvedBody String?
+
+  // As-of date shown in the block header so a skill knows how fresh it is.
+  asOf DateTime?
+
+  // firm_wide loads for everyone; managing_partner blocks are filtered out at
+  // retrieval time for non-MP sessions (no MP blocks in v1, but the gate holds).
+  sensitivity KnowledgeSensitivity @default(firm_wide)
+
+  approvedById String?
+  approvedBy   Partner?  @relation("MemoryBlockApprover", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  updatedBy    String? // free-text actor label ("Jason Lotoski" / "AGENT · CLAUDE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([approvedById])
 }
 
 model Artifact {
