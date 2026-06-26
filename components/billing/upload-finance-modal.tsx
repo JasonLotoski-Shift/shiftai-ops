@@ -6,17 +6,18 @@
 // saving an expense without one flags it "needs photo". Files base64-upload to
 // the server action, which files them to Drive and writes the row.
 //
-// Phase 2 will insert a scan step here: pick a photo → Claude vision prefills
-// these fields → you confirm. For now the fields are entered by hand.
+// When you add a PHOTO, Claude vision scans it and prefills these fields — you
+// confirm/correct before saving. PDFs skip the scan (entered by hand). Saving an
+// expense without any file flags it "needs photo".
 
 import { useRef, useState, useTransition } from "react";
-import { X, Upload, ShieldAlert, FileCheck } from "lucide-react";
+import { X, Upload, ShieldAlert, FileCheck, Sparkles } from "lucide-react";
 import { Button, Label, Input, Textarea, Select } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import { EXPENSE_CATEGORY_OPTIONS, EXPENSE_KIND_LABELS } from "@/lib/finance";
 import type { ExpenseCategory, ExpenseKind, MileageUnit } from "@/lib/types";
-import { createBill, createExpense, type FinanceFile } from "@/app/(app)/financials/finance-actions";
+import { createBill, createExpense, scanReceipt, type FinanceFile, type ScanResult } from "@/app/(app)/financials/finance-actions";
 
 type Mode = "expense" | "invoice" | "receipt";
 // Vercel caps a serverless request body at ~4.5 MB — a HARD platform limit the
@@ -82,6 +83,8 @@ export function UploadFinanceModal({
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [isSaving, startSave] = useTransition();
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isMileageKm = !isBill && category === "fuel_mileage" && mileageUnit === "km";
@@ -90,15 +93,47 @@ export function UploadFinanceModal({
     const f = e.target.files?.[0];
     if (!f) return;
     setErr(null);
+    setScanNote(null);
     if (f.size > MAX_FILE_BYTES) {
       setErr(`"${f.name}" is too large (max 3 MB). Use a smaller photo or PDF.`);
       return;
     }
+    let ff: FinanceFile;
     try {
-      setFile(await readFileAsBase64(f));
+      ff = await readFileAsBase64(f);
+      setFile(ff);
     } catch {
       setErr("Couldn't read that file. Try another.");
+      return;
     }
+    // Auto-scan photos with Claude vision and prefill the form; PDFs are entered
+    // by hand. scanReceipt swallows its own failures (returns empty), so a bad
+    // read just leaves the fields for manual entry.
+    if (f.type.startsWith("image/")) {
+      setScanning(true);
+      try {
+        applyScan(await scanReceipt({ base64: ff.base64, mediaType: ff.mimeType }));
+      } finally {
+        setScanning(false);
+      }
+    }
+  }
+
+  // Prefill from a scan — overwrite only the fields the scan actually read.
+  function applyScan(r: ScanResult) {
+    let filled = 0;
+    if (r.docType === "invoice") setMode("invoice");
+    else if (r.docType === "receipt" && mode === "invoice") setMode("expense");
+    if (r.vendor) { setVendor(r.vendor); filled++; }
+    if (r.amount != null) { setAmount(String(r.amount)); filled++; }
+    if (r.date) { setIssuedAt(r.date); setSpentAt(r.date); filled++; }
+    if (r.category) { setCategory(r.category); filled++; }
+    if (r.invoiceNumber) setNumber(r.invoiceNumber);
+    setScanNote(
+      filled === 0
+        ? "Couldn't read the details from that photo — please fill them in."
+        : `Prefilled from the photo${r.confidence ? ` · ${r.confidence} confidence` : ""} — check each field before saving.`,
+    );
   }
 
   function canSave(): boolean {
@@ -198,20 +233,33 @@ export function UploadFinanceModal({
               ))}
             </div>
 
-            {/* file picker */}
-            <div className="flex items-center gap-3">
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={onPickFile} className="hidden" />
-              <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()} disabled={isSaving}>
-                <Upload size={13} strokeWidth={1.5} />
-                {file ? "Replace file" : "Add photo / PDF"}
-              </Button>
-              {file ? (
-                <span className="flex items-center gap-1.5 text-[12px] text-signal-fresh">
-                  <FileCheck size={13} strokeWidth={1.5} />
-                  {file.fileName}
-                </span>
-              ) : (
-                <span className="text-[12px] text-bone-mute">optional — save without one to flag “needs photo”</span>
+            {/* file picker + auto-scan */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={onPickFile} className="hidden" />
+                <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()} disabled={isSaving || scanning}>
+                  <Upload size={13} strokeWidth={1.5} />
+                  {file ? "Replace file" : "Add photo / PDF"}
+                </Button>
+                {scanning ? (
+                  <span className="flex items-center gap-1.5 text-[12px] text-track-gold">
+                    <Sparkles size={13} strokeWidth={1.5} className="animate-pulse" />
+                    Scanning…
+                  </span>
+                ) : file ? (
+                  <span className="flex items-center gap-1.5 text-[12px] text-signal-fresh">
+                    <FileCheck size={13} strokeWidth={1.5} />
+                    {file.fileName}
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-bone-mute">optional — add a photo to auto-scan, or save without one to flag “needs photo”</span>
+                )}
+              </div>
+              {scanNote && !scanning && (
+                <div className="flex items-start gap-2 px-3 py-2 border border-track-gold/30 bg-track-gold-dim/10 rounded-[var(--radius)]">
+                  <Sparkles size={12} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
+                  <span className="text-[12px] text-bone-dim">{scanNote}</span>
+                </div>
               )}
             </div>
 
@@ -269,7 +317,7 @@ export function UploadFinanceModal({
 
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={onClose} disabled={isSaving}>Cancel</Button>
-              <Button variant="primary" size="sm" disabled={!canSave() || isSaving} onClick={save}>
+              <Button variant="primary" size="sm" disabled={!canSave() || isSaving || scanning} onClick={save}>
                 {isSaving ? "Saving…" : isBill ? "Add bill" : "Save expense"}
               </Button>
             </div>

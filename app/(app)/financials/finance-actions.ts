@@ -13,6 +13,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit, writeActivity, partnerActor, type Actor } from "@/lib/audit";
 import { requireManagingPartner } from "@/lib/permissions";
+import { generate } from "@/lib/ai";
 import { fileBillDoc, fileReceiptDoc, moveBillToPaid } from "@/lib/firm-finance-drive";
 import {
   apBillFileName,
@@ -20,6 +21,7 @@ import {
   paidRename,
   craMileageRateCents,
   mileageAmountCad,
+  EXPENSE_CATEGORY_LABELS,
 } from "@/lib/finance";
 import { formatCAD } from "@/lib/format";
 import type { ExpenseCategory, ExpenseKind, MileageUnit } from "@/lib/types";
@@ -423,4 +425,93 @@ export async function markExpensePaid(expenseId: string, date?: string | null) {
   });
   revalidatePath("/financials");
   return { status: "paid" as const };
+}
+
+// ── Receipt / invoice scan (Phase 2) ───────────────────────────────────────
+// Claude vision reads a photo of a receipt/invoice and proposes the fields the
+// upload modal prefills. Read-only (no DB write) — the partner confirms/corrects
+// before createBill/createExpense persists. MP-gated like the rest of the section.
+
+export type ScanResult = {
+  docType: "receipt" | "invoice" | null;
+  vendor: string | null;
+  date: string | null; // YYYY-MM-DD
+  amount: number | null; // whole CAD (grand total)
+  tax: number | null;
+  currency: string | null;
+  category: ExpenseCategory | null;
+  invoiceNumber: string | null;
+  description: string | null;
+  confidence: "high" | "medium" | "low" | null;
+};
+
+const EMPTY_SCAN: ScanResult = {
+  docType: null, vendor: null, date: null, amount: null, tax: null,
+  currency: null, category: null, invoiceNumber: null, description: null, confidence: null,
+};
+
+const SCAN_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const VALID_CATEGORIES = new Set<string>(Object.keys(EXPENSE_CATEGORY_LABELS));
+
+// Lenient JSON pull from the skill output (tolerates fences / stray prose).
+function parseScan(raw: string): Record<string, unknown> {
+  let text = raw.trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  if (!text.startsWith("{")) {
+    const s = text.indexOf("{");
+    const e = text.lastIndexOf("}");
+    if (s !== -1 && e !== -1) text = text.slice(s, e + 1);
+  }
+  return JSON.parse(text) as Record<string, unknown>;
+}
+
+export async function scanReceipt(input: { base64: string; mediaType: string }): Promise<ScanResult> {
+  await requireManagingPartner();
+  // Claude vision takes images only; PDFs/other types skip the scan (manual entry).
+  if (!SCAN_IMAGE_TYPES.has(input.mediaType)) return EMPTY_SCAN;
+
+  let raw: string;
+  try {
+    raw = await generate({
+      skill: "scan-receipt",
+      intake: "Extract the fields from this receipt/invoice image as the specified JSON object.",
+      images: [{ base64: input.base64, mediaType: input.mediaType }],
+      maxTokens: 600,
+    });
+  } catch {
+    return EMPTY_SCAN; // model/transport failure → fall back to manual entry
+  }
+
+  let o: Record<string, unknown>;
+  try {
+    o = parseScan(raw);
+  } catch {
+    return EMPTY_SCAN;
+  }
+
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const num = (v: unknown): number | null => {
+    if (typeof v === "number" && Number.isFinite(v)) return Math.round(v) || null;
+    if (typeof v === "string") {
+      const n = Number(v.replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) && n !== 0 ? Math.round(n) : null;
+    }
+    return null;
+  };
+  const cat = str(o.category);
+  const date = str(o.date);
+  const conf = o.confidence;
+  return {
+    docType: o.docType === "invoice" ? "invoice" : o.docType === "receipt" ? "receipt" : null,
+    vendor: str(o.vendor),
+    date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
+    amount: num(o.amount),
+    tax: num(o.tax),
+    currency: str(o.currency),
+    category: cat && VALID_CATEGORIES.has(cat) ? (cat as ExpenseCategory) : null,
+    invoiceNumber: str(o.invoiceNumber),
+    description: str(o.description),
+    confidence: conf === "high" || conf === "medium" || conf === "low" ? conf : null,
+  };
 }
