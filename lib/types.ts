@@ -355,6 +355,90 @@ export type Invoice = {
   status: "draft" | "sent" | "paid" | "overdue";
 };
 
+/* AP / AR + Expenses (firm financials). Money OUT — two ledgers (Money IN stays
+ * on Invoice). Brand-new enums carry NO @map, so these unions mirror the schema
+ * identifiers verbatim. Amounts are whole CAD ints; dates are ISO strings on the
+ * UI side (the server maps Prisma Date/Decimal → string/number before passing). */
+
+export type BillStatus = "received" | "approved" | "paid" | "void";
+export type BillSource = "manual" | "gmail_ingest";
+export type ExpenseKind = "reimbursable" | "firm_paid" | "subscription";
+export type ExpenseStatus =
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "reimbursed"
+  | "paid";
+export type MileageUnit = "km" | "receipt";
+export type ExpenseCategory =
+  | "travel_accommodation"
+  | "travel_flights"
+  | "travel_meals"
+  | "bd_events"
+  | "bd_meals"
+  | "bd_other"
+  | "fuel_mileage"
+  | "subscription_software"
+  | "subscription_phone"
+  | "subscription_office"
+  | "subscription_other"
+  | "office_supplies"
+  | "professional_fees"
+  | "other";
+
+// Bill — a vendor invoice we owe (AP). Manual or ingested from email.
+export type Bill = {
+  id: string;
+  vendor: string;
+  number?: string | null;
+  description?: string | null;
+  amount: number; // subtotal, whole CAD
+  gstBps?: number;
+  total?: number;
+  currency?: string;
+  category?: ExpenseCategory | null;
+  issuedAt?: string | null;
+  dueAt?: string | null;
+  paidAt?: string | null;
+  status: BillStatus;
+  source: BillSource;
+  notes?: string | null;
+  clientId?: string | null;
+  projectId?: string | null;
+  driveUrl?: string | null;
+  fileName?: string | null;
+  createdBy: string;
+};
+
+// Expense — a team receipt or a recurring subscription.
+export type Expense = {
+  id: string;
+  kind: ExpenseKind;
+  category: ExpenseCategory;
+  vendor?: string | null;
+  description?: string | null;
+  amount: number; // whole CAD
+  gstBps?: number;
+  total?: number;
+  currency?: string;
+  spentAt: string;
+  status: ExpenseStatus;
+  mileageUnit?: MileageUnit | null;
+  mileageKm?: number | null;
+  mileageRateCents?: number | null;
+  paidById?: string | null;
+  paidByName?: string | null; // denormalized for display (server maps it)
+  reimbursedAt?: string | null;
+  recurring?: boolean;
+  renewalDate?: string | null;
+  clientId?: string | null;
+  projectId?: string | null;
+  needsPhoto?: boolean;
+  driveUrl?: string | null;
+  fileName?: string | null;
+  createdBy: string;
+};
+
 /* Billing schedule — the project's invoicing structure.
  * Each installment is one planned slice of the fee; "Send invoice" reads
  * these as presets and links the produced Invoice back here. */

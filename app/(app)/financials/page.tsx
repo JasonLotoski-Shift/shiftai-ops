@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Receipt, Users, Wallet } from "lucide-react";
+import { Users, Wallet } from "lucide-react";
 import { Header } from "@/components/header";
 import { Card, Stat } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +10,7 @@ import { firmCommissionTotals } from "@/lib/billing/commissions";
 import { currentIsManagingPartner } from "@/lib/permissions";
 import { ForecastSummary } from "@/components/billing/forecast-summary";
 import { CommissionSummary, type CommissionFlowRow } from "@/components/billing/commission-summary";
+import { FinancialsTabs, type ApArProps } from "@/components/billing/financials-tabs";
 
 // Firm Financials — the firm-wide revenue rollup (Phase 3). Aggregates every
 // project's economics into contracted / invoiced / received / AR plus the
@@ -165,6 +166,81 @@ export default async function FinancialsPage() {
     }));
   }
 
+  // ── AP/AR + Expenses (managing partners only — the whole section is gated) ──
+  // Money OUT (Bill, Expense) joins outstanding Money IN (Invoice) in one tab.
+  // Wrapped in try/catch: if the Bill/Expense migration hasn't run yet, degrade
+  // to Overview-only so a pre-migration deploy doesn't 500 the whole page.
+  let apAr: ApArProps | null = null;
+  if (managingPartner) {
+   try {
+    const [arInvoices, bills, expenses, partners, clientList, projectList] = await Promise.all([
+      prisma.invoice.findMany({
+        where: { status: { in: ["sent", "overdue"] } },
+        orderBy: { dueAt: "asc" },
+        select: { id: true, number: true, amount: true, total: true, dueAt: true, status: true, client: { select: { company: true } } },
+      }),
+      prisma.bill.findMany({
+        where: { status: { not: "void" } },
+        orderBy: [{ status: "asc" }, { dueAt: "asc" }],
+        select: { id: true, vendor: true, number: true, amount: true, total: true, dueAt: true, paidAt: true, status: true, category: true, driveUrl: true },
+      }),
+      prisma.expense.findMany({
+        orderBy: { spentAt: "desc" },
+        take: 100,
+        select: { id: true, vendor: true, category: true, kind: true, amount: true, total: true, status: true, spentAt: true, needsPhoto: true, driveUrl: true, paidBy: { select: { name: true } } },
+      }),
+      prisma.partner.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+      prisma.client.findMany({ orderBy: { company: "asc" }, select: { id: true, company: true } }),
+      prisma.project.findMany({ where: { status: { not: "closed" } }, orderBy: { startDate: "desc" }, select: { id: true, name: true } }),
+    ]);
+
+    apAr = {
+      invoices: arInvoices.map((i) => ({
+        id: i.id,
+        number: i.number,
+        company: i.client.company,
+        amount: i.total || i.amount,
+        dueAt: i.dueAt.toISOString(),
+        status: i.status,
+      })),
+      bills: bills.map((b) => ({
+        id: b.id,
+        vendor: b.vendor,
+        number: b.number,
+        amount: b.total || b.amount,
+        dueAt: b.dueAt ? b.dueAt.toISOString() : null,
+        paidAt: b.paidAt ? b.paidAt.toISOString() : null,
+        status: b.status,
+        category: b.category,
+        hasDoc: !!b.driveUrl,
+        driveUrl: b.driveUrl,
+      })),
+      expenses: expenses.map((e) => ({
+        id: e.id,
+        vendor: e.vendor,
+        category: e.category,
+        kind: e.kind,
+        amount: e.total || e.amount,
+        status: e.status,
+        spentAt: e.spentAt.toISOString(),
+        needsPhoto: e.needsPhoto,
+        driveUrl: e.driveUrl,
+        paidByName: e.paidBy?.name ?? null,
+      })),
+      partners,
+      clients: clientList,
+      projects: projectList.map((p) => ({ id: p.id, name: p.name.split("·")[1]?.trim() ?? p.name })),
+    };
+   } catch (e) {
+     // Pre-migration ONLY: the Bill/Expense tables don't exist yet (Prisma P2021
+     // / Postgres 42P01) — degrade to Overview-only so the deploy doesn't 500.
+     // Any OTHER error is real and must surface, not silently hide the AP/AR tab.
+     const code = (e as { code?: string })?.code;
+     if (code === "P2021" || code === "42P01") apAr = null;
+     else throw e;
+   }
+  }
+
   return (
     <>
       <Header
@@ -172,13 +248,6 @@ export default async function FinancialsPage() {
         title="Financials."
         actions={
           <>
-            <Link
-              href="/invoices"
-              className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
-            >
-              <Receipt size={13} strokeWidth={1.5} />
-              Invoice register
-            </Link>
             <Link
               href="/consultants"
               className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
@@ -199,6 +268,7 @@ export default async function FinancialsPage() {
         }
       />
 
+      <FinancialsTabs canSeeApAr={apAr !== null} apAr={apAr}>
       <div className="px-8 py-8 flex flex-col gap-8">
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-5"><Stat label="Contracted" value={cad(contracted)} delta={`${rows.length} projects`} /></Card>
@@ -264,6 +334,7 @@ export default async function FinancialsPage() {
           />
         )}
       </div>
+      </FinancialsTabs>
     </>
   );
 }

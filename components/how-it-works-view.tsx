@@ -884,6 +884,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <Receipt size={16} strokeWidth={1.5} />,
+    title: "Log a bill or expense (AP)",
+    blurb: "Financials → AP / AR holds what we owe (vendor bills + team expenses) next to what's owed to us (invoices). Add any of them with one Upload action. Managing partners only.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Financials → AP / AR → Upload Expense / Invoice / Receipt → pick a type. Invoice = a vendor bill we owe; Expense / Receipt = a team spend (travel, meals, business development, fuel/mileage, or a subscription)" },
+      { tone: "trigger", kind: "You do", label: "Add a photo or PDF and fill in the details (vendor, amount, date, category). No photo handy? Save anyway — it's flagged “needs photo” so you can add it later. Mileage can be entered as $/km at the CRA rate or as a fuel receipt" },
+      { tone: "review", kind: "You review", label: "The bill shows under Payable, the expense under Expenses, with aging so overdue items stand out. When you pay a bill, hit Mark paid (reimburse a team expense the same way)" },
+      { tone: "write", kind: "Saved", label: "Bill / Expense + the receipt filed to the firm's Drive (00-Firm-Financials, by year) + Artifact + AuditLog. Marking a bill paid moves its file to a Paid folder and stamps the payment date into the filename" },
+    ],
+  },
+  {
     icon: <FileUp size={16} strokeWidth={1.5} />,
     title: "Import contacts & scan for fit",
     blurb: "Upload a contact export, scan it against your criteria, and push the best into the pipeline.",

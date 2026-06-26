@@ -458,6 +458,9 @@ model Partner {
   ongoingCommissions  OngoingContractCommission[] @relation("PartnerOngoingCommission")
   serviceContractsLed ServiceContract[]           @relation("PartnerServiceContractLead")
 
+  // Reimbursable expenses this partner fronted (firm financials · AP/AR).
+  expensesPaid        Expense[]
+
   // Team notes left on architecture-map cards (the /architecture tab).
   architectureNotes  ArchitectureNote[]
 
@@ -841,6 +844,8 @@ model Client {
   actionDrafts ActionDraft[]
   prototypeRuns PrototypeRun[]
   serviceContracts ServiceContract[]
+  bills      Bill[]
+  expenses   Expense[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -894,6 +899,8 @@ model Project {
   actionDrafts   ActionDraft[]
   sourceCommissions ProjectSourceCommission[]
   serviceContract   ServiceContract?
+  bills             Bill[]
+  expenses          Expense[]
 
   // How the standard client billing schedule is generated (Phase 4):
   // fifty_twenty_five (default, pilots/projects) or monthly_even (retainers).
@@ -2386,4 +2393,146 @@ model AgentSessionEntry {
 
   @@unique([projectKey, sessionId, uuid])
   @@index([projectKey, sessionId, id])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// AP / AR + Expenses (firm financials). Money OUT splits into two ledgers:
+//   Bill    — a vendor invoice we owe (AP); entered manually or ingested from email.
+//   Expense — a team receipt or a recurring subscription (reimbursable / firm-paid).
+// Money IN stays on Invoice (AR). Amounts are whole CAD ints — the Invoice
+// convention (rates elsewhere are cents; invoices/bills/expenses are whole CAD).
+// Brand-new enums → plain underscored identifiers, NO @map (no legacy data), so
+// lib/types.ts mirrors them verbatim (sidesteps the EngagementStatus mapping gotcha).
+// ──────────────────────────────────────────────────────────────────────
+
+enum BillStatus {
+  received
+  approved
+  paid
+  void
+}
+
+enum BillSource {
+  manual
+  gmail_ingest
+}
+
+enum ExpenseKind {
+  reimbursable
+  firm_paid
+  subscription
+}
+
+enum ExpenseStatus {
+  draft
+  submitted
+  approved
+  reimbursed
+  paid
+}
+
+enum MileageUnit {
+  km
+  receipt
+}
+
+enum ExpenseCategory {
+  travel_accommodation
+  travel_flights
+  travel_meals
+  bd_events
+  bd_meals
+  bd_other
+  fuel_mileage
+  subscription_software
+  subscription_phone
+  subscription_office
+  subscription_other
+  office_supplies
+  professional_fees
+  other
+}
+
+model Bill {
+  id          String           @id @default(cuid())
+  vendor      String
+  number      String? // vendor's invoice number (NOT unique — different vendors reuse)
+  description String?
+  amount      Int // subtotal, whole CAD
+  gstBps      Int              @default(0)
+  total       Int              @default(0)
+  currency    String           @default("CAD")
+  category    ExpenseCategory?
+  issuedAt    DateTime?
+  dueAt       DateTime?
+  paidAt      DateTime?
+  status      BillStatus       @default(received)
+  source      BillSource       @default(manual)
+  notes       String?
+
+  // Optional pass-through cost tag — a vendor bill billable to a client/project.
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+
+  // The stored PDF/image in Drive (00-Firm-Financials/<yr>/AP-Bills/...).
+  driveFileId String?
+  driveUrl    String?
+  fileName    String?
+
+  createdBy String // partner name or "AGENT · CLAUDE"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, dueAt])
+  @@index([clientId])
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  kind        ExpenseKind     @default(reimbursable)
+  category    ExpenseCategory
+  vendor      String?
+  description String?
+  amount      Int // whole CAD
+  gstBps      Int             @default(0)
+  total       Int             @default(0)
+  currency    String          @default("CAD")
+  spentAt     DateTime
+  status      ExpenseStatus   @default(submitted)
+
+  // fuel_mileage only — $/km (CRA rate snapshot) or an actual fuel receipt.
+  mileageUnit      MileageUnit?
+  mileageKm        Decimal?     @db.Decimal(7, 1)
+  mileageRateCents Int? // CRA rate at entry (2026: 73¢ first 5,000 km, 67¢ after)
+
+  // reimbursable only — which partner fronted it, and when we paid them back.
+  paidBy       Partner?  @relation(fields: [paidById], references: [id])
+  paidById     String?
+  reimbursedAt DateTime?
+
+  // subscription only — recurring SaaS/phone/office + next renewal.
+  recurring   Boolean   @default(false)
+  renewalDate DateTime?
+
+  // Optional billable tag (pass-through to a client/project).
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+
+  // Receipt doc in Drive; needsPhoto when saved without one ("needs photo").
+  needsPhoto  Boolean @default(false)
+  driveFileId String?
+  driveUrl    String?
+  fileName    String?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, spentAt])
+  @@index([category])
+  @@index([paidById])
 }

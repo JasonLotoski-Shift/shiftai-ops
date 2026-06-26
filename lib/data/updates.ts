@@ -30,6 +30,13 @@ export const updates: Update[] = [
       "There's a new Firm Knowledge tab (under Firm in the sidebar). It's the start of a single place for the firm's own knowledge — meetings and decisions, how we build, product, brand and sales, learning, and reference. This first version lets you browse firm-wide documents by category, see who looks after each area, and spot anything that's due for a review. Uploading your own documents — and having the AI actually read them — comes in the next phase.",
   },
   {
+    date: "2026-06-25",
+    tag: "new",
+    title: "Financials now tracks money out too — bills to pay and team expenses",
+    detail:
+      "Financials has a new AP / AR tab (managing partners only). It shows what clients still owe us (invoices we've sent) next to what we owe — vendor bills and team expenses — with aging so you can see what's overdue. Use the Upload button to add a vendor invoice, log an expense, or snap a receipt: pick a photo or PDF and fill in the details, and it files to the firm's Drive automatically. No photo handy? Save it anyway and it's flagged “needs photo”. Mark a bill paid and its file moves to a Paid folder with the payment date in the name. Expense categories cover travel, meals, business development, fuel/mileage and subscriptions. The old Invoice Register now lives inside this tab.",
+  },
+  {
     date: "2026-06-24",
     tag: "improved",
     title: "Faster page loads, and no more frozen-looking screens between tabs",

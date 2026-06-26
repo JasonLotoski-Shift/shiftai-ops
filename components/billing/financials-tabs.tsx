@@ -1,0 +1,346 @@
+"use client";
+
+// Financials sub-tabs: Overview (the firm revenue rollup, passed as children)
+// and AP/AR (managing partners only — outstanding invoices + bills + expenses).
+// The AP/AR tab is the new home of the old Invoice Register plus the vendor-bill
+// (AP) and expense ledgers, with the "+ Upload" action that adds any of them.
+
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, ExternalLink, FileWarning } from "lucide-react";
+import { Card, Stat, Badge, Button, EmptyState, Tabs } from "@/components/ui";
+import { formatCAD, formatDate, daysSince } from "@/lib/format";
+import {
+  agingBucket,
+  AGING_LABELS,
+  type AgingBucket,
+  EXPENSE_CATEGORY_LABELS,
+  EXPENSE_STATUS_LABELS,
+} from "@/lib/finance";
+import type { BillStatus, ExpenseCategory, ExpenseKind, ExpenseStatus } from "@/lib/types";
+import { markBillPaid, markExpenseReimbursed, markExpensePaid } from "@/app/(app)/financials/finance-actions";
+import { markInvoicePaid } from "@/app/(app)/invoices/[id]/actions";
+import { UploadFinanceModal } from "@/components/billing/upload-finance-modal";
+
+type InvoiceRow = {
+  id: string;
+  number: string;
+  company: string;
+  amount: number;
+  dueAt: string;
+  status: "draft" | "sent" | "paid" | "overdue";
+};
+type BillRow = {
+  id: string;
+  vendor: string;
+  number: string | null;
+  amount: number;
+  dueAt: string | null;
+  paidAt: string | null;
+  status: BillStatus;
+  category: ExpenseCategory | null;
+  hasDoc: boolean;
+  driveUrl: string | null;
+};
+type ExpenseRow = {
+  id: string;
+  vendor: string | null;
+  category: ExpenseCategory;
+  kind: ExpenseKind;
+  amount: number;
+  status: ExpenseStatus;
+  spentAt: string;
+  needsPhoto: boolean;
+  driveUrl: string | null;
+  paidByName: string | null;
+};
+
+export type ApArProps = {
+  invoices: InvoiceRow[];
+  bills: BillRow[];
+  expenses: ExpenseRow[];
+  partners: { id: string; name: string }[];
+  clients: { id: string; company: string }[];
+  projects: { id: string; name: string }[];
+};
+
+const cad = (n: number) => formatCAD(n).replace("CA$", "$");
+
+export function FinancialsTabs({
+  canSeeApAr,
+  apAr,
+  children,
+}: {
+  canSeeApAr: boolean;
+  apAr: ApArProps | null;
+  children: React.ReactNode;
+}) {
+  const [tab, setTab] = useState<"overview" | "apar">("overview");
+  const tabs = [{ key: "overview", label: "Overview" }];
+  if (canSeeApAr) tabs.push({ key: "apar", label: "AP / AR" });
+
+  return (
+    <>
+      <div className="px-8 pt-5 border-b border-graphite">
+        <Tabs tabs={tabs} active={tab} onChange={(k) => setTab(k as "overview" | "apar")} />
+      </div>
+      <div className={tab === "overview" ? "" : "hidden"}>{children}</div>
+      {canSeeApAr && apAr && tab === "apar" && <ApArView {...apAr} />}
+    </>
+  );
+}
+
+function ApArView({ invoices, bills, expenses, partners, clients, projects }: ApArProps) {
+  const router = useRouter();
+  const [pendingId, startPaid] = useTransition();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [modal, setModal] = useState(false);
+
+  const outstandingBills = bills.filter((b) => b.status === "received" || b.status === "approved");
+  const paidBillsCount = bills.length - outstandingBills.length;
+
+  const totals = useMemo(() => {
+    const ar = invoices.reduce((s, i) => s + i.amount, 0);
+    const ap = outstandingBills.reduce((s, b) => s + b.amount, 0);
+    const now = new Date();
+    const mtd = expenses
+      .filter((e) => {
+        const d = new Date(e.spentAt);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((s, e) => s + e.amount, 0);
+    const owed = expenses
+      .filter((e) => e.kind === "reimbursable" && e.status !== "reimbursed" && e.status !== "paid")
+      .reduce((s, e) => s + e.amount, 0);
+    return { ar, ap, net: ar - ap, mtd, owed };
+  }, [invoices, outstandingBills, expenses]);
+
+  // Aging buckets for AR (invoices) and AP (outstanding bills).
+  const aging = useMemo(() => {
+    const empty = (): Record<AgingBucket, number> => ({ current: 0, d30: 0, d60: 0, d90: 0 });
+    const ar = empty();
+    const ap = empty();
+    for (const i of invoices) ar[agingBucket(i.dueAt)] += i.amount;
+    for (const b of outstandingBills) ap[agingBucket(b.dueAt)] += b.amount;
+    return { ar, ap };
+  }, [invoices, outstandingBills]);
+
+  function run(key: string, fn: () => Promise<unknown>) {
+    setBusy(key);
+    startPaid(async () => {
+      try {
+        await fn();
+        router.refresh();
+      } finally {
+        setBusy(null);
+      }
+    });
+  }
+
+  const buckets: AgingBucket[] = ["current", "d30", "d60", "d90"];
+
+  return (
+    <div className="px-8 py-8 flex flex-col gap-8">
+      <div className="flex items-center justify-between">
+        <div className="grid grid-cols-4 gap-4 flex-1">
+          <Card className="p-5"><Stat label="Outstanding AR" value={cad(totals.ar)} delta={`${invoices.length} invoices · money in`} /></Card>
+          <Card className="p-5"><Stat label="Outstanding AP" value={cad(totals.ap)} delta={`${outstandingBills.length} bills · money out`} /></Card>
+          <Card className="p-5"><Stat label="Net position" value={cad(totals.net)} delta="AR − AP" gold={totals.net >= 0} /></Card>
+          <Card className="p-5"><Stat label="Expenses · MTD" value={cad(totals.mtd)} delta={totals.owed > 0 ? `${cad(totals.owed)} owed to team` : "this month"} /></Card>
+        </div>
+        <div className="pl-4 self-start">
+          <Button variant="primary" size="sm" onClick={() => setModal(true)}>
+            <Plus size={14} strokeWidth={1.5} />
+            Upload Expense / Invoice / Receipt
+          </Button>
+        </div>
+      </div>
+
+      {/* Aging — AR & AP by how overdue they are */}
+      <Card>
+        <div className="px-5 pt-4 pb-2">
+          <h2 className="title-md">Aging</h2>
+        </div>
+        <div className="grid grid-cols-[80px_repeat(4,1fr)] gap-3 px-5 py-2">
+          <span className="text-[11px] text-bone-dim" />
+          {buckets.map((b) => (
+            <span key={b} className="text-[11px] text-bone-dim text-right">{AGING_LABELS[b]}</span>
+          ))}
+        </div>
+        {(["ar", "ap"] as const).map((side) => (
+          <div key={side} className="grid grid-cols-[80px_repeat(4,1fr)] gap-3 px-5 py-3 border-t border-graphite/40">
+            <span className="text-[12px] text-bone self-center">{side.toUpperCase()}</span>
+            {buckets.map((b) => {
+              const v = aging[side][b];
+              const danger = (b === "d60" || b === "d90") && v > 0;
+              return (
+                <span key={b} className={`mono text-[13px] tabular-nums text-right self-center ${danger ? "text-flag-red" : v > 0 ? "text-bone-dim" : "text-bone-mute"}`}>
+                  {cad(v)}
+                </span>
+              );
+            })}
+          </div>
+        ))}
+      </Card>
+
+      {/* Receivable — invoices we've sent, waiting on payment */}
+      <Card>
+        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+          <h2 className="title-md">Receivable — money in</h2>
+          <span className="label">{invoices.length} outstanding</span>
+        </div>
+        {invoices.length === 0 ? (
+          <div className="px-5 py-8 text-[13px] text-bone-mute">No outstanding invoices.</div>
+        ) : (
+          <>
+            <LedgerHead left="Client" mid="Invoice" />
+            {invoices.map((i) => {
+              const overdueDays = i.status === "overdue" ? daysSince(i.dueAt) : 0;
+              return (
+                <div key={i.id} className="grid grid-cols-[1.4fr_120px_120px_120px_140px] gap-4 px-5 py-3.5 border-t border-graphite/40 items-center">
+                  <span className="text-[13px] text-bone truncate">{i.company}</span>
+                  <span className="mono text-[12px] text-bone-dim self-center">{i.number}</span>
+                  <span className="mono text-[14px] text-track-gold tabular-nums text-right">{cad(i.amount)}</span>
+                  <span className={`mono text-[12px] tabular-nums text-right ${overdueDays > 0 ? "text-flag-red" : "text-bone-dim"}`}>
+                    {formatDate(i.dueAt)}{overdueDays > 0 && ` (${overdueDays}d)`}
+                  </span>
+                  <div className="flex justify-end">
+                    <Button variant="secondary" size="sm" disabled={pendingId} onClick={() => run(`inv-${i.id}`, () => markInvoicePaid(i.id))}>
+                      {busy === `inv-${i.id}` ? "…" : "Mark paid"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </Card>
+
+      {/* Payable — vendor bills we still owe (paid bills drop off; they're in Drive + audit) */}
+      <Card>
+        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+          <h2 className="title-md">Payable — money out</h2>
+          <span className="label">
+            {outstandingBills.length} to pay{paidBillsCount > 0 ? ` · ${paidBillsCount} paid` : ""}
+          </span>
+        </div>
+        {outstandingBills.length === 0 ? (
+          <div className="px-5 py-8 text-[13px] text-bone-mute">Nothing to pay. Use “Upload” to add a vendor invoice.</div>
+        ) : (
+          <>
+            <LedgerHead left="Vendor" mid="Number" />
+            {outstandingBills.map((b) => {
+              const overdueDays = b.dueAt ? daysSince(b.dueAt) : 0;
+              return (
+                <div key={b.id} className="grid grid-cols-[1.4fr_120px_120px_120px_140px] gap-4 px-5 py-3.5 border-t border-graphite/40 items-center">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="text-[13px] text-bone truncate">{b.vendor}</span>
+                    {b.driveUrl && (
+                      <a href={b.driveUrl} target="_blank" rel="noreferrer" className="text-bone-mute hover:text-track-gold shrink-0" title="Open document">
+                        <ExternalLink size={12} strokeWidth={1.5} />
+                      </a>
+                    )}
+                  </span>
+                  <span className="mono text-[12px] text-bone-dim self-center truncate">{b.number ?? "—"}</span>
+                  <span className="mono text-[14px] text-bone tabular-nums text-right">{cad(b.amount)}</span>
+                  <span className={`mono text-[12px] tabular-nums text-right ${overdueDays > 0 ? "text-flag-red" : "text-bone-dim"}`}>
+                    {b.dueAt ? formatDate(b.dueAt) : "—"}{overdueDays > 0 && ` (${overdueDays}d)`}
+                  </span>
+                  <div className="flex justify-end">
+                    <Button variant="secondary" size="sm" disabled={pendingId} onClick={() => run(`bill-${b.id}`, () => markBillPaid(b.id))}>
+                      {busy === `bill-${b.id}` ? "…" : "Mark paid"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </Card>
+
+      {/* Expenses — receipts + subscriptions */}
+      <Card>
+        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+          <h2 className="title-md">Expenses</h2>
+          <span className="label">{expenses.length} total{totals.owed > 0 ? ` · ${cad(totals.owed)} owed` : ""}</span>
+        </div>
+        {expenses.length === 0 ? (
+          <EmptyState icon={<FileWarning size={26} strokeWidth={1.5} />} title="No expenses yet" hint="Upload a receipt or log an expense to start tracking spend by category." compact />
+        ) : (
+          <>
+            <div className="grid grid-cols-[1.4fr_160px_120px_120px_140px] gap-4 px-5 py-2">
+              <span className="text-[11px] text-bone-dim">Vendor</span>
+              <span className="text-[11px] text-bone-dim">Category</span>
+              <span className="text-[11px] text-bone-dim text-right">Amount</span>
+              <span className="text-[11px] text-bone-dim text-right">Date</span>
+              <span className="text-[11px] text-bone-dim text-right">Status</span>
+            </div>
+            {expenses.map((e) => {
+              const settled = e.status === "reimbursed" || e.status === "paid";
+              const tone = settled ? "steel" : e.status === "approved" ? "gold" : "neutral";
+              return (
+                <div key={e.id} className="grid grid-cols-[1.4fr_160px_120px_120px_140px] gap-4 px-5 py-3.5 border-t border-graphite/40 items-center">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="text-[13px] text-bone truncate">{e.vendor ?? EXPENSE_CATEGORY_LABELS[e.category]}</span>
+                    {e.needsPhoto && <Badge tone="red">needs photo</Badge>}
+                    {e.driveUrl && (
+                      <a href={e.driveUrl} target="_blank" rel="noreferrer" className="text-bone-mute hover:text-track-gold shrink-0" title="Open receipt">
+                        <ExternalLink size={12} strokeWidth={1.5} />
+                      </a>
+                    )}
+                  </span>
+                  <span className="text-[12px] text-bone-dim self-center truncate">{EXPENSE_CATEGORY_LABELS[e.category]}</span>
+                  <span className="mono text-[14px] text-bone tabular-nums text-right">{cad(e.amount)}</span>
+                  <span className="mono text-[12px] text-bone-dim tabular-nums text-right">{formatDate(e.spentAt)}</span>
+                  <div className="flex justify-end items-center gap-2">
+                    {settled ? (
+                      <Badge tone={tone}>{EXPENSE_STATUS_LABELS[e.status]}</Badge>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={pendingId}
+                        onClick={() =>
+                          run(`exp-${e.id}`, () =>
+                            e.kind === "reimbursable" ? markExpenseReimbursed(e.id) : markExpensePaid(e.id),
+                          )
+                        }
+                      >
+                        {busy === `exp-${e.id}` ? "…" : e.kind === "reimbursable" ? "Reimburse" : "Mark paid"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </Card>
+
+      {modal && (
+        <UploadFinanceModal
+          partners={partners}
+          clients={clients}
+          projects={projects}
+          onClose={() => setModal(false)}
+          onSaved={() => {
+            setModal(false);
+            router.refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function LedgerHead({ left, mid }: { left: string; mid: string }) {
+  return (
+    <div className="grid grid-cols-[1.4fr_120px_120px_120px_140px] gap-4 px-5 py-2">
+      <span className="text-[11px] text-bone-dim">{left}</span>
+      <span className="text-[11px] text-bone-dim">{mid}</span>
+      <span className="text-[11px] text-bone-dim text-right">Amount</span>
+      <span className="text-[11px] text-bone-dim text-right">Due</span>
+      <span className="text-[11px] text-bone-dim text-right">Action</span>
+    </div>
+  );
+}
