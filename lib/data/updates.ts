@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-25",
+    tag: "new",
+    title: "Firm Knowledge now has a recent memory the AI reads",
+    detail:
+      "Inside Firm Knowledge there's a new Recent memory page — a few short notes (firm state, active engagements, recent decisions, watch list) that every AI action reads as live context, so it always knows where things stand. Write a note and it stays a private draft; press Approve and it goes live to the AI. Keep them short and re-approve when they change. Automatic weekly drafts come in a later phase.",
+  },
+  {
+    date: "2026-06-25",
     tag: "improved",
     title: "Receipts scan themselves, plus a Subscriptions view and CSV export",
     detail:
