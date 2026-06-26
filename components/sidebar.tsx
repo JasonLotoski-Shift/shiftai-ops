@@ -14,6 +14,7 @@ import {
   Settings,
   Bot,
   BookOpen,
+  BookMarked,
   Network,
   CheckSquare,
   MessageSquare,
@@ -58,6 +59,7 @@ const importGroup: NavItem[] = [
 
 // Firm-wide records and money.
 const firm: NavItem[] = [
+  { href: "/firm-knowledge", label: "Firm Knowledge", icon: BookMarked },
   { href: "/financials", label: "Financials", icon: Receipt },
   { href: "/contacts", label: "Contacts List", icon: Users },
   { href: "/clients", label: "Clients List", icon: Briefcase },

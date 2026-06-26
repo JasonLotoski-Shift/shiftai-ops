@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-25",
+    tag: "new",
+    title: "New Firm Knowledge section — one home for what the firm knows",
+    detail:
+      "There's a new Firm Knowledge tab (under Firm in the sidebar). It's the start of a single place for the firm's own knowledge — meetings and decisions, how we build, product, brand and sales, learning, and reference. This first version lets you browse firm-wide documents by category, see who looks after each area, and spot anything that's due for a review. Uploading your own documents — and having the AI actually read them — comes in the next phase.",
+  },
+  {
     date: "2026-06-24",
     tag: "improved",
     title: "Faster page loads, and no more frozen-looking screens between tabs",

@@ -149,6 +149,21 @@ enum ArtifactReviewStatus {
   archived
 }
 
+// Firm Knowledge — who may pull an item into an AI skill's context. firm_wide
+// is the default; managing_partner items (firm economics) are filtered out at
+// retrieval time before any chunk reaches a non-managing-partner session.
+enum KnowledgeSensitivity {
+  firm_wide
+  managing_partner
+}
+
+// Firm Knowledge — how much a skill should trust an item when answering.
+enum KnowledgeConfidence {
+  high
+  medium
+  low
+}
+
 enum AgentPlanStatus {
   idea
   active
@@ -464,6 +479,10 @@ model Partner {
 
   // Feature Requests & Fixes filed by this partner (the in-tool feedback board).
   featureRequests FeatureRequest[] @relation("FeatureRequestsCreated")
+
+  // Firm Knowledge — categories this partner stewards + artifacts they own.
+  knowledgeCategoriesOwned KnowledgeCategory[] @relation("KnowledgeCategorySteward")
+  artifactsOwned           Artifact[]          @relation("ArtifactOwner")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1297,6 +1316,43 @@ model NewsItem {
 // Persistence recipe in shiftai-ops/CLAUDE.md "Wire a Quick Action".
 // ──────────────────────────────────────────────────────────────────────
 
+// ──────────────────────────────────────────────────────────────────────
+// Firm Knowledge — the firm's central brain. KnowledgeCategory is the MECE
+// top-level taxonomy spine (Phase 1). Firm-wide Artifacts (null Client/
+// Project/Deal scope) are filed into a category; a later phase adds a
+// dedicated KnowledgeItem table for uploaded docs. One steward (Partner)
+// owns each category and a review cadence drives the staleness badge.
+// ──────────────────────────────────────────────────────────────────────
+
+model KnowledgeCategory {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  label       String
+  description String?
+
+  // Self-relation for optional sub-categories (max depth ~3-4 by convention).
+  parentId String?
+  parent   KnowledgeCategory?  @relation("KnowledgeCategoryTree", fields: [parentId], references: [id])
+  children KnowledgeCategory[] @relation("KnowledgeCategoryTree")
+
+  // One named owner per category (nullable until Phase 0 assigns stewards).
+  stewardId String?
+  steward   Partner? @relation("KnowledgeCategorySteward", fields: [stewardId], references: [id])
+
+  // Freshness drumbeat: 0 = continuous, else days-until-stale (e.g. 90 / 365).
+  reviewCadenceDays Int @default(90)
+  sortOrder         Int @default(0)
+
+  // Firm-wide artifacts filed into this category (Phase 1 reuses Artifact).
+  artifacts Artifact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([stewardId])
+}
+
 model Artifact {
   id                 String               @id @default(cuid())
   type               ArtifactType
@@ -1327,6 +1383,20 @@ model Artifact {
   supersedes   Artifact?  @relation("ArtifactVersions", fields: [supersedesId], references: [id])
   supersededBy Artifact[] @relation("ArtifactVersions")
 
+  // ── Firm Knowledge governance (Phase 1, additive + nullable) ──────────
+  // Lets a firm-wide artifact (null client/project/deal) be filed into the
+  // knowledge taxonomy and carry stewardship + freshness metadata. Ordinary
+  // client-scoped artifacts default to firm_wide / null and are unaffected.
+  // A retrieval-time sensitivity filter (later phase) reads `sensitivity`
+  // before any chunk enters an AI skill's context.
+  sensitivity         KnowledgeSensitivity @default(firm_wide)
+  knowledgeCategoryId String?
+  knowledgeCategory   KnowledgeCategory?   @relation(fields: [knowledgeCategoryId], references: [id])
+  ownerId             String?
+  owner               Partner?             @relation("ArtifactOwner", fields: [ownerId], references: [id])
+  lastVerifiedAt      DateTime?
+  confidence          KnowledgeConfidence?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1334,6 +1404,8 @@ model Artifact {
   @@index([projectId, createdAt])
   @@index([dealId, createdAt])
   @@index([supersedesId])
+  @@index([knowledgeCategoryId])
+  @@index([ownerId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
