@@ -24,7 +24,9 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
     "contact": [ { "field": "keyFacts", "value": "Defensible fact about the person" } ],
     "client":  [ { "field": "companyKeyFacts", "value": "Defensible fact about the company" } ]
   },
-  "stageSignal": { "suggestion": "e.g. move to Proposal", "rationale": "Why the email implies it" }
+  "stageSignal": { "suggestion": "e.g. move to Proposal", "rationale": "Why the email implies it" },
+  "billCandidate": false,
+  "bill": null
 }
 ```
 
@@ -32,6 +34,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 - `enrichment.client[].field` ∈ `companyKeyFacts`, `description`, `headquarters`, `founded`, `website`, `ownership`, `companySize`.
 - `stageSignal` may be `null` if the email doesn't clearly imply a pipeline move. **Never** assert the deal moved — it's a suggestion the partner acts on.
 - `actionItems`, `keyPoints`, and both enrichment arrays may be empty. Prefer fewer, well-grounded items over padding.
+- **`billCandidate` / `bill`** — set `billCandidate: true` and fill `bill` ONLY when the email (or its attachment) is clearly a **vendor invoice we owe** (accounts payable): a company billing us for goods/services with an amount due. `bill` = `{ "vendor", "amount" (the total, whole CAD, rounded), "currency" (default "CAD"), "invoiceNumber" (omit if none), "dueDate" ("YYYY-MM-DD", omit if none) }`. A receipt for something ALREADY paid is **not** a bill — leave it `false`. For ordinary email, `billCandidate: false` and `bill: null`. When unsure, `false`.
 
 ## Hard rules for this task
 

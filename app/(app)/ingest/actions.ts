@@ -16,22 +16,34 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { drive, folderIdFromUrl } from "@/lib/drive";
-import { writeAudit, writeActivity, agentActor } from "@/lib/audit";
+import { writeAudit, writeActivity, agentActor, partnerActor } from "@/lib/audit";
 import { notifyPartner } from "@/lib/messaging";
 import { generate } from "@/lib/ai";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatCAD } from "@/lib/format";
 import { findDuplicateOpenTask } from "@/lib/ingest/dedup";
 import type { InteractionType } from "@/lib/generated/prisma/enums";
 
 // ── Extracted-proposal shape (mirrors the ingest-meeting skill output) ──
 export type ExtractedActionItem = { title: string; owner: string | null; context: string; due: string | null };
 export type ExtractedEnrich = { field: string; value: string };
+// A vendor invoice detected on an email (accounts payable). Optional — only set
+// by the ingest-email skill when the email is clearly a bill we owe. Surfaced in
+// the Ingest review as "Add to AP" (creates a Bill). Additive: absence = no-op.
+export type ExtractedBill = {
+  vendor: string;
+  amount: number; // whole CAD
+  currency?: string;
+  invoiceNumber?: string;
+  dueDate?: string; // YYYY-MM-DD
+};
 export type ExtractedProposal = {
   summary: string;
   keyPoints: string[];
   actionItems: ExtractedActionItem[];
   enrichment: { contact: ExtractedEnrich[]; client: ExtractedEnrich[] };
   stageSignal: { suggestion: string; rationale: string } | null;
+  billCandidate?: boolean;
+  bill?: ExtractedBill | null;
 };
 
 const CONTACT_LIST_FIELDS = ["keyFacts", "hobbies", "networkAffiliations"];
@@ -506,4 +518,74 @@ export async function rejectProposal(id: string) {
 
   revalidatePath("/ingest");
   return { ok: true };
+}
+
+// Convert a bill-candidate email (the ingest-email skill flagged it as a vendor
+// invoice) into a Bill (AP), status "received", source "gmail_ingest". Files the
+// detected vendor/amount/number/due onto a Bill row the AP/AR tab then shows. The
+// proposal is marked handled (approved) so it can't double-create. Intentionally
+// NOT MP-gated: filing a detected vendor bill is data entry — the managing-partner
+// gate is on viewing/paying in the AP/AR tab, not on logging what arrived.
+export async function createBillFromProposal(id: string) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const label = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, label);
+
+  const proposal = await prisma.ingestProposal.findUnique({
+    where: { id },
+    select: { id: true, status: true, title: true, meetingDate: true, proposal: true, matchedClientId: true, matchedProjectId: true },
+  });
+  if (!proposal) throw new Error("Proposal not found");
+  if (proposal.status !== "pending") throw new Error("This item was already handled");
+
+  const bill = (proposal.proposal as { bill?: unknown } | null)?.bill as ExtractedBill | null | undefined;
+  if (!bill?.vendor?.trim() || !bill.amount || bill.amount <= 0) {
+    throw new Error("No vendor-bill details detected on this item");
+  }
+  const amount = Math.round(bill.amount);
+  const dueAt = bill.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(bill.dueDate) ? new Date(bill.dueDate) : null;
+
+  const billId = await prisma.$transaction(async (tx) => {
+    const created = await tx.bill.create({
+      data: {
+        vendor: bill.vendor.trim(),
+        amount,
+        total: amount,
+        currency: bill.currency?.trim() || "CAD",
+        number: bill.invoiceNumber?.trim() || null,
+        dueAt,
+        issuedAt: proposal.meetingDate,
+        status: "received",
+        source: "gmail_ingest",
+        description: proposal.title,
+        clientId: proposal.matchedClientId,
+        projectId: proposal.matchedProjectId,
+        createdBy: label,
+      },
+    });
+    await tx.ingestProposal.update({
+      where: { id },
+      data: { status: "approved", reviewedBy: label, reviewedAt: new Date() },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.billFromProposal",
+      targetType: "Bill",
+      targetId: created.id,
+      changes: { vendor: bill.vendor, amount, source: "gmail_ingest", ingestProposalId: id },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: bill.vendor,
+      detail: `Added AP bill from email · ${formatCAD(amount)}`,
+      link: "/financials",
+    });
+    return created.id;
+  });
+
+  revalidatePath("/ingest");
+  revalidatePath("/financials");
+  return { ok: true as const, billId };
 }

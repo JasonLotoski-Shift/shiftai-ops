@@ -16,14 +16,17 @@ import {
   FolderOpen,
   Link2,
   RefreshCw,
+  Receipt,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
+import { formatCAD } from "@/lib/format";
 import {
   extractAndQueue,
   approveProposal,
   rejectProposal,
+  createBillFromProposal,
   type ExtractedProposal,
   type ExtractedEnrich,
 } from "@/app/(app)/ingest/actions";
@@ -483,6 +486,19 @@ function ProposalCard({
     });
   }
 
+  // Vendor-bill email → file it as a Bill (AP). Marks the proposal handled.
+  function addToBill() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await createBillFromProposal(p.id);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add to AP");
+      }
+    });
+  }
+
   const unassigned = !contactId && !clientId && !dealId;
 
   return (
@@ -496,11 +512,30 @@ function ProposalCard({
             <p className="text-[11px] text-bone-mute">{(({ paste: "Pasted", fireflies: "Fireflies", drop: "Dropped file", gmail: "Gmail" } as Record<string, string>)[p.source] ?? p.source)} · {new Date(p.meetingDate).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })} · {prop.actionItems.length} task(s) · {prop.enrichment.contact.length + prop.enrichment.client.length} enrichment</p>
           </div>
         </div>
-        {unassigned ? <Badge tone="red">unassigned</Badge> : <Badge tone="gold">matched</Badge>}
+        <span className="flex items-center gap-2 shrink-0">
+          {prop.billCandidate && <Badge tone="steel">vendor bill</Badge>}
+          {unassigned ? <Badge tone="red">unassigned</Badge> : <Badge tone="gold">matched</Badge>}
+        </span>
       </button>
 
       {open && (
         <div className="px-5 py-5 flex flex-col gap-5">
+          {prop.billCandidate && prop.bill && (
+            <div className="flex items-start gap-3 px-4 py-3 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
+              <Receipt size={15} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
+              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                <span className="text-[13px] text-bone font-medium">Looks like a vendor bill (AP)</span>
+                <span className="text-[12px] text-bone-dim truncate">
+                  {prop.bill.vendor} · {formatCAD(prop.bill.amount).replace("CA$", "$")}
+                  {prop.bill.invoiceNumber ? ` · ${prop.bill.invoiceNumber}` : ""}
+                  {prop.bill.dueDate ? ` · due ${prop.bill.dueDate}` : ""}
+                </span>
+              </div>
+              <Button variant="secondary" size="sm" onClick={addToBill} disabled={isPending}>
+                {isPending ? "…" : "Add to AP"}
+              </Button>
+            </div>
+          )}
           {/* Attach entity */}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">

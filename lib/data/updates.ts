@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-27",
+    tag: "new",
+    title: "Vendor invoices from email can be filed straight to AP",
+    detail:
+      "When an email you log through Ingest (or that arrives via Gmail) looks like a vendor invoice — a bill we owe — it's now flagged in the review with the vendor, amount and due date read off the email. One click on “Add to AP” files it as a bill in Financials → AP/AR, ready to pay. Ordinary emails are untouched; this only shows when the email is clearly a bill.",
+  },
+  {
     date: "2026-06-25",
     tag: "new",
     title: "Firm Knowledge now has a recent memory the AI reads",

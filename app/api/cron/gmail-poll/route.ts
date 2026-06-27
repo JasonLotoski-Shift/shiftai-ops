@@ -24,7 +24,7 @@ import {
 } from "@/lib/gmail";
 import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract-file";
 import { resolveTargetsFromText } from "@/lib/ingest/cross-reference";
-import type { ExtractedProposal } from "@/app/(app)/ingest/actions";
+import type { ExtractedProposal, ExtractedBill } from "@/app/(app)/ingest/actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Pro plan — the poll fans over partners × messages
@@ -76,6 +76,26 @@ function parseProposal(raw: string): ExtractedProposal {
       : [];
   const en = (o.enrichment ?? {}) as Record<string, unknown>;
   const ss = o.stageSignal as Record<string, unknown> | null | undefined;
+  // Vendor-invoice (AP) detection — only when the skill flags a clear bill.
+  const bd = o.billCandidate === true && o.bill && typeof o.bill === "object" ? (o.bill as Record<string, unknown>) : null;
+  const billVendor = bd && typeof bd.vendor === "string" ? bd.vendor.trim() : "";
+  const billAmount = bd
+    ? typeof bd.amount === "number"
+      ? Math.round(bd.amount)
+      : typeof bd.amount === "string"
+        ? Math.round(Number(bd.amount.replace(/[^0-9.-]/g, "")))
+        : 0
+    : 0;
+  const bill: ExtractedBill | null =
+    bd && billVendor && Number.isFinite(billAmount) && billAmount > 0
+      ? {
+          vendor: billVendor,
+          amount: billAmount,
+          currency: typeof bd.currency === "string" && bd.currency.trim() ? bd.currency.trim() : "CAD",
+          invoiceNumber: typeof bd.invoiceNumber === "string" && bd.invoiceNumber.trim() ? bd.invoiceNumber.trim() : undefined,
+          dueDate: typeof bd.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(bd.dueDate) ? bd.dueDate : undefined,
+        }
+      : null;
   return {
     summary: typeof o.summary === "string" ? o.summary.trim() : "",
     keyPoints: strArr(o.keyPoints),
@@ -85,6 +105,8 @@ function parseProposal(raw: string): ExtractedProposal {
       ss && typeof ss === "object" && typeof ss.suggestion === "string"
         ? { suggestion: ss.suggestion as string, rationale: typeof ss.rationale === "string" ? (ss.rationale as string) : "" }
         : null,
+    billCandidate: !!bill,
+    bill,
   };
 }
 
