@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-27",
+    tag: "new",
+    title: "A Gmail label for bills and payments — they file to AP/AR",
+    detail:
+      "Make one more Gmail label, ops-AR/AP, and label any vendor bill or payment email with it. Every 6 hours those land on Ingest, read as either a bill we owe (AP) or a payment on an invoice we sent (AR). A bill gets a one-click Add to AP. A payment is matched to the invoice you already issued and offers Mark paid — it never creates a second record. If the email only links out to view the invoice (no amount in the body), it's flagged “needs detail” with the link so you can finish it by hand. Your regular ops-log label goes back to client threads only; bill detection now lives in the new label.",
+  },
+  {
+    date: "2026-06-27",
     tag: "improved",
     title: "Logging an expense is simpler — one type, with a description box",
     detail:
@@ -41,7 +48,7 @@ export const updates: Update[] = [
     tag: "new",
     title: "Vendor invoices from email can be filed straight to AP",
     detail:
-      "When an email you log through Ingest (or that arrives via Gmail) looks like a vendor invoice — a bill we owe — it's now flagged in the review with the vendor, amount and due date read off the email. One click on “Add to AP” files it as a bill in Financials → AP/AR, ready to pay. Ordinary emails are untouched; this only shows when the email is clearly a bill.",
+      "An email labelled ops-AR/AP that looks like a vendor invoice — a bill we owe — is flagged in the Ingest review with the vendor, amount and due date read off the email. One click on “Add to AP” files it as a bill in Financials → AP/AR, ready to pay. (See the ops-AR/AP label entry above for the full picture, including payments.)",
   },
   {
     date: "2026-06-25",

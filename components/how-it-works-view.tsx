@@ -890,7 +890,7 @@ const flows: Flow[] = [
     blurb: "Financials → AP / AR holds what we owe (vendor bills + team expenses) next to what's owed to us (invoices). Add any of them with one Add action. Managing partners only.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Financials → AP / AR → Add Expense or Invoice → pick a type. Invoice = a vendor bill we owe; Expense = a team spend (travel, meals, business development, fuel/mileage, or a subscription) — the receipt is the photo you attach, and a short Description box lets you note what it was for" },
-      { tone: "claude", kind: "Claude", label: "A vendor invoice that arrives by EMAIL (logged via Ingest or Gmail) is auto-detected — the review card flags it as a vendor bill with the vendor, amount and due date, and one click on “Add to AP” files it as a bill. Ordinary email is untouched" },
+      { tone: "claude", kind: "Claude", label: "Label a bill or payment email “ops-AR/AP” in Gmail and it's read on Ingest as AP or AR. A vendor bill we owe is flagged with vendor, amount and due date — one click “Add to AP” files it (a duplicate invoice number is blocked). A payment on an invoice WE sent is matched to that invoice and offers “Mark paid” — it never creates a second record. A link-only email (no amount in the body) is flagged “needs detail” with the link to finish by hand" },
       { tone: "claude", kind: "Claude", label: "Add a PHOTO of the receipt/invoice and it scans itself — vendor, amount, date and category come back filled in for you to check, instead of typing them (no photo handy? save anyway, flagged “needs photo”). PDFs are entered by hand. Mileage can be $/km at the CRA rate or a fuel receipt" },
       { tone: "review", kind: "You review", label: "The bill shows under Payable, the expense under Expenses (recurring ones in their own Subscriptions list), with aging so overdue items stand out. When you pay a bill, hit Mark paid (reimburse a team expense the same way). Export CSV hands the whole ledger to your bookkeeper" },
       { tone: "write", kind: "Saved", label: "Bill / Expense + the receipt filed to the firm's Drive (00-Firm-Financials, by year) + Artifact + AuditLog. Marking a bill paid moves its file to a Paid folder and stamps the payment date into the filename" },
@@ -935,7 +935,7 @@ const flows: Flow[] = [
     title: "Log client emails from Gmail",
     blurb: "Label a client thread in Gmail and it lands on Ingest for review — your inbox stays private.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Settings → Connect Gmail (once), then label any client thread “ops-log”" },
+      { tone: "trigger", kind: "You do", label: "Settings → Connect Gmail (once), then label any client thread “ops-log” (bills and payment emails get their own label, “ops-AR/AP” — see the AP/AR card)" },
       { tone: "claude", kind: "Claude", label: "Every 6 hours (or hit “Check Gmail” on Ingest to run it now): reads only labeled threads, matches the client/contact/deal — and the project — by email, company domain, and who's on the thread (no longer gives up on multi-party threads), drafts a summary + action items" },
       { tone: "review", kind: "You review", label: "One labeled thread is ONE growing card — replies append to it (and re-summarize the whole conversation) instead of stacking up as separate items. Approve like a meeting" },
       { tone: "write", kind: "Saved", label: "Logs a sent/received email Interaction with the full body (readable on the Timeline) + Tasks/enrichment + AuditLog; never reads unlabeled mail" },

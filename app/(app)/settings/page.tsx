@@ -65,6 +65,7 @@ export default async function SettingsPage({
               connected={!!gmailAuth}
               email={gmailAuth?.email ?? null}
               label={process.env.GMAIL_INGEST_LABEL ?? "ops-log"}
+              financeLabel={process.env.GMAIL_FINANCE_LABEL ?? "ops-AR/AP"}
               statusFlag={gmailFlag ?? null}
             />
 

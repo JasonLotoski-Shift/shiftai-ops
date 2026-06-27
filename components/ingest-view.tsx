@@ -27,6 +27,7 @@ import {
   approveProposal,
   rejectProposal,
   createBillFromProposal,
+  reconcileInvoiceFromProposal,
   type ExtractedProposal,
   type ExtractedEnrich,
 } from "@/app/(app)/ingest/actions";
@@ -499,6 +500,19 @@ function ProposalCard({
     });
   }
 
+  // Payment email → mark the EXISTING invoice paid (AR). Never creates a record.
+  function markPaid() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await reconcileInvoiceFromProposal(p.id);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to reconcile");
+      }
+    });
+  }
+
   const unassigned = !contactId && !clientId && !dealId;
 
   return (
@@ -514,6 +528,8 @@ function ProposalCard({
         </div>
         <span className="flex items-center gap-2 shrink-0">
           {prop.billCandidate && <Badge tone="steel">vendor bill</Badge>}
+          {prop.arCandidate && <Badge tone="steel">payment (AR)</Badge>}
+          {prop.financeIncomplete && <Badge tone="red">needs detail</Badge>}
           {unassigned ? <Badge tone="red">unassigned</Badge> : <Badge tone="gold">matched</Badge>}
         </span>
       </button>
@@ -534,6 +550,60 @@ function ProposalCard({
               <Button variant="secondary" size="sm" onClick={addToBill} disabled={isPending}>
                 {isPending ? "…" : "Add to AP"}
               </Button>
+            </div>
+          )}
+          {prop.arCandidate && prop.ar && (
+            <div className="flex items-start gap-3 px-4 py-3 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
+              <Receipt size={15} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
+              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                <span className="text-[13px] text-bone font-medium">Looks like a payment on an invoice (AR)</span>
+                <span className="text-[12px] text-bone-dim truncate">
+                  {prop.ar.invoiceNumber ?? "no invoice # cited"}
+                  {typeof prop.ar.amount === "number" ? ` · ${formatCAD(prop.ar.amount).replace("CA$", "$")}` : ""}
+                  {prop.ar.paidDate ? ` · paid ${prop.ar.paidDate}` : ""}
+                </span>
+                {prop.arMatch ? (
+                  <span className="text-[11px] text-track-gold">
+                    Matches invoice {prop.arMatch.number} · {formatCAD(prop.arMatch.amount).replace("CA$", "$")} (outstanding)
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-bone-mute">
+                    No matching outstanding invoice found — reconcile manually if it&apos;s one we sent.
+                  </span>
+                )}
+              </div>
+              {prop.arMatch && (
+                <Button variant="secondary" size="sm" onClick={markPaid} disabled={isPending}>
+                  {isPending ? "…" : "Mark paid"}
+                </Button>
+              )}
+            </div>
+          )}
+          {prop.financeIncomplete && (
+            <div className="flex items-start gap-3 px-4 py-3 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
+              <CircleAlert size={15} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
+              <div className="flex flex-col gap-1 min-w-0 flex-1">
+                <span className="text-[13px] text-bone font-medium">Couldn&apos;t read the full invoice</span>
+                <span className="text-[12px] text-bone-dim">
+                  This email links out to the invoice instead of stating the amount. Open it to get the details, then add it manually.
+                </span>
+                {prop.financeLinks && prop.financeLinks.length > 0 && (
+                  <div className="flex flex-col gap-1 pt-1">
+                    {prop.financeLinks.map((href, i) => (
+                      <a
+                        key={i}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-track-gold hover:underline truncate flex items-center gap-1.5"
+                      >
+                        <Link2 size={11} strokeWidth={1.5} className="shrink-0" />
+                        {href}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {/* Attach entity */}

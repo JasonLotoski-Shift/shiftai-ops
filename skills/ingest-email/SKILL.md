@@ -26,7 +26,11 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
   },
   "stageSignal": { "suggestion": "e.g. move to Proposal", "rationale": "Why the email implies it" },
   "billCandidate": false,
-  "bill": null
+  "bill": null,
+  "arCandidate": false,
+  "ar": null,
+  "financeIncomplete": false,
+  "financeLinks": []
 }
 ```
 
@@ -34,7 +38,11 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 - `enrichment.client[].field` ∈ `companyKeyFacts`, `description`, `headquarters`, `founded`, `website`, `ownership`, `companySize`.
 - `stageSignal` may be `null` if the email doesn't clearly imply a pipeline move. **Never** assert the deal moved — it's a suggestion the partner acts on.
 - `actionItems`, `keyPoints`, and both enrichment arrays may be empty. Prefer fewer, well-grounded items over padding.
-- **`billCandidate` / `bill`** — set `billCandidate: true` and fill `bill` ONLY when the email (or its attachment) is clearly a **vendor invoice we owe** (accounts payable): a company billing us for goods/services with an amount due. `bill` = `{ "vendor", "amount" (the total, whole CAD, rounded), "currency" (default "CAD"), "invoiceNumber" (omit if none), "dueDate" ("YYYY-MM-DD", omit if none) }`. A receipt for something ALREADY paid is **not** a bill — leave it `false`. For ordinary email, `billCandidate: false` and `bill: null`. When unsure, `false`.
+- **Finance fields (`billCandidate`/`bill`, `arCandidate`/`ar`, `financeIncomplete`/`financeLinks`)** — fill these **only when the context block contains a `## Finance label` note**. For every other email leave all of them at their defaults (`false` / `null` / `[]`). When the finance note IS present, assume the email is either AP or AR and classify it:
+  - **AP — a vendor bill we owe.** Set `billCandidate: true` and fill `bill` = `{ "vendor", "amount" (the total, whole CAD, rounded), "currency" (default "CAD"), "invoiceNumber" (omit if none), "dueDate" ("YYYY-MM-DD", omit if none) }`. A receipt for something ALREADY paid by us is not a new bill.
+  - **AR — a payment / remittance on an invoice WE issued.** A client (or their bank / a payment processor) confirming a payment, or a remittance advice. Set `arCandidate: true` and fill `ar` = `{ "invoiceNumber" (OUR invoice number if cited, omit if not), "amount" (whole CAD if stated), "paidDate" ("YYYY-MM-DD" if stated), "clientHint" (the company/person it's from, to help match) }`. This only ever marks an existing invoice paid downstream — never invent invoice numbers or amounts.
+  - **Link-only / incomplete.** If the email just LINKS OUT to view or pay an invoice (a portal "view your invoice" link, no amount in the body, no attached invoice), set `financeIncomplete: true` and put the URL(s) in `financeLinks`. Still set `billCandidate`/`arCandidate` for the side you can tell, but do NOT guess the missing amount — leave it out and let the partner open the link.
+  - Set exactly one of `billCandidate` / `arCandidate` true (or neither, if it's genuinely not finance). When unsure which, prefer the one the wording supports; if you truly can't tell, set `financeIncomplete: true` so the partner decides.
 
 ## Hard rules for this task
 

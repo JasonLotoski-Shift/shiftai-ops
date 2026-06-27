@@ -21,6 +21,7 @@ import { notifyPartner } from "@/lib/messaging";
 import { generate } from "@/lib/ai";
 import { formatDate, formatCAD } from "@/lib/format";
 import { findDuplicateOpenTask } from "@/lib/ingest/dedup";
+import { matchOutstandingInvoice } from "@/lib/finance-match";
 import type { InteractionType } from "@/lib/generated/prisma/enums";
 
 // ── Extracted-proposal shape (mirrors the ingest-meeting skill output) ──
@@ -29,6 +30,7 @@ export type ExtractedEnrich = { field: string; value: string };
 // A vendor invoice detected on an email (accounts payable). Optional — only set
 // by the ingest-email skill when the email is clearly a bill we owe. Surfaced in
 // the Ingest review as "Add to AP" (creates a Bill). Additive: absence = no-op.
+// Now only populated for emails under the finance label (ops-AR/AP).
 export type ExtractedBill = {
   vendor: string;
   amount: number; // whole CAD
@@ -36,14 +38,34 @@ export type ExtractedBill = {
   invoiceNumber?: string;
   dueDate?: string; // YYYY-MM-DD
 };
+// A payment / remittance detected on a finance-label email (accounts receivable).
+// AR is RECONCILE-ONLY: this points at an invoice WE already issued so the review
+// marks it paid — it never creates a new AR record (no double-booking). Resolved
+// into `arMatch` (the actual outstanding Invoice) by the poll for display.
+export type ExtractedAR = {
+  invoiceNumber?: string; // the firm's invoice number, if the email cites it
+  amount?: number; // whole CAD, if stated
+  paidDate?: string; // YYYY-MM-DD, if a payment date is stated
+  clientHint?: string; // who the email is from / about, to aid matching
+};
 export type ExtractedProposal = {
   summary: string;
   keyPoints: string[];
   actionItems: ExtractedActionItem[];
   enrichment: { contact: ExtractedEnrich[]; client: ExtractedEnrich[] };
   stageSignal: { suggestion: string; rationale: string } | null;
-  billCandidate?: boolean;
+  // ── Finance (only set for emails under the finance label) ──
+  billCandidate?: boolean; // AP — a vendor bill we owe
   bill?: ExtractedBill | null;
+  arCandidate?: boolean; // AR — a payment on an invoice we sent
+  ar?: ExtractedAR | null;
+  // The outstanding invoice the AR email matched (set server-side by the poll,
+  // re-verified at reconcile time). Null = no confident match → reconcile manually.
+  arMatch?: { invoiceId: string; number: string; amount: number } | null;
+  // The email only linked out to view/pay an invoice (no amount / no attachment),
+  // so the figures couldn't be read. The review flags it and surfaces the link(s).
+  financeIncomplete?: boolean;
+  financeLinks?: string[];
 };
 
 const CONTACT_LIST_FIELDS = ["keyFacts", "hobbies", "networkAffiliations"];
@@ -546,6 +568,19 @@ export async function createBillFromProposal(id: string) {
   const amount = Math.round(bill.amount);
   const dueAt = bill.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(bill.dueDate) ? new Date(bill.dueDate) : null;
 
+  // Don't double-record. A vendor invoice NUMBER is the strong dup signal (same
+  // vendor + same number = the same bill). We only block when the email carried a
+  // number — repeat charges with no number (e.g. a monthly subscription) are
+  // legitimately recurring, so those are allowed through.
+  const num = bill.invoiceNumber?.trim();
+  if (num) {
+    const dup = await prisma.bill.findFirst({
+      where: { number: { equals: num, mode: "insensitive" }, vendor: { equals: bill.vendor.trim(), mode: "insensitive" }, status: { not: "void" } },
+      select: { id: true },
+    });
+    if (dup) throw new Error(`Already in AP: ${bill.vendor.trim()} · ${num}. Not added again.`);
+  }
+
   const billId = await prisma.$transaction(async (tx) => {
     const created = await tx.bill.create({
       data: {
@@ -588,4 +623,85 @@ export async function createBillFromProposal(id: string) {
   revalidatePath("/ingest");
   revalidatePath("/financials");
   return { ok: true as const, billId };
+}
+
+// Reconcile an AR-candidate email (a payment / remittance the ingest-email skill
+// flagged) against an invoice the firm ALREADY issued: find the single outstanding
+// (sent | overdue) invoice it refers to and mark it paid. Never creates a new AR
+// record — if no confident match exists, the partner reconciles manually. Mirrors
+// markInvoicePaid's status guard. Same gating logic as createBillFromProposal:
+// reconciliation is data entry, not a firm-money surface, so not MP-gated.
+export async function reconcileInvoiceFromProposal(id: string) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const label = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, label);
+
+  const proposal = await prisma.ingestProposal.findUnique({
+    where: { id },
+    select: { id: true, status: true, proposal: true, matchedClientId: true },
+  });
+  if (!proposal) throw new Error("Proposal not found");
+  if (proposal.status !== "pending") throw new Error("This item was already handled");
+
+  const ar = (proposal.proposal as { ar?: unknown } | null)?.ar as ExtractedAR | null | undefined;
+  if (!ar) throw new Error("No payment details detected on this item");
+
+  // Re-match at click time — the stored arMatch can go stale (an invoice may have
+  // been paid or voided since the poll ran).
+  const matched = await matchOutstandingInvoice({
+    clientId: proposal.matchedClientId,
+    invoiceNumber: ar.invoiceNumber,
+    amount: ar.amount,
+  });
+  if (!matched) {
+    throw new Error("No matching outstanding invoice — reconcile manually on the Invoices page.");
+  }
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: matched.id },
+    select: { status: true, number: true },
+  });
+  if (!invoice) throw new Error("Matched invoice no longer exists");
+  if (invoice.status !== "sent" && invoice.status !== "overdue") {
+    throw new Error(`Invoice ${invoice.number} is "${invoice.status}" — can't mark paid from here.`);
+  }
+
+  const paidAt =
+    ar.paidDate && /^\d{4}-\d{2}-\d{2}$/.test(ar.paidDate) ? new Date(ar.paidDate) : new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.invoice.update({
+      where: { id: matched.id },
+      data: { status: "paid", paidAt },
+    });
+    await tx.ingestProposal.update({
+      where: { id },
+      data: { status: "approved", reviewedBy: label, reviewedAt: new Date() },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "reconcile.invoicePaidFromProposal",
+      targetType: "Invoice",
+      targetId: matched.id,
+      changes: {
+        status: { before: invoice.status, after: "paid" },
+        paidAt: paidAt.toISOString(),
+        ingestProposalId: id,
+      },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: `Invoice ${invoice.number}`,
+      detail: `Marked paid from email · ${formatCAD(matched.amount)}`,
+      link: "/financials",
+    });
+  });
+
+  revalidatePath("/ingest");
+  revalidatePath("/invoices");
+  revalidatePath("/financials");
+  revalidatePath("/dashboard");
+  return { ok: true as const, invoiceNumber: invoice.number };
 }

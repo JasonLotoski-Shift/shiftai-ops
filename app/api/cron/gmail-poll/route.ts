@@ -24,7 +24,8 @@ import {
 } from "@/lib/gmail";
 import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract-file";
 import { resolveTargetsFromText } from "@/lib/ingest/cross-reference";
-import type { ExtractedProposal, ExtractedBill } from "@/app/(app)/ingest/actions";
+import { matchOutstandingInvoice } from "@/lib/finance-match";
+import type { ExtractedProposal, ExtractedBill, ExtractedAR } from "@/app/(app)/ingest/actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Pro plan — the poll fans over partners × messages
@@ -96,6 +97,24 @@ function parseProposal(raw: string): ExtractedProposal {
           dueDate: typeof bd.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(bd.dueDate) ? bd.dueDate : undefined,
         }
       : null;
+  // Accounts-receivable (AR) detection — a payment / remittance on an invoice WE
+  // sent. Reconcile-only downstream: the poll resolves the matching invoice for
+  // display, the partner marks it paid. No AR record is ever created from email.
+  const ad = o.arCandidate === true && o.ar && typeof o.ar === "object" ? (o.ar as Record<string, unknown>) : null;
+  const arAmount =
+    ad && typeof ad.amount === "number"
+      ? Math.round(ad.amount)
+      : ad && typeof ad.amount === "string"
+        ? Math.round(Number((ad.amount as string).replace(/[^0-9.-]/g, "")))
+        : undefined;
+  const ar: ExtractedAR | null = ad
+    ? {
+        invoiceNumber: typeof ad.invoiceNumber === "string" && ad.invoiceNumber.trim() ? ad.invoiceNumber.trim() : undefined,
+        amount: typeof arAmount === "number" && Number.isFinite(arAmount) && arAmount > 0 ? arAmount : undefined,
+        paidDate: typeof ad.paidDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ad.paidDate) ? ad.paidDate : undefined,
+        clientHint: typeof ad.clientHint === "string" && ad.clientHint.trim() ? ad.clientHint.trim() : undefined,
+      }
+    : null;
   return {
     summary: typeof o.summary === "string" ? o.summary.trim() : "",
     keyPoints: strArr(o.keyPoints),
@@ -107,7 +126,44 @@ function parseProposal(raw: string): ExtractedProposal {
         : null,
     billCandidate: !!bill,
     bill,
+    arCandidate: !!ar,
+    ar,
+    financeIncomplete: o.financeIncomplete === true,
+    financeLinks: strArr(o.financeLinks),
   };
+}
+
+// Finance fields are only honoured for finance-label mail. For everything else
+// (the general ops-log path) strip them so ordinary email never books AP/AR. For
+// a finance-label AR candidate, resolve the outstanding invoice it refers to so
+// the review can show the suggested match (re-verified at reconcile time).
+async function finalizeFinance(
+  proposal: ExtractedProposal,
+  fromFinance: boolean,
+  clientId: string | null,
+): Promise<ExtractedProposal> {
+  if (!fromFinance) {
+    return {
+      ...proposal,
+      billCandidate: false,
+      bill: null,
+      arCandidate: false,
+      ar: null,
+      arMatch: null,
+      financeIncomplete: false,
+      financeLinks: [],
+    };
+  }
+  let arMatch: ExtractedProposal["arMatch"] = null;
+  if (proposal.arCandidate && proposal.ar) {
+    const m = await matchOutstandingInvoice({
+      clientId,
+      invoiceNumber: proposal.ar.invoiceNumber,
+      amount: proposal.ar.amount,
+    });
+    arMatch = m ? { invoiceId: m.id, number: m.number, amount: m.amount } : null;
+  }
+  return { ...proposal, arMatch };
 }
 
 // Resolve the engagement an email belongs to via the SHARED matcher
@@ -149,7 +205,11 @@ export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const t0 = Date.now();
-  const label = process.env.GMAIL_INGEST_LABEL ?? "ops-log";
+  // Two watched labels: the general ingest label (ops-log → meetings / client
+  // threads, no finance) and the finance label (ops-AR/AP → assume every email is
+  // AP or AR). Both read under the one mailbox cursor below.
+  const generalLabel = process.env.GMAIL_INGEST_LABEL ?? "ops-log";
+  const financeLabel = process.env.GMAIL_FINANCE_LABEL ?? "ops-AR/AP";
 
   // Inert before the migration runs: if the table doesn't exist yet, no-op
   // cleanly so a pre-migration deploy doesn't 500 every hour.
@@ -171,9 +231,10 @@ export async function GET(req: Request) {
     let appended = 0;
     try {
       const gmail = gmailForRefreshToken(decryptSecret(conn.refreshToken));
-      const labelId = await resolveLabelId(gmail, label);
-      if (!labelId) {
-        summary[conn.email] = `label "${label}" not found`;
+      const generalLabelId = await resolveLabelId(gmail, generalLabel);
+      const financeLabelId = await resolveLabelId(gmail, financeLabel);
+      if (!generalLabelId && !financeLabelId) {
+        summary[conn.email] = `labels "${generalLabel}" / "${financeLabel}" not found`;
         continue;
       }
 
@@ -181,18 +242,39 @@ export async function GET(req: Request) {
         where: { partnerId_source: { partnerId: conn.partnerId, source: "gmail" } },
       });
 
-      let ids: string[];
-      let latest: string | null;
-      if (state?.cursor) {
-        const r = await newLabeledIds(gmail, state.cursor, labelId);
-        ids = r.ids;
-        latest = r.latestHistoryId;
-      } else {
-        ids = await bootstrapLabeledIds(gmail, labelId);
-        latest = await currentHistoryId(gmail);
+      // historyId is mailbox-global, so the ONE cursor covers both labels. Query
+      // each present label from the same start cursor, union the message ids
+      // (order-preserving, de-duped), tag the finance-label ones, and advance the
+      // cursor to the max historyId seen. A message under BOTH labels is treated
+      // as finance (financeIds.add runs regardless of the dedup).
+      const watched = [
+        { id: generalLabelId, finance: false },
+        { id: financeLabelId, finance: true },
+      ].filter((w): w is { id: string; finance: boolean } => !!w.id);
+
+      const ids: string[] = [];
+      const financeIds = new Set<string>();
+      const dedup = new Set<string>();
+      let latest: string | null = state?.cursor ?? null;
+      for (const w of watched) {
+        if (state?.cursor) {
+          const r = await newLabeledIds(gmail, state.cursor, w.id);
+          for (const mid of r.ids) {
+            if (!dedup.has(mid)) { dedup.add(mid); ids.push(mid); }
+            if (w.finance) financeIds.add(mid);
+          }
+          if (latest === null || BigInt(r.latestHistoryId) > BigInt(latest)) latest = r.latestHistoryId;
+        } else {
+          for (const mid of await bootstrapLabeledIds(gmail, w.id)) {
+            if (!dedup.has(mid)) { dedup.add(mid); ids.push(mid); }
+            if (w.finance) financeIds.add(mid);
+          }
+        }
       }
+      if (!state?.cursor) latest = await currentHistoryId(gmail);
 
       for (const id of ids) {
+        const fromFinance = financeIds.has(id);
         // The per-MESSAGE externalId still guards the FIRST message of a thread
         // (and standalone mail) from a re-poll. Appended replies are guarded by
         // the messageIds[] check below — their id is never an externalId.
@@ -277,6 +359,9 @@ export async function GET(req: Request) {
             `Date: ${email.date.toISOString().slice(0, 10)}`,
             `Direction: ${direction === "sent" ? "We sent this" : "We received this"}`,
             isThread ? "This is a REPLY on an existing thread — the intake is the WHOLE conversation, oldest first. Summarize the thread as a whole and extract action items from its latest state." : "",
+            fromFinance
+              ? "\n## Finance label\nThis email was filed under the finance label. Assume it is an account payable (a vendor bill we owe) OR an account receivable (a payment / remittance on an invoice WE sent). Classify it: set billCandidate+bill for AP, or arCandidate+ar for AR. If the email only LINKS OUT to view or pay an invoice (no amount in the body, no attached invoice), set financeIncomplete:true and put the URL(s) in financeLinks — do not guess the amount."
+              : "",
             "",
             "## Matched contact",
             match.contactLabel ?? "No known contact matched — unassigned.",
@@ -301,6 +386,7 @@ export async function GET(req: Request) {
             // Keep the prior extraction on a model failure — never lose the thread.
             proposal = parseProposal(JSON.stringify(pendingThread.proposal));
           }
+          proposal = await finalizeFinance(proposal, fromFinance, pendingThread.matchedClientId ?? match.clientId);
           await prisma.ingestProposal.update({
             where: { id: pendingThread.id },
             data: {
@@ -337,6 +423,7 @@ export async function GET(req: Request) {
         } catch {
           proposal = { summary: email.subject || "(email)", keyPoints: [], actionItems: [], enrichment: { contact: [], client: [] }, stageSignal: null };
         }
+        proposal = await finalizeFinance(proposal, fromFinance, match.clientId);
 
         await prisma.ingestProposal.create({
           data: {

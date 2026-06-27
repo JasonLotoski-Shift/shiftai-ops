@@ -223,8 +223,19 @@ System prompt = firm brain + this skill (cached), per `lib/ai.ts`.
 3. Create an **OAuth client** (or reuse the sign-in client) + set redirect to
    `https://ops.shiftai.partners/api/auth/gmail/callback`.
 4. Env: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GMAIL_INGEST_LABEL=ops-log`,
+   `GMAIL_FINANCE_LABEL=ops-AR/AP` (optional — code already defaults to this),
    `TOKEN_ENC_KEY` (32-byte hex), `CRON_SECRET`.
-5. Each partner clicks **Connect Gmail** in Settings, then labels client threads `ops-log`.
+5. Each partner clicks **Connect Gmail** in Settings, then labels client threads `ops-log` and
+   bills / payment emails `ops-AR/AP`.
+
+> **Finance label (`ops-AR/AP`).** The poll watches a second label alongside `ops-log`, under the
+> same mailbox `historyId` cursor (one `IngestSyncState` row, no migration). Mail under this label
+> is assumed to be AP or AR: a vendor bill → "Add to AP" (Bill); a payment on an invoice we issued
+> → matched to that invoice and "Mark paid" (reconcile-only, never a new record); a link-only
+> invoice notice → flagged `financeIncomplete` with the link. AP/AR detection is now scoped to this
+> label only — `ops-log` is back to general client-thread ingest. The `/` makes it a *nested* Gmail
+> label (parent `ops-AR` → child `AP`); `resolveLabelId` matches the full path string, so create it
+> exactly as written. Matching logic: [`lib/finance-match.ts`](../lib/finance-match.ts).
 
 **Option C (DWD) instead:** enable Gmail API; in Workspace Admin → Security → API controls →
 **Domain-Wide Delegation** → add the SA client id + `gmail.readonly` (super admin; ~60 min to
