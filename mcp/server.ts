@@ -156,6 +156,102 @@ const tools: Tool[] = [
     },
   },
 
+  // ── Firm Knowledge read tools (Phase 3) ──
+  // Tier-2 historical knowledge. Role-filtered: an MCP agent is NOT a verified
+  // managing-partner context, so these ONLY ever return firm_wide + approved
+  // records — managing_partner items never leave the database here.
+  {
+    name: "search_knowledge",
+    description: "Full-text search the firm's approved knowledge documents. Returns the best matches with title, category, summary. Use to recall how the firm did/decided something before answering from memory.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string" }, limit: { type: "number", description: "max results, default 8" } },
+      required: ["query"],
+    },
+    handler: async (a) => {
+      const q = str(a.query);
+      if (!q) return [];
+      const limit = Math.min(Math.max(typeof a.limit === "number" ? a.limit : 8, 1), 25);
+      return prisma.$queryRaw`
+        SELECT ki.id, ki.title, ki.summary, ki."createdAt",
+               kc.label AS "categoryLabel",
+               ts_rank(ki."fts", websearch_to_tsquery('english', ${q})) AS rank
+        FROM "KnowledgeItem" ki
+        LEFT JOIN "KnowledgeCategory" kc ON kc.id = ki."knowledgeCategoryId"
+        WHERE ki."reviewStatus" = 'approved'
+          AND ki."sensitivity" = 'firm_wide'
+          AND ki."fts" @@ websearch_to_tsquery('english', ${q})
+          AND NOT EXISTS (SELECT 1 FROM "KnowledgeItem" c WHERE c."supersedesId" = ki.id)
+        ORDER BY rank DESC, ki."createdAt" DESC
+        LIMIT ${limit}`;
+    },
+  },
+  {
+    name: "list_knowledge",
+    description: "List the firm's approved knowledge documents, optionally filtered by category slug (e.g. 'build-systems', 'learning'). Newest first.",
+    inputSchema: {
+      type: "object",
+      properties: { categorySlug: { type: "string" }, limit: { type: "number" } },
+    },
+    handler: async (a) => {
+      const slug = str(a.categorySlug);
+      const limit = Math.min(Math.max(typeof a.limit === "number" ? a.limit : 30, 1), 100);
+      return prisma.knowledgeItem.findMany({
+        where: {
+          reviewStatus: "approved",
+          sensitivity: "firm_wide",
+          supersededBy: { none: {} },
+          ...(slug ? { category: { slug } } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        select: {
+          id: true, title: true, summary: true, source: true, createdAt: true,
+          category: { select: { slug: true, label: true } },
+        },
+      });
+    },
+  },
+  {
+    name: "get_decision",
+    description: "Full ADR-style decision record by id: context, options considered, decision, consequences.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    handler: async (a) => {
+      const rec = await prisma.decisionRecord.findUnique({
+        where: { id: str(a.id) },
+        include: { decidedBy: { select: { name: true } }, category: { select: { label: true } } },
+      });
+      // Never surface a managing-partner decision through the agent surface.
+      if (!rec || rec.reviewStatus !== "approved" || rec.sensitivity !== "firm_wide") return null;
+      return rec;
+    },
+  },
+  {
+    name: "list_decisions",
+    description: "Recent approved firm decisions (ADR log), newest first. Optionally filter by a keyword in the title/decision.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string" }, limit: { type: "number" } },
+    },
+    handler: async (a) => {
+      const q = str(a.query);
+      const limit = Math.min(Math.max(typeof a.limit === "number" ? a.limit : 25, 1), 100);
+      return prisma.decisionRecord.findMany({
+        where: {
+          reviewStatus: "approved",
+          sensitivity: "firm_wide",
+          supersededBy: { none: {} },
+          ...(q
+            ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { decision: { contains: q, mode: "insensitive" } }] }
+            : {}),
+        },
+        orderBy: { decidedAt: "desc" },
+        take: limit,
+        select: { id: true, title: true, decision: true, decidedAt: true, category: { select: { label: true } } },
+      });
+    },
+  },
+
   // ── Write tools (canonical recipe: mutate + writeAudit in one transaction) ──
   {
     name: "create_artifact",

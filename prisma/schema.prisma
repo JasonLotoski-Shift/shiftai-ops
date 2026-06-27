@@ -173,6 +173,28 @@ enum MemoryBlockKey {
   watch_list
 }
 
+// Firm Knowledge — where a Tier-2 KnowledgeItem came from. Drives provenance
+// display + which parse path runs (uploaded/captured = a stored blob to parse;
+// transcript/agent/manual = text arrives inline).
+enum KnowledgeSource {
+  uploaded
+  captured
+  transcript
+  agent
+  manual
+}
+
+// Firm Knowledge — async parse lifecycle for an uploaded KnowledgeItem. The
+// upload broker creates the row at `pending`; the knowledge-parse cron flips it
+// to `parsed` (text + hash written), `empty` (no extractable text), or `failed`.
+// Inline-text sources (manual/transcript) are created already `parsed`.
+enum KnowledgeParseStatus {
+  pending
+  parsed
+  empty
+  failed
+}
+
 enum AgentPlanStatus {
   idea
   active
@@ -497,6 +519,11 @@ model Partner {
   artifactsOwned           Artifact[]          @relation("ArtifactOwner")
   memoryBlocksApproved     MemoryBlock[]       @relation("MemoryBlockApprover")
 
+  // Firm Knowledge — Tier-2 records this partner owns / decided / stewards (Phase 3).
+  knowledgeItemsOwned KnowledgeItem[]  @relation("KnowledgeItemOwner")
+  decisionsRecorded   DecisionRecord[] @relation("DecisionDecidedBy")
+  knowledgeTagsOwned  KnowledgeTag[]   @relation("KnowledgeTagSteward")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -621,6 +648,10 @@ model Interaction {
   deal      Deal?    @relation(fields: [dealId], references: [id])
   dealId    String?
 
+  // Decisions distilled from this interaction (e.g. a meeting transcript →
+  // DecisionRecord). Back-relation for DecisionRecord.sourceInteraction.
+  decisionsSourced DecisionRecord[] @relation("DecisionSourceInteraction")
+
   createdAt DateTime @default(now())
 
   @@index([contactId, date])
@@ -733,6 +764,7 @@ model Deal {
 
   artifacts  Artifact[]
   interactions Interaction[]
+  knowledgeItems KnowledgeItem[]
   estimates  Estimate[]
   discoverySurveys DiscoverySurvey[]
   contactLinks ContactLink[]
@@ -848,6 +880,7 @@ model Client {
   tasks      Task[]
   artifacts  Artifact[]
   interactions Interaction[]
+  knowledgeItems KnowledgeItem[]
   milestones Milestone[]
   discoverySurveys DiscoverySurvey[]
   contactLinks ContactLink[]
@@ -901,6 +934,7 @@ model Project {
   invoices       Invoice[]
   tasks          Task[]
   artifacts      Artifact[]
+  knowledgeItems KnowledgeItem[]
   installments   BillingInstallment[]
   economicsLines ProjectEconomicsLine[]
   directCosts    ProjectDirectCost[]
@@ -1363,6 +1397,10 @@ model KnowledgeCategory {
   // Firm-wide artifacts filed into this category (Phase 1 reuses Artifact).
   artifacts Artifact[]
 
+  // Tier-2 records filed into this category (Phase 3).
+  knowledgeItems KnowledgeItem[]
+  decisions      DecisionRecord[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1461,6 +1499,188 @@ model Artifact {
   @@index([supersedesId])
   @@index([knowledgeCategoryId])
   @@index([ownerId])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// KnowledgeItem — Tier-2 historical knowledge (Phase 3). The append-only,
+// retrieved-on-demand system of record: uploaded docs (+ extracted text),
+// captured pages, transcripts. NOT auto-injected into skill context — a skill
+// calls fetchHistoricalKnowledge() only when a question needs history beyond
+// the recent-memory window. Separate table from Artifact because Artifact's
+// driveUrl is REQUIRED and it lacks storage/parse/as-of fields.
+//
+// Versioning mirrors Artifact: a "replace" writes a NEW row pointing at the one
+// it supersedes (one logical doc = one chain). `fts` is a Postgres generated
+// tsvector column (created in the prepared migration, not by Prisma) used for
+// keyword retrieval; it is Unsupported() here so the client omits it and search
+// runs via $queryRaw on the singleton client.
+// ──────────────────────────────────────────────────────────────────────
+
+model KnowledgeItem {
+  id       String          @id @default(cuid())
+  title    String
+  source   KnowledgeSource @default(uploaded)
+
+  // Curated one-paragraph summary (what a skill reads first); extractedText is
+  // the full parsed body (FTS + deep context). Both nullable until parsed.
+  summary       String?
+  extractedText String?
+
+  // Stored blob (Supabase Storage key in the private firm-knowledge bucket) +
+  // original file metadata. storagePath is null for inline-text sources.
+  storagePath String?
+  fileName    String?
+  mimeType    String?
+  byteSize    Int?
+  // SHA-256 of the extracted text — exact-dedup short-circuit on re-upload.
+  contentHash String?
+
+  // Click-out to the same doc in Drive, when one exists (parallel to Artifact).
+  driveUrl String?
+
+  // Async parse lifecycle (the knowledge-parse cron owns the transitions).
+  parseStatus KnowledgeParseStatus @default(pending)
+  parseError  String?
+  parsedAt    DateTime?
+
+  // Taxonomy + governance (mirrors the Artifact Phase-1 governance columns).
+  category            KnowledgeCategory?   @relation(fields: [knowledgeCategoryId], references: [id])
+  knowledgeCategoryId String?
+  reviewStatus        ArtifactReviewStatus @default(draft)
+  sensitivity         KnowledgeSensitivity @default(firm_wide)
+  owner               Partner?             @relation("KnowledgeItemOwner", fields: [ownerId], references: [id])
+  ownerId             String?
+  confidence          KnowledgeConfidence?
+  lastVerifiedAt      DateTime?
+
+  // As-of stamping — when the knowledge was true / observed (distinct from the
+  // row's createdAt). Lets a skill reason about recency, not just insertion.
+  validFrom  DateTime?
+  observedAt DateTime?
+
+  // Provenance.
+  generatedFromSkill String?
+  createdBy          String // partner name or "AGENT · CLAUDE"
+
+  // Optional scope FKs — a knowledge item can be firm-wide (all null) or tied to
+  // a client/project/deal (lifted IP, a captured deliverable). All nullable.
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?
+  deal      Deal?    @relation(fields: [dealId], references: [id])
+  dealId    String?
+
+  // Versioning chain (reuse the Artifact pattern).
+  supersedesId String?
+  supersedes   KnowledgeItem?  @relation("KnowledgeItemVersions", fields: [supersedesId], references: [id])
+  supersededBy KnowledgeItem[] @relation("KnowledgeItemVersions")
+
+  tags KnowledgeItemTag[]
+
+  // Postgres generated tsvector (title + summary + extractedText). Created in
+  // the prepared migration; Prisma never writes it. GIN-indexed for FTS.
+  fts Unsupported("tsvector")?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([knowledgeCategoryId, reviewStatus])
+  @@index([ownerId])
+  @@index([contentHash])
+  @@index([supersedesId])
+  @@index([parseStatus])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([dealId])
+  @@index([fts], type: Gin)
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// DecisionRecord — ADR-style decision log (Phase 3). The single highest-leverage
+// new record type for a partner firm: what was decided, the options weighed, and
+// the consequences, stamped + attributable. A meeting transcript can distill into
+// one (sourceInteraction). Append-only with the same supersede-don't-overwrite
+// versioning as KnowledgeItem.
+// ──────────────────────────────────────────────────────────────────────
+
+model DecisionRecord {
+  id    String @id @default(cuid())
+  title String
+
+  // The ADR body. context = the situation; optionsConsidered = what was weighed;
+  // decision = what was chosen; consequences = what it commits the firm to.
+  context          String?
+  optionsConsidered String?
+  decision         String
+  consequences     String?
+
+  decidedAt   DateTime
+  decidedBy   Partner? @relation("DecisionDecidedBy", fields: [decidedById], references: [id])
+  decidedById String?
+  // Free-text actor fallback when the decider is not a Partner row (or for an
+  // agent-distilled draft). Parallel to Interaction.loggedBy.
+  decidedByLabel String?
+
+  // The meeting / email this decision was distilled from, if any.
+  sourceInteraction   Interaction? @relation("DecisionSourceInteraction", fields: [sourceInteractionId], references: [id])
+  sourceInteractionId String?
+
+  category            KnowledgeCategory?   @relation(fields: [knowledgeCategoryId], references: [id])
+  knowledgeCategoryId String?
+  reviewStatus        ArtifactReviewStatus @default(draft)
+  sensitivity         KnowledgeSensitivity @default(firm_wide)
+  validFrom           DateTime?
+
+  generatedFromSkill String?
+  createdBy          String
+
+  supersedesId String?
+  supersedes   DecisionRecord?  @relation("DecisionVersions", fields: [supersedesId], references: [id])
+  supersededBy DecisionRecord[] @relation("DecisionVersions")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([knowledgeCategoryId, reviewStatus])
+  @@index([decidedById])
+  @@index([sourceInteractionId])
+  @@index([supersedesId])
+  @@index([decidedAt])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// KnowledgeTag + KnowledgeItemTag — controlled-vocabulary facet layer. A
+// steward-maintained term list (NOT free text — avoids the tag-rot the tool's
+// free-text enrichment would reproduce). Contributors pick existing tags; only
+// a tag steward mints new ones.
+// ──────────────────────────────────────────────────────────────────────
+
+model KnowledgeTag {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  label       String
+  description String?
+
+  steward   Partner? @relation("KnowledgeTagSteward", fields: [stewardId], references: [id])
+  stewardId String?
+
+  items KnowledgeItemTag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stewardId])
+}
+
+model KnowledgeItemTag {
+  knowledgeItem   KnowledgeItem @relation(fields: [knowledgeItemId], references: [id], onDelete: Cascade)
+  knowledgeItemId String
+  tag             KnowledgeTag  @relation(fields: [knowledgeTagId], references: [id], onDelete: Cascade)
+  knowledgeTagId  String
+
+  @@id([knowledgeItemId, knowledgeTagId])
+  @@index([knowledgeTagId])
 }
 
 // ──────────────────────────────────────────────────────────────────────

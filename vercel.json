@@ -4,6 +4,7 @@
   "crons": [
     { "path": "/api/cron/gmail-poll", "schedule": "0 */6 * * *" },
     { "path": "/api/cron/fireflies-poll", "schedule": "30 */6 * * *" },
-    { "path": "/api/cron/tally-poll", "schedule": "15 */6 * * *" }
+    { "path": "/api/cron/tally-poll", "schedule": "15 */6 * * *" },
+    { "path": "/api/cron/knowledge-parse", "schedule": "45 */6 * * *" }
   ]
 }

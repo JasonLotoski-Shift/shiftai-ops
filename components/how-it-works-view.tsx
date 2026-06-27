@@ -36,6 +36,7 @@ import {
   Stamp,
   Map as MapIcon,
   MessageSquarePlus,
+  BrainCircuit,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -1146,6 +1147,19 @@ const flows: Flow[] = [
       { tone: "trigger", kind: "You do", label: "Requests & Fixes (under Other) → New request · give it a title and description, pick the type (bug fix / new feature / improvement / broken), and which part of the app it's about — the tab, then the section inside it if there is one (or “Whole app” for anything cross-cutting)" },
       { tone: "review", kind: "Anyone", label: "It lands in the Open column. Filter by area, type, or just yours; open a card to edit it. Anyone on the team can move it along — Open → In progress → Done (or Declined for a won't-do)" },
       { tone: "write", kind: "Saved", label: "A FeatureRequest row with who filed it + an AuditLog entry on every create, edit, status move, and delete" },
+    ],
+  },
+  {
+    icon: <BrainCircuit size={16} strokeWidth={1.5} />,
+    title: "Add to the firm's brain (Firm Knowledge)",
+    blurb: "The firm's own knowledge — documents, decisions, and a recent-memory snapshot — kept in one place the AI can read. Everything lands as a draft and only the AI-readable bits go live once a partner approves them.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Firm Knowledge → Upload document → pick a PDF / Word / Excel / text file, give it a title and a category. The file goes straight to private storage (big files are fine — it doesn't pass through the app)" },
+      { tone: "claude", kind: "Claude", label: "Reads the text out of the file, writes a short summary, and files it. It also flags a likely duplicate if the same document is already in here" },
+      { tone: "review", kind: "You review", label: "Open the document → read the summary + full text, Download original if you need it, then Approve for skills. Only approved documents can be pulled into an AI action; drafts stay invisible to the AI" },
+      { tone: "trigger", kind: "You do", label: "Decision log → Log a decision → record what was decided, the options weighed, and the consequences. Approve it so the AI never contradicts a call it should know about" },
+      { tone: "review", kind: "You review", label: "Recent memory (a few short, always-in-context notes) stays the fast path; documents + decisions are the deeper history the AI reaches into only when a question needs it. Managing partners can mark any item MP-only" },
+      { tone: "write", kind: "Saved", label: "KnowledgeItem / DecisionRecord + the file in the firm's private store + AuditLog on every upload, decision, and approval. Skills (and Claude Code via the MCP tools) search approved firm-wide records only" },
     ],
   },
 ];

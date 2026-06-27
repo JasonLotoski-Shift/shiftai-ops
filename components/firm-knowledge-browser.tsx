@@ -6,9 +6,14 @@ import { Card, Badge, SearchInput, EmptyState, Avatar } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
 import { Library, AlertTriangle, ChevronRight, ShieldAlert } from "lucide-react";
+import { KnowledgeUploadDialog } from "@/components/knowledge-upload-dialog";
 
 export type KnowledgeRow = {
   id: string;
+  // "artifact" = a firm-wide deliverable (Phase 1); "knowledge" = an uploaded
+  // Tier-2 document (Phase 3). Drives the type label + parse-status badge.
+  kind: "artifact" | "knowledge";
+  href: string;
   title: string;
   type: string;
   categorySlug: string | null;
@@ -21,8 +26,11 @@ export type KnowledgeRow = {
   generatedFromSkill: string | null;
   createdAt: string;
   lastVerifiedAt: string | null;
-  driveUrl: string;
+  driveUrl: string | null;
   isStale: boolean;
+  // Knowledge-only: async parse lifecycle + review gate.
+  parseStatus?: string | null;
+  reviewStatus?: string | null;
 };
 
 export type CategoryCard = {
@@ -52,10 +60,12 @@ export function FirmKnowledgeBrowser({
   categories,
   rows,
   uncategorised,
+  canSetManagingPartner = false,
 }: {
   categories: CategoryCard[];
   rows: KnowledgeRow[];
   uncategorised: number;
+  canSetManagingPartner?: boolean;
 }) {
   const [q, setQ] = useState("");
   // null = all; a slug; or UNCAT for the uncategorised bucket.
@@ -147,6 +157,11 @@ export function FirmKnowledgeBrowser({
         <span className="ml-auto label">
           {filtered.length} item{filtered.length === 1 ? "" : "s"}
         </span>
+        <KnowledgeUploadDialog
+          categories={categories.map((c) => ({ id: c.id, label: c.label }))}
+          defaultCategoryId={cat && cat !== UNCAT ? categories.find((c) => c.slug === cat)?.id ?? null : null}
+          canSetManagingPartner={canSetManagingPartner}
+        />
       </div>
 
       {/* Table */}
@@ -157,7 +172,7 @@ export function FirmKnowledgeBrowser({
             title={rows.length === 0 ? "No firm knowledge yet" : "Nothing matches that filter"}
             hint={
               rows.length === 0
-                ? "Firm-wide documents show up here. Document upload and ingest arrive in a later phase."
+                ? "Firm-wide deliverables and uploaded documents show up here. Use Upload document to add one."
                 : "Try a different category or search term."
             }
           />
@@ -172,8 +187,8 @@ export function FirmKnowledgeBrowser({
             </div>
             {filtered.map((r) => (
               <Link
-                key={r.id}
-                href={`/firm-knowledge/${r.id}`}
+                key={`${r.kind}-${r.id}`}
+                href={r.href}
                 className="grid grid-cols-[2fr_1fr_1fr_auto] gap-4 px-5 py-3.5 items-center border-b border-graphite/60 last:border-0 hover:bg-[var(--color-row-hover)] transition-colors"
               >
                 {/* Title + type + flags */}
@@ -187,9 +202,15 @@ export function FirmKnowledgeBrowser({
                       </Badge>
                     )}
                   </span>
-                  <span className="flex items-center gap-2">
-                    <Badge tone="neutral">{humanizeType(r.type)}</Badge>
+                  <span className="flex items-center gap-2 flex-wrap">
+                    <Badge tone="neutral">{r.kind === "knowledge" ? "Document" : humanizeType(r.type)}</Badge>
                     {r.confidence && <Badge tone={confidenceTone(r.confidence)}>{r.confidence} confidence</Badge>}
+                    {r.kind === "knowledge" && r.reviewStatus !== "approved" && (
+                      <Badge tone="neutral">Draft</Badge>
+                    )}
+                    {r.parseStatus === "pending" && <Badge tone="neutral">Parsing…</Badge>}
+                    {r.parseStatus === "failed" && <Badge tone="orange">Parse failed</Badge>}
+                    {r.parseStatus === "empty" && <Badge tone="orange">No text</Badge>}
                   </span>
                 </span>
 

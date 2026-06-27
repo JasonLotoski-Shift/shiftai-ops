@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-27",
     tag: "new",
+    title: "Firm Knowledge now holds real documents and a decision log",
+    detail:
+      "Two additions to Firm Knowledge. Upload document takes a PDF, Word, Excel or text file straight into the firm brain — it reads the text, writes a short summary, and files it under a category. It lands as a draft; press Approve for skills and the AI can find it when a question needs it. And a new Decision log records the calls that shape the firm — what was decided, the options weighed, the consequences — so the AI never contradicts a decision it should know about. Both are visible to all partners by default; managing partners can mark an item as MP-only.",
+  },
+  {
+    date: "2026-06-27",
+    tag: "new",
     title: "Vendor invoices from email can be filed straight to AP",
     detail:
       "When an email you log through Ingest (or that arrives via Gmail) looks like a vendor invoice — a bill we owe — it's now flagged in the review with the vendor, amount and due date read off the email. One click on “Add to AP” files it as a bill in Financials → AP/AR, ready to pay. Ordinary emails are untouched; this only shows when the email is clearly a bill.",

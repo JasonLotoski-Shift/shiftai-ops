@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BrainCircuit } from "lucide-react";
+import { BrainCircuit, Scale } from "lucide-react";
 import { Header } from "@/components/header";
 import { Card, Stat } from "@/components/ui";
 import { FirmKnowledgeBrowser, type KnowledgeRow, type CategoryCard } from "@/components/firm-knowledge-browser";
@@ -9,6 +9,10 @@ import { currentIsManagingPartner } from "@/lib/permissions";
 // Firm Knowledge — the central brain. Phase 1 browses the firm-wide records
 // that already exist (Artifacts with no Client/Project/Deal scope), filed into
 // the new knowledge taxonomy. force-dynamic is inherited from the (app) layout.
+
+// The upload finalize server action (parse + Claude summary) runs against this
+// route segment — give it the Pro-plan headroom long Claude work needs.
+export const maxDuration = 300;
 
 const DAY_MS = 86_400_000;
 
@@ -22,7 +26,7 @@ function computeStale(lastVerifiedAt: Date | null, createdAt: Date, cadenceDays:
 }
 
 export default async function FirmKnowledgePage() {
-  const [categories, artifacts, isManaging] = await Promise.all([
+  const [categories, artifacts, knowledgeItems, isManaging] = await Promise.all([
     prisma.knowledgeCategory.findMany({
       orderBy: { sortOrder: "asc" },
       select: {
@@ -54,16 +58,41 @@ export default async function FirmKnowledgePage() {
         owner: { select: { name: true, initials: true } },
       },
     }),
+    // Phase 3 — uploaded Tier-2 documents. A head-only view: hide superseded
+    // rows (an older version that a newer one points at) so one doc shows once.
+    prisma.knowledgeItem.findMany({
+      where: { supersededBy: { none: {} } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        source: true,
+        createdBy: true,
+        generatedFromSkill: true,
+        createdAt: true,
+        lastVerifiedAt: true,
+        confidence: true,
+        sensitivity: true,
+        reviewStatus: true,
+        parseStatus: true,
+        driveUrl: true,
+        category: { select: { slug: true, label: true, reviewCadenceDays: true } },
+        owner: { select: { name: true, initials: true } },
+      },
+    }),
     currentIsManagingPartner(),
   ]);
 
   // Retrieval-time-style gate at the page boundary: managing-partner items never
   // reach a non-managing-partner session. (Firm economics is out of v1, so this
   // is defensive — but the gate ships now so it's never an afterthought.)
-  const visible = isManaging ? artifacts : artifacts.filter((a) => a.sensitivity !== "managing_partner");
+  const visibleArtifacts = isManaging ? artifacts : artifacts.filter((a) => a.sensitivity !== "managing_partner");
+  const visibleItems = isManaging ? knowledgeItems : knowledgeItems.filter((k) => k.sensitivity !== "managing_partner");
 
-  const rows: KnowledgeRow[] = visible.map((a) => ({
+  const artifactRows: KnowledgeRow[] = visibleArtifacts.map((a) => ({
     id: a.id,
+    kind: "artifact",
+    href: `/firm-knowledge/${a.id}`,
     title: a.title,
     type: a.type,
     categorySlug: a.knowledgeCategory?.slug ?? null,
@@ -79,6 +108,31 @@ export default async function FirmKnowledgePage() {
     driveUrl: a.driveUrl,
     isStale: computeStale(a.lastVerifiedAt, a.createdAt, a.knowledgeCategory?.reviewCadenceDays ?? null),
   }));
+
+  const itemRows: KnowledgeRow[] = visibleItems.map((k) => ({
+    id: k.id,
+    kind: "knowledge",
+    href: `/firm-knowledge/item/${k.id}`,
+    title: k.title,
+    type: k.source,
+    categorySlug: k.category?.slug ?? null,
+    categoryLabel: k.category?.label ?? null,
+    ownerName: k.owner?.name ?? null,
+    ownerInitials: k.owner?.initials ?? null,
+    confidence: k.confidence ?? null,
+    sensitivity: k.sensitivity,
+    createdBy: k.createdBy,
+    generatedFromSkill: k.generatedFromSkill,
+    createdAt: k.createdAt.toISOString(),
+    lastVerifiedAt: k.lastVerifiedAt ? k.lastVerifiedAt.toISOString() : null,
+    driveUrl: k.driveUrl,
+    isStale: computeStale(k.lastVerifiedAt, k.createdAt, k.category?.reviewCadenceDays ?? null),
+    parseStatus: k.parseStatus,
+    reviewStatus: k.reviewStatus,
+  }));
+
+  // Documents first (the active firm-knowledge surface), then legacy artifacts.
+  const rows: KnowledgeRow[] = [...itemRows, ...artifactRows];
 
   // Per-category counts + stale tally computed from the visible firm-wide set,
   // so the cards always match the table below.
@@ -105,13 +159,22 @@ export default async function FirmKnowledgePage() {
         eyebrow="The firm's central brain"
         title="Firm knowledge."
         actions={
-          <Link
-            href="/firm-knowledge/memory"
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius)] bg-asphalt border border-graphite text-bone text-[13px] hover:border-bone-mute transition-colors"
-          >
-            <BrainCircuit size={14} strokeWidth={1.5} />
-            Recent memory
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/firm-knowledge/decisions"
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius)] bg-asphalt border border-graphite text-bone text-[13px] hover:border-bone-mute transition-colors"
+            >
+              <Scale size={14} strokeWidth={1.5} />
+              Decision log
+            </Link>
+            <Link
+              href="/firm-knowledge/memory"
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius)] bg-asphalt border border-graphite text-bone text-[13px] hover:border-bone-mute transition-colors"
+            >
+              <BrainCircuit size={14} strokeWidth={1.5} />
+              Recent memory
+            </Link>
+          </div>
         }
       />
 
@@ -131,7 +194,12 @@ export default async function FirmKnowledgePage() {
           </Card>
         </div>
 
-        <FirmKnowledgeBrowser categories={cards} rows={rows} uncategorised={uncategorised} />
+        <FirmKnowledgeBrowser
+          categories={cards}
+          rows={rows}
+          uncategorised={uncategorised}
+          canSetManagingPartner={isManaging}
+        />
       </div>
     </>
   );
