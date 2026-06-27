@@ -1,10 +1,10 @@
 "use client";
 
-// Upload Expense / Invoice / Receipt — the one action that adds anything to the
-// AP/AR tab. Three modes: Invoice → a vendor bill (AP); Expense & Receipt → an
-// expense (Receipt just nudges you to attach a photo). A photo/PDF is optional —
-// saving an expense without one flags it "needs photo". Files base64-upload to
-// the server action, which files them to Drive and writes the row.
+// Add Expense or Invoice — the one action that adds anything to the AP/AR tab.
+// Two modes: Invoice → a vendor bill (AP); Expense → a team spend. The receipt
+// IS the file you attach to an expense — it's optional, and saving without one
+// flags the expense "needs photo". Files base64-upload to the server action,
+// which files them to Drive and writes the row.
 //
 // When you add a PHOTO, Claude vision scans it and prefills these fields — you
 // confirm/correct before saving. PDFs skip the scan (entered by hand). Saving an
@@ -19,7 +19,7 @@ import { EXPENSE_CATEGORY_OPTIONS, EXPENSE_KIND_LABELS } from "@/lib/finance";
 import type { ExpenseCategory, ExpenseKind, MileageUnit } from "@/lib/types";
 import { createBill, createExpense, scanReceipt, type FinanceFile, type ScanResult } from "@/app/(app)/financials/finance-actions";
 
-type Mode = "expense" | "invoice" | "receipt";
+type Mode = "expense" | "invoice";
 // Vercel caps a serverless request body at ~4.5 MB — a HARD platform limit the
 // Next bodySizeLimit can't lift. base64 inflates ~33%, so keep the raw file under
 // ~3 MB (→ ~4 MB encoded) to stay under it. Phase 2 can downscale images here.
@@ -74,6 +74,7 @@ export function UploadFinanceModal({
   // expense
   const [kind, setKind] = useState<ExpenseKind>("reimbursable");
   const [category, setCategory] = useState<ExpenseCategory>("travel_meals");
+  const [description, setDescription] = useState("");
   const [spentAt, setSpentAt] = useState(todayISO());
   const [paidById, setPaidById] = useState("");
   const [mileageUnit, setMileageUnit] = useState<MileageUnit>("km");
@@ -164,6 +165,7 @@ export function UploadFinanceModal({
             kind,
             category,
             vendor: vendor.trim() || null,
+            description: description.trim() || null,
             amount: isMileageKm ? 0 : Math.round(Number(amount)),
             spentAt,
             mileageUnit: category === "fuel_mileage" ? mileageUnit : null,
@@ -186,7 +188,6 @@ export function UploadFinanceModal({
   const modeChips: { key: Mode; label: string }[] = [
     { key: "expense", label: "Expense" },
     { key: "invoice", label: "Invoice (AP)" },
-    { key: "receipt", label: "Receipt" },
   ];
 
   return (
@@ -195,7 +196,7 @@ export function UploadFinanceModal({
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <Upload size={14} strokeWidth={1.5} className="text-track-gold" />
-            <Label gold>Upload Expense / Invoice / Receipt</Label>
+            <Label gold>Add Expense or Invoice</Label>
           </div>
           <button onClick={onClose} className="text-bone-mute hover:text-bone">
             <X size={16} strokeWidth={1.5} />
@@ -239,7 +240,7 @@ export function UploadFinanceModal({
                 <input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={onPickFile} className="hidden" />
                 <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()} disabled={isSaving || scanning}>
                   <Upload size={13} strokeWidth={1.5} />
-                  {file ? "Replace file" : "Add photo / PDF"}
+                  {file ? "Replace file" : isBill ? "Add invoice photo / PDF" : "Add receipt photo / PDF"}
                 </Button>
                 {scanning ? (
                   <span className="flex items-center gap-1.5 text-[12px] text-track-gold">
@@ -252,7 +253,11 @@ export function UploadFinanceModal({
                     {file.fileName}
                   </span>
                 ) : (
-                  <span className="text-[12px] text-bone-mute">optional — add a photo to auto-scan, or save without one to flag “needs photo”</span>
+                  <span className="text-[12px] text-bone-mute">
+                    {isBill
+                      ? "optional — add the invoice to auto-scan, or save without one to flag “needs photo”"
+                      : "optional — add the receipt to auto-scan, or save without one to flag “needs photo”"}
+                  </span>
                 )}
               </div>
               {scanNote && !scanning && (
@@ -278,6 +283,7 @@ export function UploadFinanceModal({
                 kind={kind} setKind={setKind}
                 category={category} setCategory={setCategory}
                 vendor={vendor} setVendor={setVendor}
+                description={description} setDescription={setDescription}
                 amount={amount} setAmount={setAmount}
                 spentAt={spentAt} setSpentAt={setSpentAt}
                 paidById={paidById} setPaidById={setPaidById}
@@ -375,6 +381,7 @@ function ExpenseFields(p: {
   kind: ExpenseKind; setKind: (v: ExpenseKind) => void;
   category: ExpenseCategory; setCategory: (v: ExpenseCategory) => void;
   vendor: string; setVendor: (v: string) => void;
+  description: string; setDescription: (v: string) => void;
   amount: string; setAmount: (v: string) => void;
   spentAt: string; setSpentAt: (v: string) => void;
   paidById: string; setPaidById: (v: string) => void;
@@ -414,6 +421,11 @@ function ExpenseFields(p: {
           <Label>Date <span className="text-flag-red">*</span></Label>
           <Input type="date" value={p.spentAt} onChange={(e) => p.setSpentAt(e.target.value)} disabled={p.disabled} />
         </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>Description</Label>
+        <Input placeholder="Optional — what this was for, e.g. client dinner with Acme team" value={p.description} onChange={(e) => p.setDescription(e.target.value)} disabled={p.disabled} />
       </div>
 
       {isMileage && (

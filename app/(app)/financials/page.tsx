@@ -187,7 +187,7 @@ export default async function FinancialsPage() {
       prisma.expense.findMany({
         orderBy: { spentAt: "desc" },
         take: 100,
-        select: { id: true, vendor: true, category: true, kind: true, amount: true, total: true, status: true, spentAt: true, needsPhoto: true, driveUrl: true, recurring: true, renewalDate: true, paidBy: { select: { name: true } } },
+        select: { id: true, vendor: true, description: true, category: true, kind: true, amount: true, total: true, status: true, spentAt: true, needsPhoto: true, driveUrl: true, recurring: true, renewalDate: true, paidBy: { select: { name: true } } },
       }),
       prisma.partner.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
       prisma.client.findMany({ orderBy: { company: "asc" }, select: { id: true, company: true } }),
@@ -218,6 +218,7 @@ export default async function FinancialsPage() {
       expenses: expenses.map((e) => ({
         id: e.id,
         vendor: e.vendor,
+        description: e.description,
         category: e.category,
         kind: e.kind,
         amount: e.total || e.amount,

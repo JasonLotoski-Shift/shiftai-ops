@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-27",
+    tag: "improved",
+    title: "Logging an expense is simpler — one type, with a description box",
+    detail:
+      "Expense and Receipt used to be two separate choices on the AP/AR upload. They're now one: Expense. The receipt is just the photo you attach to it. Each expense also has a short Description box so you can note what it was for (e.g. client dinner with the Acme team), which then shows on the ledger and in the bookkeeper CSV export.",
+  },
+  {
+    date: "2026-06-27",
     tag: "new",
     title: "Firm Knowledge now holds real documents and a decision log",
     detail:

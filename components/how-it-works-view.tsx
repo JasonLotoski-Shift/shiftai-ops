@@ -887,9 +887,9 @@ const flows: Flow[] = [
   {
     icon: <Receipt size={16} strokeWidth={1.5} />,
     title: "Log a bill or expense (AP)",
-    blurb: "Financials → AP / AR holds what we owe (vendor bills + team expenses) next to what's owed to us (invoices). Add any of them with one Upload action. Managing partners only.",
+    blurb: "Financials → AP / AR holds what we owe (vendor bills + team expenses) next to what's owed to us (invoices). Add any of them with one Add action. Managing partners only.",
     steps: [
-      { tone: "trigger", kind: "You do", label: "Financials → AP / AR → Upload Expense / Invoice / Receipt → pick a type. Invoice = a vendor bill we owe; Expense / Receipt = a team spend (travel, meals, business development, fuel/mileage, or a subscription)" },
+      { tone: "trigger", kind: "You do", label: "Financials → AP / AR → Add Expense or Invoice → pick a type. Invoice = a vendor bill we owe; Expense = a team spend (travel, meals, business development, fuel/mileage, or a subscription) — the receipt is the photo you attach, and a short Description box lets you note what it was for" },
       { tone: "claude", kind: "Claude", label: "A vendor invoice that arrives by EMAIL (logged via Ingest or Gmail) is auto-detected — the review card flags it as a vendor bill with the vendor, amount and due date, and one click on “Add to AP” files it as a bill. Ordinary email is untouched" },
       { tone: "claude", kind: "Claude", label: "Add a PHOTO of the receipt/invoice and it scans itself — vendor, amount, date and category come back filled in for you to check, instead of typing them (no photo handy? save anyway, flagged “needs photo”). PDFs are entered by hand. Mileage can be $/km at the CRA rate or a fuel receipt" },
       { tone: "review", kind: "You review", label: "The bill shows under Payable, the expense under Expenses (recurring ones in their own Subscriptions list), with aging so overdue items stand out. When you pay a bill, hit Mark paid (reimburse a team expense the same way). Export CSV hands the whole ledger to your bookkeeper" },

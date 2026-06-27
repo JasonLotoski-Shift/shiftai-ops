@@ -45,6 +45,7 @@ type BillRow = {
 type ExpenseRow = {
   id: string;
   vendor: string | null;
+  description: string | null;
   category: ExpenseCategory;
   kind: ExpenseKind;
   amount: number;
@@ -301,14 +302,17 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
           </div>
           {subscriptions.map((e) => (
             <div key={e.id} className="grid grid-cols-[1.4fr_160px_120px_120px_140px] gap-4 px-5 py-3.5 border-t border-graphite/40 items-center">
-              <span className="flex items-center gap-2 min-w-0">
-                <span className="text-[13px] text-bone truncate">{e.vendor ?? EXPENSE_CATEGORY_LABELS[e.category]}</span>
-                {e.driveUrl && (
-                  <a href={e.driveUrl} target="_blank" rel="noreferrer" className="text-bone-mute hover:text-track-gold shrink-0" title="Open receipt">
-                    <ExternalLink size={12} strokeWidth={1.5} />
-                  </a>
-                )}
-              </span>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="text-[13px] text-bone truncate">{e.vendor ?? EXPENSE_CATEGORY_LABELS[e.category]}</span>
+                  {e.driveUrl && (
+                    <a href={e.driveUrl} target="_blank" rel="noreferrer" className="text-bone-mute hover:text-track-gold shrink-0" title="Open receipt">
+                      <ExternalLink size={12} strokeWidth={1.5} />
+                    </a>
+                  )}
+                </span>
+                {e.description && <span className="text-[11px] text-bone-mute truncate">{e.description}</span>}
+              </div>
               <span className="text-[12px] text-bone-dim self-center truncate">{EXPENSE_CATEGORY_LABELS[e.category]}</span>
               <span className="mono text-[14px] text-bone tabular-nums text-right">{cad(e.amount)}</span>
               <span className="mono text-[12px] text-bone-dim tabular-nums text-right">{e.renewalDate ? formatDate(e.renewalDate) : "—"}</span>
@@ -342,15 +346,18 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
               const tone = settled ? "steel" : e.status === "approved" ? "gold" : "neutral";
               return (
                 <div key={e.id} className="grid grid-cols-[1.4fr_160px_120px_120px_140px] gap-4 px-5 py-3.5 border-t border-graphite/40 items-center">
-                  <span className="flex items-center gap-2 min-w-0">
-                    <span className="text-[13px] text-bone truncate">{e.vendor ?? EXPENSE_CATEGORY_LABELS[e.category]}</span>
-                    {e.needsPhoto && <Badge tone="red">needs photo</Badge>}
-                    {e.driveUrl && (
-                      <a href={e.driveUrl} target="_blank" rel="noreferrer" className="text-bone-mute hover:text-track-gold shrink-0" title="Open receipt">
-                        <ExternalLink size={12} strokeWidth={1.5} />
-                      </a>
-                    )}
-                  </span>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="text-[13px] text-bone truncate">{e.vendor ?? EXPENSE_CATEGORY_LABELS[e.category]}</span>
+                      {e.needsPhoto && <Badge tone="red">needs photo</Badge>}
+                      {e.driveUrl && (
+                        <a href={e.driveUrl} target="_blank" rel="noreferrer" className="text-bone-mute hover:text-track-gold shrink-0" title="Open receipt">
+                          <ExternalLink size={12} strokeWidth={1.5} />
+                        </a>
+                      )}
+                    </span>
+                    {e.description && <span className="text-[11px] text-bone-mute truncate">{e.description}</span>}
+                  </div>
                   <span className="text-[12px] text-bone-dim self-center truncate">{EXPENSE_CATEGORY_LABELS[e.category]}</span>
                   <span className="mono text-[14px] text-bone tabular-nums text-right">{cad(e.amount)}</span>
                   <span className="mono text-[12px] text-bone-dim tabular-nums text-right">{formatDate(e.spentAt)}</span>
