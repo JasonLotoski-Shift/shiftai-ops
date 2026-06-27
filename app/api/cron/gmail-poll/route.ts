@@ -36,6 +36,16 @@ function isInternal(email: string): boolean {
   return at !== -1 && FIRM_DOMAINS.includes(email.slice(at + 1));
 }
 
+// A stale Gmail historyId (cursor older than ~1 week) makes history.list 404 with
+// "Requested entity was not found". Detect it so the poll can reset rather than
+// dead-end. Matches the Gmail/Gaxios 404 by code, HTTP status, or message.
+function isExpiredHistory(e: unknown): boolean {
+  const err = e as { code?: unknown; status?: unknown; response?: { status?: unknown } };
+  if (err?.code === 404 || err?.code === "404" || err?.status === 404 || err?.response?.status === 404) return true;
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return msg.includes("not found") || msg.includes("starthistoryid") || msg.includes("invalid history");
+}
+
 function authorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
@@ -255,23 +265,39 @@ export async function GET(req: Request) {
       const ids: string[] = [];
       const financeIds = new Set<string>();
       const dedup = new Set<string>();
+      const addIds = (list: string[], finance: boolean) => {
+        for (const mid of list) {
+          if (!dedup.has(mid)) { dedup.add(mid); ids.push(mid); }
+          if (finance) financeIds.add(mid);
+        }
+      };
+
       let latest: string | null = state?.cursor ?? null;
-      for (const w of watched) {
-        if (state?.cursor) {
-          const r = await newLabeledIds(gmail, state.cursor, w.id);
-          for (const mid of r.ids) {
-            if (!dedup.has(mid)) { dedup.add(mid); ids.push(mid); }
-            if (w.finance) financeIds.add(mid);
+      let bootstrap = !state?.cursor;
+      if (state?.cursor) {
+        try {
+          for (const w of watched) {
+            const r = await newLabeledIds(gmail, state.cursor, w.id);
+            addIds(r.ids, w.finance);
+            if (latest === null || BigInt(r.latestHistoryId) > BigInt(latest)) latest = r.latestHistoryId;
           }
-          if (latest === null || BigInt(r.latestHistoryId) > BigInt(latest)) latest = r.latestHistoryId;
-        } else {
-          for (const mid of await bootstrapLabeledIds(gmail, w.id)) {
-            if (!dedup.has(mid)) { dedup.add(mid); ids.push(mid); }
-            if (w.finance) financeIds.add(mid);
-          }
+        } catch (e) {
+          if (!isExpiredHistory(e)) throw e;
+          // Gmail keeps mailbox history for ~1 week, so a cursor left untouched
+          // longer than that 404s ("Requested entity was not found") and the poll
+          // would dead-end forever. Self-heal: drop the partial incremental read
+          // and re-bootstrap recent labeled mail for both labels, resetting the
+          // cursor to current. The per-message externalId guard keeps the catch-up
+          // idempotent (already-filed mail is skipped before any fetch).
+          ids.length = 0; dedup.clear(); financeIds.clear();
+          bootstrap = true;
+          void logOps({ kind: "integration", name: "gmail", status: "ok", actor: conn.email, actorLabel: conn.email, detail: `${conn.email}: history cursor expired — re-bootstrapped` });
         }
       }
-      if (!state?.cursor) latest = await currentHistoryId(gmail);
+      if (bootstrap) {
+        for (const w of watched) addIds(await bootstrapLabeledIds(gmail, w.id), w.finance);
+        latest = await currentHistoryId(gmail);
+      }
 
       for (const id of ids) {
         const fromFinance = financeIds.has(id);
