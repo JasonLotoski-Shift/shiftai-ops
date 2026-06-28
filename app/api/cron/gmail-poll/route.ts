@@ -239,6 +239,7 @@ export async function GET(req: Request) {
   for (const conn of conns) {
     let created = 0;
     let appended = 0;
+    let skipped = 0;
     try {
       const gmail = gmailForRefreshToken(decryptSecret(conn.refreshToken));
       const generalLabelId = await resolveLabelId(gmail, generalLabel);
@@ -301,6 +302,11 @@ export async function GET(req: Request) {
 
       for (const id of ids) {
         const fromFinance = financeIds.has(id);
+        // One bad message must never fail the whole partner's poll. A since-deleted
+        // message 404s getEmail ("Requested entity was not found"); a create that
+        // raced a concurrent run trips the externalId unique constraint. Either way
+        // skip that message and keep going (the rest of the mail still flows).
+        try {
         // The per-MESSAGE externalId still guards the FIRST message of a thread
         // (and standalone mail) from a re-poll. Appended replies are guarded by
         // the messageIds[] check below — their id is never an externalId.
@@ -470,6 +476,11 @@ export async function GET(req: Request) {
           },
         });
         created++;
+        } catch (e) {
+          skipped++;
+          void logOps({ kind: "integration", name: "gmail", status: "error", actor: conn.email, actorLabel: conn.email, detail: `skipped message ${id}`, error: e instanceof Error ? e.message.slice(0, 200) : "skip" });
+          continue;
+        }
       }
 
       if (latest) {
@@ -499,7 +510,10 @@ export async function GET(req: Request) {
           { link: "/ingest" },
         );
       }
-      summary[conn.email] = appended > 0 ? `${created} new, ${appended} appended` : created;
+      summary[conn.email] =
+        appended > 0 || skipped > 0
+          ? `${created} new${appended ? `, ${appended} appended` : ""}${skipped ? `, ${skipped} skipped` : ""}`
+          : created;
       total += created;
     } catch (e) {
       const msg = e instanceof Error ? e.message.slice(0, 300) : "poll failed";
