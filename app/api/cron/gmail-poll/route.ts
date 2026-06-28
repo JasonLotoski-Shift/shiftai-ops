@@ -18,6 +18,7 @@ import {
   resolveLabelId,
   currentHistoryId,
   bootstrapLabeledIds,
+  listLabeledIds,
   newLabeledIds,
   getEmail,
   fetchAttachment,
@@ -227,6 +228,14 @@ export async function GET(req: Request) {
   const generalLabel = process.env.GMAIL_INGEST_LABEL ?? "ops-log";
   const financeLabel = process.env.GMAIL_FINANCE_LABEL ?? "ops-AR/AP";
 
+  // One-time backfill mode (?backfill=finance): walk the ENTIRE finance label
+  // (paginated, not the 25-message catch-up cap) and queue every historical bill /
+  // payment for review. Idempotent on externalId, so it's safe to call repeatedly;
+  // it processes up to BACKFILL_CAP items per call (to fit maxDuration) and reports
+  // `more: true` while work remains. Does NOT touch the incremental cursor.
+  const backfill = new URL(req.url).searchParams.get("backfill") === "finance";
+  const BACKFILL_CAP = 25; // proposals per call — kept low so PDF-heavy mail fits maxDuration
+
   // Inert before the migration runs: if the table doesn't exist yet, no-op
   // cleanly so a pre-migration deploy doesn't 500 every hour.
   let conns: { partnerId: string; email: string; refreshToken: string; lastError: string | null }[];
@@ -241,11 +250,13 @@ export async function GET(req: Request) {
   const summary: Record<string, number | string> = {};
   let total = 0;
   let errorCount = 0;
+  let anyMore = false; // backfill: any partner still has unprocessed finance mail
 
   for (const conn of conns) {
     let created = 0;
     let appended = 0;
     let skipped = 0;
+    let hitCap = false;
     try {
       const gmail = gmailForRefreshToken(decryptSecret(conn.refreshToken));
       const generalLabelId = await resolveLabelId(gmail, generalLabel);
@@ -264,49 +275,63 @@ export async function GET(req: Request) {
       // (order-preserving, de-duped), tag the finance-label ones, and advance the
       // cursor to the max historyId seen. A message under BOTH labels is treated
       // as finance (financeIds.add runs regardless of the dedup).
-      const watched = [
-        { id: generalLabelId, finance: false },
-        { id: financeLabelId, finance: true },
-      ].filter((w): w is { id: string; finance: boolean } => !!w.id);
-
       const ids: string[] = [];
       const financeIds = new Set<string>();
-      const dedup = new Set<string>();
-      const addIds = (list: string[], finance: boolean) => {
-        for (const mid of list) {
-          if (!dedup.has(mid)) { dedup.add(mid); ids.push(mid); }
-          if (finance) financeIds.add(mid);
-        }
-      };
-
       let latest: string | null = state?.cursor ?? null;
-      let bootstrap = !state?.cursor;
-      if (state?.cursor) {
-        try {
-          for (const w of watched) {
-            const r = await newLabeledIds(gmail, state.cursor, w.id);
-            addIds(r.ids, w.finance);
-            if (latest === null || BigInt(r.latestHistoryId) > BigInt(latest)) latest = r.latestHistoryId;
-          }
-        } catch (e) {
-          if (!isExpiredHistory(e)) throw e;
-          // Gmail keeps mailbox history for ~1 week, so a cursor left untouched
-          // longer than that 404s ("Requested entity was not found") and the poll
-          // would dead-end forever. Self-heal: drop the partial incremental read
-          // and re-bootstrap recent labeled mail for both labels, resetting the
-          // cursor to current. The per-message externalId guard keeps the catch-up
-          // idempotent (already-filed mail is skipped before any fetch).
-          ids.length = 0; dedup.clear(); financeIds.clear();
-          bootstrap = true;
-          void logOps({ kind: "integration", name: "gmail", status: "ok", actor: conn.email, actorLabel: conn.email, detail: `${conn.email}: history cursor expired — re-bootstrapped` });
+
+      if (backfill) {
+        // Backfill: walk the ENTIRE finance label, ignore the incremental cursor.
+        if (!financeLabelId) {
+          summary[conn.email] = `finance label "${financeLabel}" not found`;
+          continue;
         }
-      }
-      if (bootstrap) {
-        for (const w of watched) addIds(await bootstrapLabeledIds(gmail, w.id), w.finance);
-        latest = await currentHistoryId(gmail);
+        for (const mid of await listLabeledIds(gmail, financeLabelId)) {
+          ids.push(mid);
+          financeIds.add(mid);
+        }
+        latest = null; // never advance the incremental cursor in backfill
+      } else {
+        const watched = [
+          { id: generalLabelId, finance: false },
+          { id: financeLabelId, finance: true },
+        ].filter((w): w is { id: string; finance: boolean } => !!w.id);
+        const dedup = new Set<string>();
+        const addIds = (list: string[], finance: boolean) => {
+          for (const mid of list) {
+            if (!dedup.has(mid)) { dedup.add(mid); ids.push(mid); }
+            if (finance) financeIds.add(mid);
+          }
+        };
+
+        let bootstrap = !state?.cursor;
+        if (state?.cursor) {
+          try {
+            for (const w of watched) {
+              const r = await newLabeledIds(gmail, state.cursor, w.id);
+              addIds(r.ids, w.finance);
+              if (latest === null || BigInt(r.latestHistoryId) > BigInt(latest)) latest = r.latestHistoryId;
+            }
+          } catch (e) {
+            if (!isExpiredHistory(e)) throw e;
+            // Gmail keeps mailbox history for ~1 week, so a cursor left untouched
+            // longer than that 404s ("Requested entity was not found") and the poll
+            // would dead-end forever. Self-heal: drop the partial incremental read
+            // and re-bootstrap recent labeled mail for both labels, resetting the
+            // cursor to current. The per-message externalId guard keeps the catch-up
+            // idempotent (already-filed mail is skipped before any fetch).
+            ids.length = 0; dedup.clear(); financeIds.clear();
+            bootstrap = true;
+            void logOps({ kind: "integration", name: "gmail", status: "ok", actor: conn.email, actorLabel: conn.email, detail: `${conn.email}: history cursor expired — re-bootstrapped` });
+          }
+        }
+        if (bootstrap) {
+          for (const w of watched) addIds(await bootstrapLabeledIds(gmail, w.id), w.finance);
+          latest = await currentHistoryId(gmail);
+        }
       }
 
       for (const id of ids) {
+        if (backfill && created + appended >= BACKFILL_CAP) { hitCap = true; break; }
         const fromFinance = financeIds.has(id);
         // One bad message must never fail the whole partner's poll. A since-deleted
         // message 404s getEmail ("Requested entity was not found"); a create that
@@ -507,7 +532,9 @@ export async function GET(req: Request) {
         await prisma.partnerGmailAuth.update({ where: { partnerId: conn.partnerId }, data: { lastError: null } }).catch(() => {});
       }
 
-      if (created > 0 || appended > 0) {
+      // Suppress the per-call notification during a backfill (it runs in batches
+      // and would ping repeatedly) — the partner is watching /ingest fill up.
+      if (!backfill && (created > 0 || appended > 0)) {
         const parts = [
           created > 0 ? `${created} new email${created > 1 ? "s" : ""}` : null,
           appended > 0 ? `${appended} thread update${appended > 1 ? "s" : ""}` : null,
@@ -521,10 +548,11 @@ export async function GET(req: Request) {
         );
       }
       summary[conn.email] =
-        appended > 0 || skipped > 0
-          ? `${created} new${appended ? `, ${appended} appended` : ""}${skipped ? `, ${skipped} skipped` : ""}`
+        appended > 0 || skipped > 0 || hitCap
+          ? `${created} new${appended ? `, ${appended} appended` : ""}${skipped ? `, ${skipped} skipped` : ""}${hitCap ? " (more)" : ""}`
           : created;
       total += created;
+      anyMore = anyMore || hitCap;
     } catch (e) {
       const msg = e instanceof Error ? e.message.slice(0, 300) : "poll failed";
       errorCount++;
@@ -553,5 +581,5 @@ export async function GET(req: Request) {
   // Opportunistic retention prune (hourly cron — no dedicated job).
   await pruneOpsEvents(30);
 
-  return NextResponse.json({ ok: true, total, partners: conns.length, summary });
+  return NextResponse.json({ ok: true, total, partners: conns.length, summary, ...(backfill ? { more: anyMore } : {}) });
 }

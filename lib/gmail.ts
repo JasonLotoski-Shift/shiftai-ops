@@ -102,6 +102,28 @@ export async function bootstrapLabeledIds(
   return (res.data.messages ?? []).map((m) => m.id).filter((id): id is string => !!id);
 }
 
+/** ALL message ids carrying a label (paginated). For the one-time finance backfill
+ *  — the incremental poll only ever needs `bootstrapLabeledIds`. Capped by `max`. */
+export async function listLabeledIds(
+  gmail: gmail_v1.Gmail,
+  labelId: string,
+  max = 2000,
+): Promise<string[]> {
+  const ids: string[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await gmail.users.messages.list({
+      userId: "me",
+      labelIds: [labelId],
+      maxResults: 100,
+      pageToken,
+    });
+    for (const m of res.data.messages ?? []) if (m.id) ids.push(m.id);
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken && ids.length < max);
+  return ids;
+}
+
 /**
  * Incremental: message ids newly labeled / newly arrived in labeled threads
  * since `startHistoryId`. Returns the ids plus the latest historyId to persist.
