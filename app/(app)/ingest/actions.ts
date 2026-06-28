@@ -22,6 +22,8 @@ import { generate } from "@/lib/ai";
 import { formatDate, formatCAD } from "@/lib/format";
 import { findDuplicateOpenTask } from "@/lib/ingest/dedup";
 import { matchOutstandingInvoice } from "@/lib/finance-match";
+import { convertToCad } from "@/lib/finance";
+import type { ExpenseCategory } from "@/lib/types";
 import type { InteractionType } from "@/lib/generated/prisma/enums";
 
 // ── Extracted-proposal shape (mirrors the ingest-meeting skill output) ──
@@ -48,6 +50,11 @@ export type ExtractedAR = {
   paidDate?: string; // YYYY-MM-DD, if a payment date is stated
   clientHint?: string; // who the email is from / about, to aid matching
 };
+// How a finance-label email is classified. Drives which review action shows:
+//  ap_bill → Add to AP (Bill) · reimbursable → Reimburse a person (Expense) ·
+//  firm_paid → Log firm-paid (Expense) · ar_payment → Mark invoice paid · none.
+export type FinanceType = "ap_bill" | "reimbursable" | "ar_payment" | "firm_paid" | "none";
+
 export type ExtractedProposal = {
   summary: string;
   keyPoints: string[];
@@ -55,9 +62,11 @@ export type ExtractedProposal = {
   enrichment: { contact: ExtractedEnrich[]; client: ExtractedEnrich[] };
   stageSignal: { suggestion: string; rationale: string } | null;
   // ── Finance (only set for emails under the finance label) ──
-  billCandidate?: boolean; // AP — a vendor bill we owe
-  bill?: ExtractedBill | null;
-  arCandidate?: boolean; // AR — a payment on an invoice we sent
+  financeType?: FinanceType;
+  payer?: string | null; // for reimbursable — the person who paid personally
+  billCandidate?: boolean; // legacy/derived: financeType === "ap_bill"
+  bill?: ExtractedBill | null; // invoice/receipt line — used by ap_bill | reimbursable | firm_paid
+  arCandidate?: boolean; // legacy/derived: financeType === "ar_payment"
   ar?: ExtractedAR | null;
   // The outstanding invoice the AR email matched (set server-side by the poll,
   // re-verified at reconcile time). Null = no confident match → reconcile manually.
@@ -565,7 +574,10 @@ export async function createBillFromProposal(id: string) {
   if (!bill?.vendor?.trim() || !bill.amount || bill.amount <= 0) {
     throw new Error("No vendor-bill details detected on this item");
   }
-  const amount = Math.round(bill.amount);
+  // Convert to CAD (the books' currency) — amount/total stay CAD; the source
+  // currency + rate are kept on the row when it was foreign (e.g. USD).
+  const fx = convertToCad(bill.amount, bill.currency);
+  const amount = fx.cad;
   const dueAt = bill.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(bill.dueDate) ? new Date(bill.dueDate) : null;
 
   // Don't double-record. A vendor invoice NUMBER is the strong dup signal (same
@@ -587,7 +599,10 @@ export async function createBillFromProposal(id: string) {
         vendor: bill.vendor.trim(),
         amount,
         total: amount,
-        currency: bill.currency?.trim() || "CAD",
+        currency: "CAD",
+        origAmount: fx.origAmount,
+        origCurrency: fx.origCurrency,
+        fxRate: fx.fxRate,
         number: bill.invoiceNumber?.trim() || null,
         dueAt,
         issuedAt: proposal.meetingDate,
@@ -623,6 +638,108 @@ export async function createBillFromProposal(id: string) {
   revalidatePath("/ingest");
   revalidatePath("/financials");
   return { ok: true as const, billId };
+}
+
+// File a finance email as an Expense instead of a vendor Bill:
+//  - kind "reimbursable" → a PERSON (partner or consultant) paid it personally and
+//    the firm owes them back (status "submitted", awaiting reimbursement).
+//  - kind "firm_paid" → already paid on a firm card; a record only (status "paid").
+// Converts the source currency to CAD (keeps origAmount/origCurrency/fxRate). NOT
+// MP-gated — same as createBillFromProposal, it's data entry; reimbursing (paying)
+// is the MP-gated step in the AP/AR tab.
+export async function createExpenseFromProposal(
+  id: string,
+  opts: {
+    kind: "reimbursable" | "firm_paid";
+    paidById?: string | null;
+    paidByConsultantId?: string | null;
+    category?: ExpenseCategory | null;
+  },
+) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const label = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, label);
+
+  const proposal = await prisma.ingestProposal.findUnique({
+    where: { id },
+    select: { id: true, status: true, title: true, meetingDate: true, proposal: true, matchedClientId: true, matchedProjectId: true },
+  });
+  if (!proposal) throw new Error("Proposal not found");
+  if (proposal.status !== "pending") throw new Error("This item was already handled");
+
+  const bill = (proposal.proposal as { bill?: unknown } | null)?.bill as ExtractedBill | null | undefined;
+  if (!bill?.vendor?.trim() || !bill.amount || bill.amount <= 0) {
+    throw new Error("No invoice/receipt details detected on this item");
+  }
+
+  // Resolve + validate the payer (exactly one, and only for reimbursable).
+  let paidById: string | null = null;
+  let paidByConsultantId: string | null = null;
+  if (opts.kind === "reimbursable") {
+    paidById = opts.paidById?.trim() || null;
+    paidByConsultantId = opts.paidByConsultantId?.trim() || null;
+    if (!paidById && !paidByConsultantId) throw new Error("Pick who to reimburse");
+    if (paidById && paidByConsultantId) throw new Error("Pick one payer, not both");
+    if (paidById && !(await prisma.partner.findUnique({ where: { id: paidById }, select: { id: true } }))) {
+      throw new Error("Selected partner not found");
+    }
+    if (paidByConsultantId && !(await prisma.consultant.findUnique({ where: { id: paidByConsultantId }, select: { id: true } }))) {
+      throw new Error("Selected person not found");
+    }
+  }
+
+  const fx = convertToCad(bill.amount, bill.currency);
+  const amount = fx.cad;
+  const category: ExpenseCategory = opts.category ?? "subscription_software";
+
+  const expenseId = await prisma.$transaction(async (tx) => {
+    const created = await tx.expense.create({
+      data: {
+        kind: opts.kind,
+        category,
+        vendor: bill.vendor.trim(),
+        description: proposal.title,
+        amount,
+        total: amount,
+        currency: "CAD",
+        origAmount: fx.origAmount,
+        origCurrency: fx.origCurrency,
+        fxRate: fx.fxRate,
+        spentAt: proposal.meetingDate,
+        status: opts.kind === "firm_paid" ? "paid" : "submitted",
+        paidById,
+        paidByConsultantId,
+        reimbursedAt: opts.kind === "firm_paid" ? proposal.meetingDate : null,
+        clientId: proposal.matchedClientId,
+        projectId: proposal.matchedProjectId,
+        createdBy: label,
+      },
+    });
+    await tx.ingestProposal.update({
+      where: { id },
+      data: { status: "approved", reviewedBy: label, reviewedAt: new Date() },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "create.expenseFromProposal",
+      targetType: "Expense",
+      targetId: created.id,
+      changes: { vendor: bill.vendor, amount, kind: opts.kind, paidById, paidByConsultantId, source: "gmail_ingest", ingestProposalId: id },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: bill.vendor,
+      detail: opts.kind === "reimbursable" ? `Reimbursable expense from email · ${formatCAD(amount)}` : `Firm-paid expense from email · ${formatCAD(amount)}`,
+      link: "/financials",
+    });
+    return created.id;
+  });
+
+  revalidatePath("/ingest");
+  revalidatePath("/financials");
+  return { ok: true as const, expenseId };
 }
 
 // Reconcile an AR-candidate email (a payment / remittance the ingest-email skill

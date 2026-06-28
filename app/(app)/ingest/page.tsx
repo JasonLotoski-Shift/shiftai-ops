@@ -32,7 +32,7 @@ export default async function IngestPage({
     }
   }
 
-  const [pending, partners, contacts, clients, projects, deals] = await Promise.all([
+  const [pending, partners, consultants, contacts, clients, projects, deals] = await Promise.all([
     prisma.ingestProposal.findMany({
       // Scope-pricing proposals are reviewed on their project page, not here.
       // NOTE: a `NOT`/`not` filter on a NULLABLE field excludes NULL rows in
@@ -59,6 +59,7 @@ export default async function IngestPage({
       orderBy: { createdAt: "desc" },
     }),
     prisma.partner.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.consultant.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.contact.findMany({ select: { id: true, name: true, company: true }, orderBy: { name: "asc" } }),
     prisma.client.findMany({ select: { id: true, company: true }, orderBy: { company: "asc" } }),
     prisma.project.findMany({
@@ -101,6 +102,7 @@ export default async function IngestPage({
       <IngestView
         proposals={proposals}
         partners={partners}
+        consultants={consultants}
         contacts={contacts}
         clients={clients}
         projects={projectOpts}

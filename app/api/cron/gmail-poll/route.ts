@@ -94,8 +94,17 @@ function parseProposal(raw: string): ExtractedProposal {
       : [];
   const en = (o.enrichment ?? {}) as Record<string, unknown>;
   const ss = o.stageSignal as Record<string, unknown> | null | undefined;
-  // Vendor-invoice (AP) detection — only when the skill flags a clear bill.
-  const bd = o.billCandidate === true && o.bill && typeof o.bill === "object" ? (o.bill as Record<string, unknown>) : null;
+  // ── Finance classification (only honoured for finance-label mail) ──
+  const FINANCE_TYPES = ["ap_bill", "reimbursable", "ar_payment", "firm_paid", "none"];
+  const financeType = (typeof o.financeType === "string" && FINANCE_TYPES.includes(o.financeType)
+    ? o.financeType
+    : "none") as NonNullable<ExtractedProposal["financeType"]>;
+  const payer = typeof o.payer === "string" && o.payer.trim() ? o.payer.trim() : null;
+
+  // Invoice/receipt line — used by ap_bill | reimbursable | firm_paid. Parsed
+  // whenever the skill returned a `bill` object (amount is in its OWN currency;
+  // conversion to CAD happens at file time).
+  const bd = o.bill && typeof o.bill === "object" ? (o.bill as Record<string, unknown>) : null;
   const billVendor = bd && typeof bd.vendor === "string" ? bd.vendor.trim() : "";
   const billAmount = bd
     ? typeof bd.amount === "number"
@@ -109,15 +118,13 @@ function parseProposal(raw: string): ExtractedProposal {
       ? {
           vendor: billVendor,
           amount: billAmount,
-          currency: typeof bd.currency === "string" && bd.currency.trim() ? bd.currency.trim() : "CAD",
+          currency: typeof bd.currency === "string" && bd.currency.trim() ? bd.currency.trim().toUpperCase() : "CAD",
           invoiceNumber: typeof bd.invoiceNumber === "string" && bd.invoiceNumber.trim() ? bd.invoiceNumber.trim() : undefined,
           dueDate: typeof bd.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(bd.dueDate) ? bd.dueDate : undefined,
         }
       : null;
-  // Accounts-receivable (AR) detection — a payment / remittance on an invoice WE
-  // sent. Reconcile-only downstream: the poll resolves the matching invoice for
-  // display, the partner marks it paid. No AR record is ever created from email.
-  const ad = o.arCandidate === true && o.ar && typeof o.ar === "object" ? (o.ar as Record<string, unknown>) : null;
+  // AR — a payment / remittance on an invoice WE sent. Reconcile-only downstream.
+  const ad = o.ar && typeof o.ar === "object" ? (o.ar as Record<string, unknown>) : null;
   const arAmount =
     ad && typeof ad.amount === "number"
       ? Math.round(ad.amount)
@@ -141,9 +148,11 @@ function parseProposal(raw: string): ExtractedProposal {
       ss && typeof ss === "object" && typeof ss.suggestion === "string"
         ? { suggestion: ss.suggestion as string, rationale: typeof ss.rationale === "string" ? (ss.rationale as string) : "" }
         : null,
-    billCandidate: !!bill,
+    financeType,
+    payer,
+    billCandidate: financeType === "ap_bill",
     bill,
-    arCandidate: !!ar,
+    arCandidate: financeType === "ar_payment",
     ar,
     financeIncomplete: o.financeIncomplete === true,
     financeLinks: strArr(o.financeLinks),
@@ -162,6 +171,8 @@ async function finalizeFinance(
   if (!fromFinance) {
     return {
       ...proposal,
+      financeType: "none",
+      payer: null,
       billCandidate: false,
       bill: null,
       arCandidate: false,
@@ -172,7 +183,7 @@ async function finalizeFinance(
     };
   }
   let arMatch: ExtractedProposal["arMatch"] = null;
-  if (proposal.arCandidate && proposal.ar) {
+  if (proposal.financeType === "ar_payment" && proposal.ar) {
     const m = await matchOutstandingInvoice({
       clientId,
       invoiceNumber: proposal.ar.invoiceNumber,

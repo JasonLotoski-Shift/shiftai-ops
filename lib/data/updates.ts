@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-28",
+    tag: "new",
+    title: "Money emails sort four ways now — incl. reimbursements and USD",
+    detail:
+      "An email in the ops-AR/AP label is read as one of four things and filed the right way from the review: a vendor bill we owe (Add to AP); a receipt someone paid on their OWN card (Reimburse — pick the partner or contractor, and it's tracked as owed to them until you pay them back); a receipt already paid on a firm card (Log firm-paid, a record only); or a payment on an invoice we sent (Mark paid). USD invoices convert to CAD automatically at a rough rate, and the original USD figure stays on the record and in the bookkeeper CSV. Filing happens through these actions, so a money email can't be marked done without actually landing in the books.",
+  },
+  {
     date: "2026-06-27",
     tag: "new",
     title: "A Gmail label for bills and payments — they file to AP/AR",

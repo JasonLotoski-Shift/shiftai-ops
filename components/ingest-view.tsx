@@ -22,11 +22,13 @@ import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from 
 import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import { formatCAD } from "@/lib/format";
+import { convertToCad } from "@/lib/finance";
 import {
   extractAndQueue,
   approveProposal,
   rejectProposal,
   createBillFromProposal,
+  createExpenseFromProposal,
   reconcileInvoiceFromProposal,
   type ExtractedProposal,
   type ExtractedEnrich,
@@ -63,6 +65,7 @@ export type ProposalProp = {
 export function IngestView({
   proposals,
   partners,
+  consultants,
   contacts,
   clients,
   projects,
@@ -72,6 +75,7 @@ export function IngestView({
 }: {
   proposals: ProposalProp[];
   partners: { id: string; name: string }[];
+  consultants: { id: string; name: string }[];
   contacts: { id: string; name: string; company: string }[];
   clients: { id: string; company: string }[];
   projects: { id: string; name: string }[];
@@ -189,6 +193,7 @@ export function IngestView({
                 open={expanded === p.id}
                 onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
                 partners={partners}
+                consultants={consultants}
                 contacts={contacts}
                 clients={clients}
                 deals={deals}
@@ -381,6 +386,7 @@ function ProposalCard({
   open,
   onToggle,
   partners,
+  consultants,
   contacts,
   clients,
   deals,
@@ -390,6 +396,7 @@ function ProposalCard({
   open: boolean;
   onToggle: () => void;
   partners: { id: string; name: string }[];
+  consultants: { id: string; name: string }[];
   contacts: { id: string; name: string; company: string }[];
   clients: { id: string; company: string }[];
   deals: { id: string; name: string }[];
@@ -513,6 +520,64 @@ function ProposalCard({
     });
   }
 
+  // Personally-paid receipt → reimbursable Expense for the chosen payer (a partner
+  // OR a consultant). The payer is encoded "p:<id>" / "c:<id>".
+  function reimburse() {
+    setError(null);
+    const [kindTag, payeeId] = payerSel.split(":");
+    if (!payeeId) { setError("Pick who to reimburse"); return; }
+    startTransition(async () => {
+      try {
+        await createExpenseFromProposal(p.id, {
+          kind: "reimbursable",
+          paidById: kindTag === "p" ? payeeId : null,
+          paidByConsultantId: kindTag === "c" ? payeeId : null,
+        });
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to log reimbursement");
+      }
+    });
+  }
+
+  // Firm-card receipt (already settled) → a firm-paid Expense record, no payable.
+  function logFirmPaid() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await createExpenseFromProposal(p.id, { kind: "firm_paid" });
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to log expense");
+      }
+    });
+  }
+
+  // Finance classification + payer default (match the detected payer name to a
+  // partner/consultant; else the current partner).
+  const financeType = prop.financeType ?? (prop.billCandidate ? "ap_bill" : prop.arCandidate ? "ar_payment" : "none");
+  const isFinance = (financeType && financeType !== "none") || !!prop.financeIncomplete;
+  const fx = prop.bill ? convertToCad(prop.bill.amount, prop.bill.currency) : null;
+  const billLine = prop.bill
+    ? `${prop.bill.vendor} · ${
+        fx && fx.origCurrency
+          ? `${fx.origCurrency} ${prop.bill.amount} → ${formatCAD(fx.cad).replace("CA$", "$")}`
+          : formatCAD(prop.bill.amount).replace("CA$", "$")
+      }${prop.bill.invoiceNumber ? ` · ${prop.bill.invoiceNumber}` : ""}${prop.bill.dueDate ? ` · due ${prop.bill.dueDate}` : ""}`
+    : "";
+  const defaultPayer = (() => {
+    const name = (prop.payer ?? "").toLowerCase().trim();
+    if (name) {
+      const first = name.split(" ")[0];
+      const pm = partners.find((pt) => pt.name.toLowerCase().includes(name) || (first && pt.name.toLowerCase().includes(first)));
+      if (pm) return `p:${pm.id}`;
+      const cm = consultants.find((c) => c.name.toLowerCase().includes(name) || (first && c.name.toLowerCase().includes(first)));
+      if (cm) return `c:${cm.id}`;
+    }
+    return currentPartnerId ? `p:${currentPartnerId}` : partners[0] ? `p:${partners[0].id}` : "";
+  })();
+  const [payerSel, setPayerSel] = useState(defaultPayer);
+
   const unassigned = !contactId && !clientId && !dealId;
 
   return (
@@ -527,8 +592,10 @@ function ProposalCard({
           </div>
         </div>
         <span className="flex items-center gap-2 shrink-0">
-          {prop.billCandidate && <Badge tone="steel">vendor bill</Badge>}
-          {prop.arCandidate && <Badge tone="steel">payment (AR)</Badge>}
+          {financeType === "ap_bill" && <Badge tone="steel">AP bill</Badge>}
+          {financeType === "reimbursable" && <Badge tone="steel">reimburse</Badge>}
+          {financeType === "firm_paid" && <Badge tone="steel">firm-paid</Badge>}
+          {financeType === "ar_payment" && <Badge tone="steel">payment (AR)</Badge>}
           {prop.financeIncomplete && <Badge tone="red">needs detail</Badge>}
           {unassigned ? <Badge tone="red">unassigned</Badge> : <Badge tone="gold">matched</Badge>}
         </span>
@@ -536,20 +603,32 @@ function ProposalCard({
 
       {open && (
         <div className="px-5 py-5 flex flex-col gap-5">
-          {prop.billCandidate && prop.bill && (
-            <div className="flex items-start gap-3 px-4 py-3 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
-              <Receipt size={15} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
-              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                <span className="text-[13px] text-bone font-medium">Looks like a vendor bill (AP)</span>
-                <span className="text-[12px] text-bone-dim truncate">
-                  {prop.bill.vendor} · {formatCAD(prop.bill.amount).replace("CA$", "$")}
-                  {prop.bill.invoiceNumber ? ` · ${prop.bill.invoiceNumber}` : ""}
-                  {prop.bill.dueDate ? ` · due ${prop.bill.dueDate}` : ""}
-                </span>
+          {prop.bill && (financeType === "ap_bill" || financeType === "reimbursable" || financeType === "firm_paid") && (
+            <div className="flex flex-col gap-3 px-4 py-3 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
+              <div className="flex items-start gap-3">
+                <Receipt size={15} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
+                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                  <span className="text-[13px] text-bone font-medium">
+                    {financeType === "ap_bill" ? "Vendor bill we owe (AP)" : financeType === "reimbursable" ? "Paid personally — reimburse" : "Receipt — paid on a firm card"}
+                    {prop.payer ? ` · ${prop.payer}` : ""}
+                  </span>
+                  <span className="text-[12px] text-bone-dim truncate">{billLine}</span>
+                </div>
               </div>
-              <Button variant="secondary" size="sm" onClick={addToBill} disabled={isPending}>
-                {isPending ? "…" : "Add to AP"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant={financeType === "ap_bill" ? "secondary" : "ghost"} size="sm" onClick={addToBill} disabled={isPending}>Add to AP</Button>
+                <span className="flex items-center gap-1.5">
+                  <Select value={payerSel} onChange={(e) => setPayerSel(e.target.value)} disabled={isPending} className="h-8 text-[12px] w-auto">
+                    {partners.map((pt) => <option key={pt.id} value={`p:${pt.id}`}>{pt.name.split(" ")[0]}</option>)}
+                    {consultants.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.name} (contractor)</option>)}
+                  </Select>
+                  <Button variant={financeType === "reimbursable" ? "secondary" : "ghost"} size="sm" onClick={reimburse} disabled={isPending}>Reimburse</Button>
+                </span>
+                <Button variant={financeType === "firm_paid" ? "secondary" : "ghost"} size="sm" onClick={logFirmPaid} disabled={isPending}>Log firm-paid</Button>
+              </div>
+              <span className="text-[11px] text-bone-mute">
+                Suggested: {financeType === "ap_bill" ? "Add to AP" : financeType === "reimbursable" ? "Reimburse" : "Log firm-paid"}. Pick the right one — filing also clears this item.
+              </span>
             </div>
           )}
           {prop.arCandidate && prop.ar && (
@@ -739,10 +818,17 @@ function ProposalCard({
 
           <div className="flex justify-between items-center pt-1">
             <Button variant="ghost" size="sm" onClick={reject} disabled={isPending}>Reject</Button>
-            <Button variant="primary" size="sm" onClick={approve} disabled={isPending}>
-              <Check size={13} strokeWidth={1.5} />
-              {isPending ? "Writing…" : "Approve & write"}
-            </Button>
+            {isFinance ? (
+              // A finance email is handled by its finance action above (Add to AP /
+              // Reimburse / Log firm-paid / Mark paid), not the generic interaction
+              // approve — so it can never be marked done without actually filing.
+              <span className="text-[11px] text-bone-mute">File it with a finance action above, or Reject.</span>
+            ) : (
+              <Button variant="primary" size="sm" onClick={approve} disabled={isPending}>
+                <Check size={13} strokeWidth={1.5} />
+                {isPending ? "Writing…" : "Approve & write"}
+              </Button>
+            )}
           </div>
         </div>
       )}

@@ -25,9 +25,9 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
     "client":  [ { "field": "companyKeyFacts", "value": "Defensible fact about the company" } ]
   },
   "stageSignal": { "suggestion": "e.g. move to Proposal", "rationale": "Why the email implies it" },
-  "billCandidate": false,
+  "financeType": "none",
+  "payer": null,
   "bill": null,
-  "arCandidate": false,
   "ar": null,
   "financeIncomplete": false,
   "financeLinks": []
@@ -38,11 +38,17 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 - `enrichment.client[].field` ∈ `companyKeyFacts`, `description`, `headquarters`, `founded`, `website`, `ownership`, `companySize`.
 - `stageSignal` may be `null` if the email doesn't clearly imply a pipeline move. **Never** assert the deal moved — it's a suggestion the partner acts on.
 - `actionItems`, `keyPoints`, and both enrichment arrays may be empty. Prefer fewer, well-grounded items over padding.
-- **Finance fields (`billCandidate`/`bill`, `arCandidate`/`ar`, `financeIncomplete`/`financeLinks`)** — fill these **only when the context block contains a `## Finance label` note**. For every other email leave all of them at their defaults (`false` / `null` / `[]`). When the finance note IS present, assume the email is either AP or AR and classify it:
-  - **AP — a vendor bill we owe.** Set `billCandidate: true` and fill `bill` = `{ "vendor", "amount" (the total, whole CAD, rounded), "currency" (default "CAD"), "invoiceNumber" (omit if none), "dueDate" ("YYYY-MM-DD", omit if none) }`. A receipt for something ALREADY paid by us is not a new bill.
-  - **AR — a payment / remittance on an invoice WE issued.** A client (or their bank / a payment processor) confirming a payment, or a remittance advice. Set `arCandidate: true` and fill `ar` = `{ "invoiceNumber" (OUR invoice number if cited, omit if not), "amount" (whole CAD if stated), "paidDate" ("YYYY-MM-DD" if stated), "clientHint" (the company/person it's from, to help match) }`. This only ever marks an existing invoice paid downstream — never invent invoice numbers or amounts.
-  - **Link-only / incomplete.** If the email just LINKS OUT to view or pay an invoice (a portal "view your invoice" link, no amount in the body, no attached invoice), set `financeIncomplete: true` and put the URL(s) in `financeLinks`. Still set `billCandidate`/`arCandidate` for the side you can tell, but do NOT guess the missing amount — leave it out and let the partner open the link.
-  - Set exactly one of `billCandidate` / `arCandidate` true (or neither, if it's genuinely not finance). When unsure which, prefer the one the wording supports; if you truly can't tell, set `financeIncomplete: true` so the partner decides.
+- **Finance fields (`financeType`, `payer`, `bill`, `ar`, `financeIncomplete`, `financeLinks`)** — fill these **only when the context block contains a `## Finance label` note**. For every other email leave them at their defaults (`"none"` / `null` / `[]`). When the finance note IS present, classify the email into exactly one `financeType`:
+  - **`"ap_bill"` — an UNPAID vendor invoice the firm owes.** A company billing us, payment still due. Fill `bill` (see below).
+  - **`"reimbursable"` — a bill or receipt a PERSON paid on their own card, so the firm owes THEM.** Signals: "Bill to: Jason Lotoski" (a person, not "Shift"), "paid with personal Visa", a receipt addressed to an individual. Fill `bill` and set `payer` to that person's name.
+  - **`"firm_paid"` — a receipt for something ALREADY paid on a FIRM card/account.** No one to reimburse; it's a record only. Fill `bill`. (A payment-confirmation / "your receipt" with no person named usually lands here, not `ap_bill`.)
+  - **`"ar_payment"` — a payment / remittance on an invoice WE issued.** Fill `ar`. Never invents numbers/amounts; only matches an existing invoice downstream.
+  - **`"none"`** — not actually a bill/payment.
+- **`bill`** (for `ap_bill` / `reimbursable` / `firm_paid`) = `{ "vendor", "amount" (the grand total in the invoice's OWN currency, whole units, rounded), "currency" (ISO code as printed — "USD", "CAD", etc; default "CAD"), "invoiceNumber" (omit if none), "dueDate" ("YYYY-MM-DD", omit if none) }`. **Report the amount in the document's own currency and name that currency** — conversion to CAD happens downstream, do not convert yourself.
+- **`ar`** = `{ "invoiceNumber", "amount", "paidDate" ("YYYY-MM-DD"), "clientHint" }` — all omitted if not stated.
+- **`payer`** = the person who personally paid (for `reimbursable`), else `null`.
+- **Link-only / incomplete.** If the email only LINKS OUT to view/pay an invoice (no amount in the body, no attached invoice), set `financeIncomplete: true` and put the URL(s) in `financeLinks`. Still set the `financeType` you can tell, but do NOT guess the missing amount.
+- **Paid vs unpaid is the key call.** "Invoice"/"amount due"/"please pay" → likely `ap_bill`. "Receipt"/"payment received"/"thanks for your payment" → already paid → `firm_paid` (or `reimbursable` if a person paid). When you can't tell who paid a receipt, default to `firm_paid` and let the partner reassign.
 
 ## Hard rules for this task
 

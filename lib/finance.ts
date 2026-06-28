@@ -64,6 +64,36 @@ export const EXPENSE_STATUS_LABELS: Record<ExpenseStatus, string> = {
   paid: "Paid",
 };
 
+// ── Foreign exchange (rough) ───────────────────────────────────────────────
+// The firm books in CAD. Foreign invoices (mostly USD SaaS) convert at a ROUGH
+// fixed rate at file time; the original amount + rate are stored on the row
+// (origAmount/origCurrency/fxRate) so amount/total stay CAD without losing the
+// source. Swap FX_RATES for a live feed later; until then bump these by hand.
+export const FX_RATES: Record<string, number> = { USD: 1.37 };
+
+export type Converted = {
+  cad: number; // whole CAD
+  origAmount: number | null; // original figure (whole units of origCurrency)
+  origCurrency: string | null; // e.g. "USD"; null when already CAD
+  fxRate: number | null; // rate applied (origCurrency → CAD); null when CAD / unknown
+};
+
+/** Convert a foreign amount to whole CAD. CAD passes through with no FX metadata.
+ *  An unknown currency is stored as-is (no guess) but its currency is recorded so
+ *  the figure is visibly unconverted. */
+export function convertToCad(amount: number, currency?: string | null): Converted {
+  const cur = (currency ?? "CAD").trim().toUpperCase();
+  if (!cur || cur === "CAD") return { cad: Math.round(amount), origAmount: null, origCurrency: null, fxRate: null };
+  const rate = FX_RATES[cur];
+  if (!rate) return { cad: Math.round(amount), origAmount: Math.round(amount), origCurrency: cur, fxRate: null };
+  return { cad: Math.round(amount * rate), origAmount: Math.round(amount), origCurrency: cur, fxRate: rate };
+}
+
+/** Short source-currency tag for display, e.g. "USD 112". Empty when no conversion. */
+export function fxNote(origAmount?: number | null, origCurrency?: string | null): string {
+  return origCurrency && origAmount != null ? `${origCurrency} ${origAmount}` : "";
+}
+
 // ── Drive folder routing ─────────────────────────────────────────────────
 // Each expense category files under one of the five Expenses subfolders.
 

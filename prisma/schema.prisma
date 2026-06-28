@@ -1024,6 +1024,8 @@ model Consultant {
 
   economicsLines ProjectEconomicsLine[]
   payouts        ConsultantPayout[]
+  // Reimbursable expenses this person (a non-partner employee/contractor) fronted.
+  reimbursedExpenses Expense[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2726,10 +2728,16 @@ model Bill {
   vendor      String
   number      String? // vendor's invoice number (NOT unique — different vendors reuse)
   description String?
-  amount      Int // subtotal, whole CAD
+  amount      Int // subtotal, whole CAD (already converted if the source was USD)
   gstBps      Int              @default(0)
   total       Int              @default(0)
-  currency    String           @default("CAD")
+  currency    String           @default("CAD") // currency of `amount`/`total` — always CAD once stored
+  // Foreign-currency source (e.g. a USD invoice): the original figure + the rate
+  // used to convert to CAD. Null when the invoice was already CAD. amount/total
+  // stay CAD so all AP/AR/forecast math is unchanged.
+  origAmount   Int?
+  origCurrency String?
+  fxRate       Decimal?         @db.Decimal(10, 4)
   category    ExpenseCategory?
   issuedAt    DateTime?
   dueAt       DateTime?
@@ -2763,10 +2771,15 @@ model Expense {
   category    ExpenseCategory
   vendor      String?
   description String?
-  amount      Int // whole CAD
+  amount      Int // whole CAD (already converted if the source was USD)
   gstBps      Int             @default(0)
   total       Int             @default(0)
-  currency    String          @default("CAD")
+  currency    String          @default("CAD") // currency of `amount`/`total` — always CAD once stored
+  // Foreign-currency source (e.g. a USD receipt): original figure + rate used.
+  // Null when already CAD. amount/total stay CAD.
+  origAmount   Int?
+  origCurrency String?
+  fxRate       Decimal?        @db.Decimal(10, 4)
   spentAt     DateTime
   status      ExpenseStatus   @default(submitted)
 
@@ -2775,10 +2788,14 @@ model Expense {
   mileageKm        Decimal?     @db.Decimal(7, 1)
   mileageRateCents Int? // CRA rate at entry (2026: 73¢ first 5,000 km, 67¢ after)
 
-  // reimbursable only — which partner fronted it, and when we paid them back.
-  paidBy       Partner?  @relation(fields: [paidById], references: [id])
-  paidById     String?
-  reimbursedAt DateTime?
+  // reimbursable only — who fronted it (a partner OR a non-partner
+  // employee/contractor on the Consultant roster; exactly one is set), and when
+  // we paid them back.
+  paidBy            Partner?    @relation(fields: [paidById], references: [id])
+  paidById          String?
+  paidByConsultant  Consultant? @relation(fields: [paidByConsultantId], references: [id])
+  paidByConsultantId String?
+  reimbursedAt      DateTime?
 
   // subscription only — recurring SaaS/phone/office + next renewal.
   recurring   Boolean   @default(false)
@@ -2803,4 +2820,5 @@ model Expense {
   @@index([status, spentAt])
   @@index([category])
   @@index([paidById])
+  @@index([paidByConsultantId])
 }

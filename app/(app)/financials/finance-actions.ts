@@ -21,6 +21,7 @@ import {
   paidRename,
   craMileageRateCents,
   mileageAmountCad,
+  convertToCad,
   EXPENSE_CATEGORY_LABELS,
 } from "@/lib/finance";
 import { formatCAD } from "@/lib/format";
@@ -69,7 +70,8 @@ export type CreateBillInput = {
   vendor: string;
   number?: string | null;
   description?: string | null;
-  amount: number; // subtotal, whole CAD
+  amount: number; // subtotal in `currency` (converted to CAD on save)
+  currency?: string | null; // e.g. "USD"; default CAD
   gstBps?: number;
   category?: ExpenseCategory | null;
   issuedAt?: string | null;
@@ -88,7 +90,10 @@ export async function createBill(input: CreateBillInput) {
   if (!vendor) throw new Error("Vendor is required");
   if (!Number.isFinite(input.amount) || input.amount <= 0) throw new Error("Enter a valid amount");
 
-  const total = withGst(input.amount, input.gstBps ?? 0);
+  // Convert to CAD (books' currency); keep the source figure + rate on the row.
+  const fx = convertToCad(input.amount, input.currency);
+  const amount = fx.cad;
+  const total = withGst(amount, input.gstBps ?? 0);
 
   // File the doc to Drive first (best-effort — never blocks the row).
   let driveFileId: string | null = null;
@@ -99,7 +104,7 @@ export async function createBill(input: CreateBillInput) {
       issuedAt: input.issuedAt,
       vendor,
       number: input.number,
-      amount: input.amount,
+      amount,
       ext: extFor(input.file.mimeType, input.file.fileName),
     });
     try {
@@ -118,7 +123,11 @@ export async function createBill(input: CreateBillInput) {
         vendor,
         number: input.number?.trim() || null,
         description: input.description?.trim() || null,
-        amount: input.amount,
+        amount,
+        currency: "CAD",
+        origAmount: fx.origAmount,
+        origCurrency: fx.origCurrency,
+        fxRate: fx.fxRate,
         gstBps: input.gstBps ?? 0,
         total,
         category: input.category ?? null,
@@ -154,7 +163,7 @@ export async function createBill(input: CreateBillInput) {
       action: "create.bill",
       targetType: "Bill",
       targetId: created.id,
-      changes: { vendor, amount: input.amount, total, dueAt: input.dueAt ?? null, hasDoc: !!driveUrl },
+      changes: { vendor, amount, total, dueAt: input.dueAt ?? null, hasDoc: !!driveUrl },
     });
     await writeActivity(tx, {
       actor,
@@ -226,12 +235,14 @@ export type CreateExpenseInput = {
   category: ExpenseCategory;
   vendor?: string | null;
   description?: string | null;
-  amount: number; // whole CAD — ignored for mileage_km (computed from km)
+  amount: number; // in `currency` — ignored for mileage_km (computed from km)
+  currency?: string | null; // e.g. "USD"; default CAD (converted on save)
   gstBps?: number;
   spentAt: string;
   mileageUnit?: MileageUnit | null;
   mileageKm?: number | null;
-  paidById?: string | null;
+  paidById?: string | null; // partner who fronted it
+  paidByConsultantId?: string | null; // OR a non-partner employee/contractor
   recurring?: boolean;
   renewalDate?: string | null;
   clientId?: string | null;
@@ -252,6 +263,9 @@ export async function createExpense(input: CreateExpenseInput) {
   let amount = Math.round(input.amount);
   let mileageRateCents: number | null = null;
   let mileageKm: number | null = null;
+  let fxOrigAmount: number | null = null;
+  let fxOrigCurrency: string | null = null;
+  let fxRate: number | null = null;
   const isMileageKm = input.category === "fuel_mileage" && input.mileageUnit === "km";
   if (isMileageKm) {
     const km = Math.round((input.mileageKm ?? 0) * 10) / 10;
@@ -259,17 +273,36 @@ export async function createExpense(input: CreateExpenseInput) {
     mileageKm = km;
     mileageRateCents = craMileageRateCents();
     amount = mileageAmountCad(km, mileageRateCents);
+  } else {
+    // Convert to CAD (mileage is already CAD); keep the source figure + rate.
+    const fx = convertToCad(input.amount, input.currency);
+    amount = fx.cad;
+    fxOrigAmount = fx.origAmount;
+    fxOrigCurrency = fx.origCurrency;
+    fxRate = fx.fxRate;
   }
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid amount");
 
   const total = withGst(amount, input.gstBps ?? 0);
 
-  // Who fronted a reimbursable expense (defaults to the current partner).
-  const paidById = input.kind === "reimbursable" ? input.paidById || partnerId : input.paidById || null;
+  // Who fronted a reimbursable expense — a partner OR a non-partner consultant
+  // (exactly one). A partner defaults to the current user when neither is given.
+  const paidByConsultantId = input.kind === "reimbursable" ? input.paidByConsultantId?.trim() || null : null;
+  const paidById =
+    input.kind === "reimbursable"
+      ? paidByConsultantId
+        ? null
+        : input.paidById || partnerId
+      : input.paidById || null;
+  if (paidById && paidByConsultantId) throw new Error("Pick one payer, not both");
   const paidBy = paidById
     ? await prisma.partner.findUnique({ where: { id: paidById }, select: { name: true } })
     : null;
   if (paidById && !paidBy) throw new Error("Selected partner not found");
+  const paidByCons = paidByConsultantId
+    ? await prisma.consultant.findUnique({ where: { id: paidByConsultantId }, select: { name: true } })
+    : null;
+  if (paidByConsultantId && !paidByCons) throw new Error("Selected person not found");
 
   const needsPhoto = !input.file;
 
@@ -282,7 +315,7 @@ export async function createExpense(input: CreateExpenseInput) {
       category: input.category,
       vendor: input.vendor,
       amount,
-      partner: paidBy?.name ?? label,
+      partner: paidByCons?.name ?? paidBy?.name ?? label,
       ext: extFor(input.file.mimeType, input.file.fileName),
     });
     try {
@@ -303,6 +336,10 @@ export async function createExpense(input: CreateExpenseInput) {
         vendor: input.vendor?.trim() || null,
         description: input.description?.trim() || null,
         amount,
+        currency: "CAD",
+        origAmount: fxOrigAmount,
+        origCurrency: fxOrigCurrency,
+        fxRate,
         gstBps: input.gstBps ?? 0,
         total,
         spentAt,
@@ -311,6 +348,7 @@ export async function createExpense(input: CreateExpenseInput) {
         mileageKm,
         mileageRateCents,
         paidById,
+        paidByConsultantId,
         recurring: input.kind === "subscription" ? input.recurring ?? true : false,
         renewalDate: input.kind === "subscription" ? dateOrNull(input.renewalDate) : null,
         clientId: input.clientId || null,
@@ -535,25 +573,25 @@ export async function exportLedgerCsv(): Promise<{ filename: string; csv: string
     }),
     prisma.bill.findMany({
       orderBy: { createdAt: "desc" },
-      select: { vendor: true, number: true, amount: true, total: true, issuedAt: true, createdAt: true, paidAt: true, status: true, category: true, description: true, driveUrl: true },
+      select: { vendor: true, number: true, amount: true, total: true, origAmount: true, origCurrency: true, issuedAt: true, createdAt: true, paidAt: true, status: true, category: true, description: true, driveUrl: true },
     }),
     prisma.expense.findMany({
       orderBy: { spentAt: "desc" },
-      select: { vendor: true, category: true, amount: true, total: true, spentAt: true, reimbursedAt: true, status: true, description: true, driveUrl: true, paidBy: { select: { name: true } } },
+      select: { vendor: true, category: true, amount: true, total: true, origAmount: true, origCurrency: true, spentAt: true, reimbursedAt: true, status: true, description: true, driveUrl: true, paidBy: { select: { name: true } }, paidByConsultant: { select: { name: true } } },
     }),
   ]);
 
   const iso = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
   const catLabel = (c: ExpenseCategory | null) => (c ? EXPENSE_CATEGORY_LABELS[c] : "");
-  const rows = [csvRow(["Type", "Date", "Party", "Number", "Category", "Description", "Amount_CAD", "Status", "Paid_Date", "Drive_URL"])];
+  const rows = [csvRow(["Type", "Date", "Party", "Number", "Category", "Description", "Amount_CAD", "Orig_Currency", "Orig_Amount", "Status", "Paid_Date", "Drive_URL"])];
   for (const i of invoices) {
-    rows.push(csvRow(["AR", iso(i.issuedAt), i.client.company, i.number, "", "", i.total || i.amount, i.status, iso(i.paidAt), ""]));
+    rows.push(csvRow(["AR", iso(i.issuedAt), i.client.company, i.number, "", "", i.total || i.amount, "", "", i.status, iso(i.paidAt), ""]));
   }
   for (const b of bills) {
-    rows.push(csvRow(["AP", iso(b.issuedAt ?? b.createdAt), b.vendor, b.number ?? "", catLabel(b.category), b.description ?? "", b.total || b.amount, b.status, iso(b.paidAt), b.driveUrl ?? ""]));
+    rows.push(csvRow(["AP", iso(b.issuedAt ?? b.createdAt), b.vendor, b.number ?? "", catLabel(b.category), b.description ?? "", b.total || b.amount, b.origCurrency ?? "", b.origAmount ?? "", b.status, iso(b.paidAt), b.driveUrl ?? ""]));
   }
   for (const e of expenses) {
-    rows.push(csvRow(["Expense", iso(e.spentAt), e.vendor ?? e.paidBy?.name ?? "", "", catLabel(e.category), e.description ?? "", e.total || e.amount, e.status, iso(e.reimbursedAt), e.driveUrl ?? ""]));
+    rows.push(csvRow(["Expense", iso(e.spentAt), e.vendor ?? e.paidBy?.name ?? e.paidByConsultant?.name ?? "", "", catLabel(e.category), e.description ?? "", e.total || e.amount, e.origCurrency ?? "", e.origAmount ?? "", e.status, iso(e.reimbursedAt), e.driveUrl ?? ""]));
   }
 
   return { filename: `shift-financials-${iso(new Date())}.csv`, csv: rows.join("\n") };

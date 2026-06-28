@@ -35,6 +35,8 @@ type BillRow = {
   vendor: string;
   number: string | null;
   amount: number;
+  origCurrency?: string | null;
+  origAmount?: number | null;
   dueAt: string | null;
   paidAt: string | null;
   status: BillStatus;
@@ -49,6 +51,8 @@ type ExpenseRow = {
   category: ExpenseCategory;
   kind: ExpenseKind;
   amount: number;
+  origCurrency?: string | null;
+  origAmount?: number | null;
   status: ExpenseStatus;
   spentAt: string;
   needsPhoto: boolean;
@@ -270,7 +274,10 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
                     )}
                   </span>
                   <span className="mono text-[12px] text-bone-dim self-center truncate">{b.number ?? "—"}</span>
-                  <span className="mono text-[14px] text-bone tabular-nums text-right">{cad(b.amount)}</span>
+                  <span className="flex flex-col items-end leading-tight text-right">
+                    <span className="mono text-[14px] text-bone tabular-nums">{cad(b.amount)}</span>
+                    {b.origCurrency && b.origAmount != null && <span className="mono text-[10px] text-bone-mute">{b.origCurrency} {b.origAmount}</span>}
+                  </span>
                   <span className={`mono text-[12px] tabular-nums text-right ${overdueDays > 0 ? "text-flag-red" : "text-bone-dim"}`}>
                     {b.dueAt ? formatDate(b.dueAt) : "—"}{overdueDays > 0 && ` (${overdueDays}d)`}
                   </span>
@@ -314,7 +321,10 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
                 {e.description && <span className="text-[11px] text-bone-mute truncate">{e.description}</span>}
               </div>
               <span className="text-[12px] text-bone-dim self-center truncate">{EXPENSE_CATEGORY_LABELS[e.category]}</span>
-              <span className="mono text-[14px] text-bone tabular-nums text-right">{cad(e.amount)}</span>
+              <span className="flex flex-col items-end leading-tight text-right">
+                <span className="mono text-[14px] text-bone tabular-nums">{cad(e.amount)}</span>
+                {e.origCurrency && e.origAmount != null && <span className="mono text-[10px] text-bone-mute">{e.origCurrency} {e.origAmount}</span>}
+              </span>
               <span className="mono text-[12px] text-bone-dim tabular-nums text-right">{e.renewalDate ? formatDate(e.renewalDate) : "—"}</span>
               <div className="flex justify-end">
                 <Badge tone={e.status === "paid" || e.status === "reimbursed" ? "steel" : "neutral"}>{EXPENSE_STATUS_LABELS[e.status]}</Badge>
@@ -356,10 +366,14 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
                         </a>
                       )}
                     </span>
+                    {e.kind === "reimbursable" && e.paidByName && <span className="text-[11px] text-track-gold truncate">Owed to {e.paidByName}</span>}
                     {e.description && <span className="text-[11px] text-bone-mute truncate">{e.description}</span>}
                   </div>
                   <span className="text-[12px] text-bone-dim self-center truncate">{EXPENSE_CATEGORY_LABELS[e.category]}</span>
-                  <span className="mono text-[14px] text-bone tabular-nums text-right">{cad(e.amount)}</span>
+                  <span className="flex flex-col items-end leading-tight text-right">
+                    <span className="mono text-[14px] text-bone tabular-nums">{cad(e.amount)}</span>
+                    {e.origCurrency && e.origAmount != null && <span className="mono text-[10px] text-bone-mute">{e.origCurrency} {e.origAmount}</span>}
+                  </span>
                   <span className="mono text-[12px] text-bone-dim tabular-nums text-right">{formatDate(e.spentAt)}</span>
                   <div className="flex justify-end items-center gap-2">
                     {settled ? (
