@@ -36,6 +36,12 @@ function isInternal(email: string): boolean {
   return at !== -1 && FIRM_DOMAINS.includes(email.slice(at + 1));
 }
 
+// Postgres rejects NUL (0x00) in text/jsonb. Attachment/PDF text extraction can
+// carry it; strip before any DB write.
+function stripNul(s: string): string {
+  return s.split(String.fromCharCode(0)).join("");
+}
+
 // A stale Gmail historyId (cursor older than ~1 week) makes history.list 404 with
 // "Requested entity was not found". Detect it so the poll can reset rather than
 // dead-end. Matches the Gmail/Gaxios 404 by code, HTTP status, or message.
@@ -380,6 +386,10 @@ export async function GET(req: Request) {
           }
         }
         if (attachNotes.length) fullBody += `\n\n## Attachment notes\n${attachNotes.join("\n")}`;
+        // Postgres text/jsonb can't store NUL (0x00), which attachment/PDF text
+        // extraction sometimes carries. Strip it so the row inserts instead of
+        // throwing "invalid byte sequence for encoding UTF8: 0x00".
+        fullBody = stripNul(fullBody);
 
         const match = await matchEmail({ emails: external, body: email.body, subject: email.subject });
         const buildCtx = (isThread: boolean) =>
