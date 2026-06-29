@@ -59,11 +59,11 @@ export function RosterEditor({
   return (
     <Card>
       <CardHeader className="flex items-center justify-between">
-        <h2 className="title-md">Consultant roster</h2>
+        <h2 className="title-md">Team &amp; pay roster</h2>
         {!adding && (
           <Button variant="ghost" size="sm" onClick={() => { setAdding(true); setEditingId(null); }}>
             <Plus size={13} strokeWidth={1.5} />
-            Add consultant
+            Add person
           </Button>
         )}
       </CardHeader>
@@ -80,7 +80,7 @@ export function RosterEditor({
       )}
 
       {consultants.length === 0 && !adding ? (
-        <EmptyState title="No consultants yet" hint="Add the people you pay on projects — their fixed pay rate seeds each project's economics." compact />
+        <EmptyState title="No people yet" hint="Add the people the firm works with — partners and external contractors. Their fixed pay rate seeds each project's economics." compact />
       ) : (
         <div className="flex flex-col">
           <div className="grid grid-cols-[1.4fr_1.2fr_120px_1fr_100px_72px] gap-3 px-5 py-2.5">
@@ -105,7 +105,10 @@ export function RosterEditor({
               </div>
             ) : (
               <div key={c.id} className="grid grid-cols-[1.4fr_1.2fr_120px_1fr_100px_72px] gap-3 px-5 py-3 border-t border-graphite/40 items-center">
-                <span className="text-[13px] text-bone truncate">{c.name}</span>
+                <span className="text-[13px] text-bone truncate flex items-center gap-2">
+                  {c.name}
+                  {c.partnerName && <Badge tone="steel">partner</Badge>}
+                </span>
                 <span className="text-[13px] text-bone-dim truncate">{c.role}</span>
                 <span className="mono text-[13px] text-track-gold tabular-nums">{rate(c.payRateCents)}</span>
                 <span className="text-[12px] text-bone-dim truncate">{c.email ?? "—"}</span>

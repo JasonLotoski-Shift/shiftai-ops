@@ -593,16 +593,17 @@ function ProposalCard({
           : formatCAD(prop.bill.amount).replace("CA$", "$")
       }${prop.bill.invoiceNumber ? ` · ${prop.bill.invoiceNumber}` : ""}${prop.bill.dueDate ? ` · due ${prop.bill.dueDate}` : ""}`
     : "";
+  // The reimburse payer is one of the people on the roster (partners are on it
+  // too). Pre-select ONLY on a confident name match; otherwise leave it empty so
+  // the operator picks the payee deliberately (never silently mis-attribute money).
   const defaultPayer = (() => {
     const name = (prop.payer ?? "").toLowerCase().trim();
     if (name) {
       const first = name.split(" ")[0];
-      const pm = partners.find((pt) => pt.name.toLowerCase().includes(name) || (first && pt.name.toLowerCase().includes(first)));
-      if (pm) return `p:${pm.id}`;
       const cm = consultants.find((c) => c.name.toLowerCase().includes(name) || (first && c.name.toLowerCase().includes(first)));
       if (cm) return `c:${cm.id}`;
     }
-    return currentPartnerId ? `p:${currentPartnerId}` : partners[0] ? `p:${partners[0].id}` : "";
+    return "";
   })();
   const [payerSel, setPayerSel] = useState(defaultPayer);
 
@@ -650,8 +651,7 @@ function ProposalCard({
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Select value={payerSel} onChange={(e) => setPayerSel(e.target.value)} disabled={isPending} className="h-8 text-[12px] w-auto">
-                    {partners.map((pt) => <option key={pt.id} value={`p:${pt.id}`}>{pt.name.split(" ")[0]}</option>)}
-                    {consultants.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.name} (contractor)</option>)}
+                    {consultants.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.name}</option>)}
                   </Select>
                   <Button variant={financeType === "reimbursable" ? "secondary" : "ghost"} size="sm" onClick={reimburse} disabled={isPending}>Reimburse</Button>
                   <FinanceTip text="Someone paid this on their OWN card and the firm owes them back. Pick who paid in the dropdown — it's tracked as owed to them until you mark it reimbursed on the AP / AR tab." />

@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-29",
     tag: "improved",
+    title: "One Team list: partners and contractors, one record per person",
+    detail:
+      "The Consultants page is now Team, and it holds everyone the firm works with in one place: partners (who also log in, shown with a badge) and external contractors, each as a single record with their pay rate. Where you pick a person to reimburse, you now see one clean list instead of a partner and a separate “(contractor)” entry for the same person. Partners are added to the roster automatically, so they show up everywhere people do.",
+  },
+  {
+    date: "2026-06-29",
+    tag: "improved",
     title: "Bill emails keep the invoice file, and the finance actions explain themselves",
     detail:
       "When a vendor bill or receipt arrives under the ops-AR/AP label with a PDF or image attached, the file is now saved to Drive and travels onto the bill (or expense) when you file it, so the document is on record, not just the numbers it read off. If the invoice was only in the email body with nothing attached, the bill is marked “no attachment” and shows in the “Needs a document” list so you can upload it. And each finance action in the review now has an (i) explaining it: Add to AP is a vendor bill we owe, Reimburse is something a person paid on their own card that the firm owes back, Log firm-paid is a receipt already paid on a firm card.",

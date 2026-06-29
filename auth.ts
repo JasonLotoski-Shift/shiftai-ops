@@ -51,17 +51,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // Auto-provision a Partner record on first sign-in. Existing seed
       // Partners match by email; new emails get a fresh Partner row.
-      const existing = await prisma.partner.findUnique({ where: { email } });
-      if (!existing) {
+      let partner = await prisma.partner.findUnique({
+        where: { email },
+        select: { id: true, name: true, role: true },
+      });
+      if (!partner) {
         const name = user.name ?? email.split("@")[0];
-        await prisma.partner.create({
-          data: {
-            email,
-            name,
-            initials: deriveInitials(name),
-            role: "Partner",
-          },
+        partner = await prisma.partner.create({
+          data: { email, name, initials: deriveInitials(name), role: "Partner" },
+          select: { id: true, name: true, role: true },
         });
+      }
+
+      // Unified People model: every partner is also on the people roster (one
+      // Person row per human, linked by partnerId). Create the linked roster row
+      // if missing — this also lazily backfills partners that predate the merge.
+      // Best-effort: a roster hiccup must never block sign-in.
+      try {
+        const onRoster = await prisma.consultant.findUnique({
+          where: { partnerId: partner.id },
+          select: { id: true },
+        });
+        if (!onRoster) {
+          await prisma.consultant.create({
+            data: { name: partner.name, role: partner.role || "Partner", partnerId: partner.id, active: true },
+          });
+        }
+      } catch {
+        // ignore — the backfill script / next sign-in will reconcile
       }
 
       // Mutate user.email to the canonical form so jwt callback below

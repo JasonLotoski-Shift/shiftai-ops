@@ -271,7 +271,7 @@ export default async function FinancialsPage() {
               className="inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius)] transition-colors focus-gold bg-transparent text-bone hover:bg-asphalt h-7 px-3 text-[12px]"
             >
               <Users size={13} strokeWidth={1.5} />
-              Consultant roster
+              Team
             </Link>
             {managingPartner && (
               <Link
