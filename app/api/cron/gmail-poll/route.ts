@@ -26,10 +26,41 @@ import {
 import { extractFile, isExtractable, imageMediaType } from "@/lib/ingest/extract-file";
 import { resolveTargetsFromText } from "@/lib/ingest/cross-reference";
 import { matchOutstandingInvoice } from "@/lib/finance-match";
+import { fileBillDoc } from "@/lib/firm-finance-drive";
+import { apBillFileName } from "@/lib/finance";
 import type { ExtractedProposal, ExtractedBill, ExtractedAR } from "@/app/(app)/ingest/actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Pro plan — the poll fans over partners × messages
+
+// Best-effort: file a finance email's invoice attachment to Drive at poll time
+// (the bytes are already in hand for extraction) so "Add to AP" / Reimburse can
+// attach the real document. Lands in AP-Bills/Unpaid; the Drive ref is stored on
+// the proposal JSON and copied onto the Bill/Expense when filed. Null on failure.
+type PolledDoc = { driveUrl: string; driveFileId: string; fileName: string };
+async function filePolledInvoice(
+  att: { buf: Buffer; fileName: string; mimeType: string },
+  date: Date,
+  proposal: ExtractedProposal,
+): Promise<PolledDoc | null> {
+  try {
+    const billInfo = (proposal as { bill?: { vendor?: string | null; invoiceNumber?: string | null; amount?: number | null } | null }).bill;
+    const dotExt = att.fileName.includes(".")
+      ? att.fileName.split(".").pop()!.toLowerCase()
+      : att.mimeType.includes("pdf") ? "pdf" : "bin";
+    const fileName = apBillFileName({
+      issuedAt: date,
+      vendor: billInfo?.vendor?.trim() || "vendor",
+      number: billInfo?.invoiceNumber ?? null,
+      amount: billInfo?.amount ?? 0,
+      ext: dotExt,
+    });
+    const res = await fileBillDoc({ bytes: att.buf, fileName, year: date.getFullYear(), mimeType: att.mimeType });
+    return { driveUrl: res.webViewLink, driveFileId: res.fileId, fileName };
+  } catch {
+    return null;
+  }
+}
 
 const FIRM_DOMAINS = ["shiftai.partners", "shiftcg.ai"];
 function isInternal(email: string): boolean {
@@ -395,6 +426,8 @@ export async function GET(req: Request) {
         const attachNotes: string[] = [];
         const emailImages: { base64: string; mediaType: string }[] = [];
         let attachBytes = 0;
+        // On a finance email, keep the first PDF/image — it's the invoice we file to Drive.
+        let invoiceAttachment: { buf: Buffer; fileName: string; mimeType: string } | null = null;
         const relevant = email.attachments.filter((a) => isExtractable(a.fileName) || imageMediaType(a.fileName));
         for (const att of relevant.slice(0, 5)) {
           if (attachBytes + att.size > 15_000_000) {
@@ -404,6 +437,9 @@ export async function GET(req: Request) {
           try {
             const buf = await fetchAttachment(gmail, id, att.attachmentId);
             attachBytes += buf.length;
+            if (fromFinance && !invoiceAttachment && (imageMediaType(att.fileName) || /\.pdf$/i.test(att.fileName) || att.mimeType === "application/pdf")) {
+              invoiceAttachment = { buf, fileName: att.fileName, mimeType: att.mimeType };
+            }
             const imgType = imageMediaType(att.fileName);
             if (imgType) {
               if (buf.length > 5_000_000) {
@@ -465,11 +501,14 @@ export async function GET(req: Request) {
             proposal = parseProposal(JSON.stringify(pendingThread.proposal));
           }
           proposal = await finalizeFinance(proposal, fromFinance, pendingThread.matchedClientId ?? match.clientId);
+          // File this reply's invoice if it carried one; else keep any doc already filed on the thread.
+          const replyDoc = fromFinance && invoiceAttachment ? await filePolledInvoice(invoiceAttachment, email.date, proposal) : null;
+          const threadDoc = replyDoc ?? (pendingThread.proposal as { attachment?: PolledDoc }).attachment ?? null;
           await prisma.ingestProposal.update({
             where: { id: pendingThread.id },
             data: {
               transcript: combined,
-              proposal: { ...proposal, direction, messageIds: [...seenIds, id] } as object,
+              proposal: { ...proposal, direction, messageIds: [...seenIds, id], ...(threadDoc ? { attachment: threadDoc } : {}) } as object,
               // Never clobber a partner-confirmed match — only fill what's empty.
               matchedContactId: pendingThread.matchedContactId ?? match.contactId,
               matchedClientId: pendingThread.matchedClientId ?? match.clientId,
@@ -502,6 +541,7 @@ export async function GET(req: Request) {
           proposal = { summary: email.subject || "(email)", keyPoints: [], actionItems: [], enrichment: { contact: [], client: [] }, stageSignal: null };
         }
         proposal = await finalizeFinance(proposal, fromFinance, match.clientId);
+        const filedDoc = fromFinance && invoiceAttachment ? await filePolledInvoice(invoiceAttachment, email.date, proposal) : null;
 
         await prisma.ingestProposal.create({
           data: {
@@ -511,7 +551,7 @@ export async function GET(req: Request) {
             title: email.subject || "(no subject)",
             meetingDate: email.date,
             transcript: fullBody,
-            proposal: { ...proposal, direction, messageIds: [id], ...(priorAnswered ? { replyToThread: true } : {}) } as object,
+            proposal: { ...proposal, direction, messageIds: [id], ...(priorAnswered ? { replyToThread: true } : {}), ...(filedDoc ? { attachment: filedDoc } : {}) } as object,
             ingestType: "email",
             status: "pending",
             matchedContactId: match.contactId,

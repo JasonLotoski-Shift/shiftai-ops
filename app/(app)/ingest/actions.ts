@@ -597,6 +597,11 @@ export async function createBillFromProposal(id: string, opts?: { settledPayoutI
     if (dup) throw new Error(`Already in AP: ${bill.vendor.trim()} · ${num}. Not added again.`);
   }
 
+  // The invoice attachment filed to Drive at poll time (if any) travels onto the
+  // Bill so the document is on file. No attachment → a note, and the bill flags in
+  // the missing-document worklist until a PDF is uploaded.
+  const att = (proposal.proposal as { attachment?: { driveUrl?: string | null; driveFileId?: string | null; fileName?: string | null } | null } | null)?.attachment ?? null;
+
   const billId = await prisma.$transaction(async (tx) => {
     const created = await tx.bill.create({
       data: {
@@ -615,9 +620,27 @@ export async function createBillFromProposal(id: string, opts?: { settledPayoutI
         description: proposal.title,
         clientId: proposal.matchedClientId,
         projectId: proposal.matchedProjectId,
+        driveFileId: att?.driveFileId ?? null,
+        driveUrl: att?.driveUrl ?? null,
+        fileName: att?.fileName ?? null,
+        notes: att?.driveUrl ? null : "No attachment — invoice was in the email body",
         createdBy: label,
       },
     });
+    if (att?.driveUrl) {
+      await tx.artifact.create({
+        data: {
+          type: "invoice",
+          title: `AP bill — ${bill.vendor.trim()}${num ? ` · ${num}` : ""}`,
+          driveUrl: att.driveUrl,
+          fileName: att.fileName ?? null,
+          createdBy: label,
+          reviewStatus: "approved",
+          clientId: proposal.matchedClientId,
+          projectId: proposal.matchedProjectId,
+        },
+      });
+    }
     // Phase 2: cross-reference the bill to the contractor payout(s) it settles.
     // Guarded to this project's still-unlinked payouts so a bad id can't mis-link.
     let linkedPayouts = 0;
@@ -708,6 +731,10 @@ export async function createExpenseFromProposal(
   const amount = fx.cad;
   const category: ExpenseCategory = opts.category ?? "subscription_software";
 
+  // The receipt/invoice attachment filed to Drive at poll time (if any) — copied
+  // onto the Expense; absent → flagged "needs photo".
+  const att = (proposal.proposal as { attachment?: { driveUrl?: string | null; driveFileId?: string | null; fileName?: string | null } | null } | null)?.attachment ?? null;
+
   const expenseId = await prisma.$transaction(async (tx) => {
     const created = await tx.expense.create({
       data: {
@@ -728,9 +755,27 @@ export async function createExpenseFromProposal(
         reimbursedAt: opts.kind === "firm_paid" ? proposal.meetingDate : null,
         clientId: proposal.matchedClientId,
         projectId: proposal.matchedProjectId,
+        needsPhoto: !att?.driveUrl,
+        driveFileId: att?.driveFileId ?? null,
+        driveUrl: att?.driveUrl ?? null,
+        fileName: att?.fileName ?? null,
         createdBy: label,
       },
     });
+    if (att?.driveUrl) {
+      await tx.artifact.create({
+        data: {
+          type: "other",
+          title: `Receipt — ${bill.vendor.trim()} · ${formatCAD(amount)}`,
+          driveUrl: att.driveUrl,
+          fileName: att.fileName ?? null,
+          createdBy: label,
+          reviewStatus: "approved",
+          clientId: proposal.matchedClientId,
+          projectId: proposal.matchedProjectId,
+        },
+      });
+    }
     await tx.ingestProposal.update({
       where: { id },
       data: { status: "approved", reviewedBy: label, reviewedAt: new Date() },

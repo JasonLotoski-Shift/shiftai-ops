@@ -17,6 +17,7 @@ import {
   Link2,
   RefreshCw,
   Receipt,
+  Info,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
@@ -391,6 +392,15 @@ const ENRICH_LABELS: Record<string, string> = {
   logoMonogram: "Logo monogram",
 };
 
+// A small hover (i) that explains a finance action (native title tooltip).
+function FinanceTip({ text }: { text: string }) {
+  return (
+    <span title={text} aria-label={text} tabIndex={0} className="text-bone-mute hover:text-track-gold cursor-help">
+      <Info size={13} strokeWidth={1.5} />
+    </span>
+  );
+}
+
 function ProposalCard({
   p,
   open,
@@ -634,15 +644,22 @@ function ProposalCard({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant={financeType === "ap_bill" ? "secondary" : "ghost"} size="sm" onClick={addToBill} disabled={isPending}>Add to AP</Button>
+                <span className="inline-flex items-center gap-1">
+                  <Button variant={financeType === "ap_bill" ? "secondary" : "ghost"} size="sm" onClick={addToBill} disabled={isPending}>Add to AP</Button>
+                  <FinanceTip text="A vendor bill we owe (accounts payable). Files it under Financials → AP / AR → Payable, ready to pay. Use this when the email is an invoice billing the firm." />
+                </span>
                 <span className="flex items-center gap-1.5">
                   <Select value={payerSel} onChange={(e) => setPayerSel(e.target.value)} disabled={isPending} className="h-8 text-[12px] w-auto">
                     {partners.map((pt) => <option key={pt.id} value={`p:${pt.id}`}>{pt.name.split(" ")[0]}</option>)}
                     {consultants.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.name} (contractor)</option>)}
                   </Select>
                   <Button variant={financeType === "reimbursable" ? "secondary" : "ghost"} size="sm" onClick={reimburse} disabled={isPending}>Reimburse</Button>
+                  <FinanceTip text="Someone paid this on their OWN card and the firm owes them back. Pick who paid in the dropdown — it's tracked as owed to them until you mark it reimbursed on the AP / AR tab." />
                 </span>
-                <Button variant={financeType === "firm_paid" ? "secondary" : "ghost"} size="sm" onClick={logFirmPaid} disabled={isPending}>Log firm-paid</Button>
+                <span className="inline-flex items-center gap-1">
+                  <Button variant={financeType === "firm_paid" ? "secondary" : "ghost"} size="sm" onClick={logFirmPaid} disabled={isPending}>Log firm-paid</Button>
+                  <FinanceTip text="Already paid on a FIRM card or account. Records the receipt only, for the books — nothing is owed to anyone. Use this for firm-card purchases and subscriptions." />
+                </span>
               </div>
               {canLinkPayouts && financeType === "ap_bill" && payoutOptions.length > 0 && (
                 <div className="flex flex-col gap-1.5 pt-1 border-t border-track-gold/20">
