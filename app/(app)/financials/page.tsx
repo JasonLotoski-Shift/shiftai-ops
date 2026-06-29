@@ -183,7 +183,7 @@ export default async function FinancialsPage() {
       prisma.bill.findMany({
         where: { status: { not: "void" } },
         orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-        select: { id: true, vendor: true, number: true, amount: true, total: true, origAmount: true, origCurrency: true, dueAt: true, paidAt: true, status: true, category: true, driveUrl: true },
+        select: { id: true, vendor: true, number: true, amount: true, total: true, origAmount: true, origCurrency: true, dueAt: true, paidAt: true, status: true, category: true, driveUrl: true, settledPayouts: { select: { id: true }, take: 1 } },
       }),
       prisma.expense.findMany({
         orderBy: { spentAt: "desc" },
@@ -217,6 +217,10 @@ export default async function FinancialsPage() {
         category: b.category,
         hasDoc: !!b.driveUrl,
         driveUrl: b.driveUrl,
+        // A bill settled by a contractor payout is the payout's paperwork, paid via
+        // the payout flow — exclude it from vendor Payable so it isn't double-counted
+        // against the Ledger's deduped money-out (it's tracked there via its payout).
+        linked: b.settledPayouts.length > 0,
       })),
       expenses: expenses.map((e) => ({
         id: e.id,

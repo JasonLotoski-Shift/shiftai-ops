@@ -45,6 +45,7 @@ type BillRow = {
   category: ExpenseCategory | null;
   hasDoc: boolean;
   driveUrl: string | null;
+  linked?: boolean; // settled by a contractor payout — tracked via that payout, not as vendor AP
 };
 type ExpenseRow = {
   id: string;
@@ -110,8 +111,11 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
   const [modal, setModal] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const outstandingBills = bills.filter((b) => b.status === "received" || b.status === "approved");
-  const paidBillsCount = bills.length - outstandingBills.length;
+  // A bill linked to a contractor payout is that payout's paperwork (paid via the
+  // payout flow, deduped on the Ledger) — keep it out of vendor Payable so the AP
+  // figure and the Ledger's money-out never double-count the same dollars.
+  const outstandingBills = bills.filter((b) => (b.status === "received" || b.status === "approved") && !b.linked);
+  const paidBillsCount = bills.filter((b) => b.status === "paid").length;
   // Subscriptions get their own card so recurring SaaS/phone/office spend is
   // visible at a glance; the Expenses card shows everything else.
   const subscriptions = expenses.filter((e) => e.kind === "subscription");
@@ -178,7 +182,7 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
       <div className="flex items-center justify-between">
         <div className="grid grid-cols-4 gap-4 flex-1">
           <Card className="p-5"><Stat label="Outstanding AR" value={cad(totals.ar)} delta={`${invoices.length} invoices · money in`} /></Card>
-          <Card className="p-5"><Stat label="Outstanding AP" value={cad(totals.ap)} delta={`${outstandingBills.length} bills · money out`} /></Card>
+          <Card className="p-5"><Stat label="Outstanding AP" value={cad(totals.ap)} delta={`${outstandingBills.length} vendor bills to pay`} /></Card>
           <Card className="p-5"><Stat label="Net position" value={cad(totals.net)} delta="AR − AP" gold={totals.net >= 0} /></Card>
           <Card className="p-5"><Stat label="Expenses · MTD" value={cad(totals.mtd)} delta={totals.owed > 0 ? `${cad(totals.owed)} owed to team` : "this month"} /></Card>
         </div>

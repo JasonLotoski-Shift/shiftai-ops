@@ -1107,12 +1107,25 @@ model ConsultantPayout {
   economicsLine   ProjectEconomicsLine? @relation(fields: [economicsLineId], references: [id])
   economicsLineId String?
 
+  // Cross-reference to the vendor invoice (Bill) that justifies this payment
+  // (Phase 2). NULLABLE and NOT unique: one lump invoice (e.g. YW-S1-001) can
+  // cover several stages = several payout rows, so many payouts point at one
+  // bill. The payout is the cash that moved; the bill is the supporting doc, so
+  // the deduped cash-out total counts the payout and drops the linked bill.
+  settledByBill   Bill?   @relation("BillSettledPayouts", fields: [settledByBillId], references: [id], onDelete: SetNull)
+  settledByBillId String?
+  // Set by a managing partner to clear the missing-invoice flag on a payout that
+  // legitimately will never have an invoice (an informal e-transfer). Null = not
+  // waived; any text = waived, and the text is the reason (rendered on the row).
+  invoiceWaivedReason String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([installmentId, consultantId])
   @@index([projectId, status])
   @@index([consultantId, status])
+  @@index([settledByBillId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -2756,6 +2769,11 @@ model Bill {
   driveFileId String?
   driveUrl    String?
   fileName    String?
+
+  // Contractor payouts this bill documents (Phase 2 cross-reference). Virtual
+  // back-relation — the FK column (settledByBillId) lives on ConsultantPayout.
+  // Many payouts may point at one lump bill.
+  settledPayouts ConsultantPayout[] @relation("BillSettledPayouts")
 
   createdBy String // partner name or "AGENT · CLAUDE"
   createdAt DateTime @default(now())

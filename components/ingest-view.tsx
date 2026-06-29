@@ -62,6 +62,10 @@ export type ProposalProp = {
   data?: UnifiedProposal;
 };
 
+// An unlinked contractor payout on a matched project the ingest card can attach a
+// filed vendor bill to (Phase 2). MP-only — never passed to non-managing partners.
+export type IngestPayoutOption = { id: string; consultantName: string; amount: number; status: string };
+
 export function IngestView({
   proposals,
   partners,
@@ -71,6 +75,8 @@ export function IngestView({
   projects,
   deals,
   currentPartnerId,
+  canLinkPayouts = false,
+  payoutsByProject = {},
   initialFocus,
 }: {
   proposals: ProposalProp[];
@@ -81,6 +87,8 @@ export function IngestView({
   projects: { id: string; name: string }[];
   deals: { id: string; name: string }[];
   currentPartnerId?: string;
+  canLinkPayouts?: boolean;
+  payoutsByProject?: Record<string, IngestPayoutOption[]>;
   initialFocus?: { kind: IngestTargetKind; id: string } | null;
 }) {
   const [composerOpen, setComposerOpen] = useState(!!initialFocus);
@@ -198,6 +206,8 @@ export function IngestView({
                 clients={clients}
                 deals={deals}
                 currentPartnerId={currentPartnerId}
+                canLinkPayouts={canLinkPayouts}
+                payoutOptions={p.matchedProjectId ? payoutsByProject[p.matchedProjectId] ?? [] : []}
               />
             ),
           )}
@@ -391,6 +401,8 @@ function ProposalCard({
   clients,
   deals,
   currentPartnerId,
+  canLinkPayouts = false,
+  payoutOptions = [],
 }: {
   p: ProposalProp;
   open: boolean;
@@ -401,6 +413,8 @@ function ProposalCard({
   clients: { id: string; company: string }[];
   deals: { id: string; name: string }[];
   currentPartnerId?: string;
+  canLinkPayouts?: boolean;
+  payoutOptions?: IngestPayoutOption[];
 }) {
   const router = useRouter();
   const prop = p.proposal;
@@ -423,6 +437,9 @@ function ProposalCard({
 
   const [contactKeep, setContactKeep] = useState<boolean[]>(prop.enrichment.contact.map(() => true));
   const [clientKeep, setClientKeep] = useState<boolean[]>(prop.enrichment.client.map(() => true));
+
+  // Phase 2: contractor payout(s) this vendor bill settles (MP-only picker below).
+  const [linkPayoutIds, setLinkPayoutIds] = useState<string[]>([]);
 
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -494,12 +511,13 @@ function ProposalCard({
     });
   }
 
-  // Vendor-bill email → file it as a Bill (AP). Marks the proposal handled.
+  // Vendor-bill email → file it as a Bill (AP). Marks the proposal handled, and
+  // links any selected contractor payout(s) to the new bill in the same write.
   function addToBill() {
     setError(null);
     startTransition(async () => {
       try {
-        await createBillFromProposal(p.id);
+        await createBillFromProposal(p.id, linkPayoutIds.length ? { settledPayoutIds: linkPayoutIds } : undefined);
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to add to AP");
@@ -626,6 +644,31 @@ function ProposalCard({
                 </span>
                 <Button variant={financeType === "firm_paid" ? "secondary" : "ghost"} size="sm" onClick={logFirmPaid} disabled={isPending}>Log firm-paid</Button>
               </div>
+              {canLinkPayouts && financeType === "ap_bill" && payoutOptions.length > 0 && (
+                <div className="flex flex-col gap-1.5 pt-1 border-t border-track-gold/20">
+                  <span className="text-[11px] text-bone-dim">
+                    Settle a contractor payout{p.projectLabel ? ` on ${p.projectLabel}` : ""}? Linking counts the payment once and clears its “needs an invoice” flag.
+                  </span>
+                  <div className="flex flex-col gap-1">
+                    {payoutOptions.map((po) => {
+                      const on = linkPayoutIds.includes(po.id);
+                      return (
+                        <label key={po.id} className="flex items-center gap-2 text-[12px] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={(e) => setLinkPayoutIds((ids) => (e.target.checked ? [...ids, po.id] : ids.filter((x) => x !== po.id)))}
+                            className="accent-track-gold"
+                          />
+                          <span className="text-bone">{po.consultantName}</span>
+                          <span className="mono text-bone-dim tabular-nums">{formatCAD(po.amount).replace("CA$", "$")}</span>
+                          <Badge tone="neutral">{po.status}</Badge>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <span className="text-[11px] text-bone-mute">
                 Suggested: {financeType === "ap_bill" ? "Add to AP" : financeType === "reimbursable" ? "Reimburse" : "Log firm-paid"}. Pick the right one — filing also clears this item.
               </span>

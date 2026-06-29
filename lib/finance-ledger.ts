@@ -4,14 +4,13 @@
 // CSV export all read. NO Prisma / Drive / fs imports — client-safe, same
 // contract as lib/finance.ts.
 //
-// PHASE 1 (no migration): reads existing columns only. There is no payout<->bill
-// link column yet, so a contractor payout and the invoice (Bill) that justifies
-// it are matched HEURISTICALLY (same project, equal amount, matching name) and
-// shown as a "possible" pair. We never blend payouts + bills into one money-out
-// total: the header shows contractor payouts and bills/expenses as SEPARATE
-// figures. The only place the heuristic touches a number is a group SUBTOTAL,
-// where the matched bill is excluded (the payout is the cash; the bill is the
-// document) and visibly chipped — never silently. The exact link lands in Phase 2.
+// PHASE 2 (migration applied): a contractor payout and the invoice (Bill) that
+// justifies it are linked EXACTLY via ConsultantPayout.settledByBillId. For a
+// confirmed pair the payout is the cash that moved and the bill is the supporting
+// document, so the bill is dropped from cash-out (countsAsCashOut=false) and the
+// deduped money-out total counts the payment once. A payout with no link and no
+// waiver flags as "missing a document" until an MP attaches the invoice or marks
+// it "no invoice required" (ConsultantPayout.invoiceWaivedReason).
 
 import type { ExpenseCategory } from "@/lib/types";
 import {
@@ -48,9 +47,10 @@ export type LedgerEntry = {
   paidDate: string | null;
   hasDocument: boolean; // a backing invoice / receipt is on file
   driveUrl: string | null;
-  // Cross-reference (Phase 2 = exact link; Phase 1 = heuristic):
-  probablePairId: string | null; // GL id of a likely-matching payout/bill
-  countsAsCashOut: boolean; // false on the bill side of a probable pair (group subtotals only)
+  // Cross-reference (Phase 2 = exact link via ConsultantPayout.settledByBillId):
+  linkedEntryId: string | null; // GL id of the confirmed paired payout/bill
+  waiverReason: string | null; // payout only — an MP's "no invoice required" reason
+  countsAsCashOut: boolean; // false on the bill side of a CONFIRMED payout↔bill pair
   entityKey: string; // `${kind}:${id ?? slug(name)}` — stable grouping key
 };
 
@@ -120,6 +120,9 @@ export type RawPayout = {
   consultantId: string;
   consultant: { name: string };
   project: RawProject;
+  // Phase 2 cross-reference (selected only after the migration; see ledger-data).
+  settledByBillId: string | null;
+  invoiceWaivedReason: string | null;
 };
 
 export type LedgerRaw = {
@@ -163,12 +166,6 @@ const projName = (name: string | null | undefined): string | null =>
 
 const entityKeyOf = (p: LedgerParty): string => `${p.kind}:${p.id ?? nameSlug(p.name)}`;
 
-const DAY_MS = 86_400_000;
-function daysApart(a: string | null, b: string | null): number {
-  if (!a || !b) return Infinity;
-  return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / DAY_MS;
-}
-
 // ── Normalizers ────────────────────────────────────────────────────────────
 
 function invoiceToEntry(i: RawInvoice): LedgerEntry {
@@ -194,7 +191,8 @@ function invoiceToEntry(i: RawInvoice): LedgerEntry {
     paidDate: iso(i.paidAt),
     hasDocument: i.status !== "draft", // the issued invoice IS our document
     driveUrl: null,
-    probablePairId: null,
+    linkedEntryId: null,
+    waiverReason: null,
     countsAsCashOut: true,
     entityKey: entityKeyOf(party),
   };
@@ -225,7 +223,8 @@ function billToEntry(b: RawBill): LedgerEntry {
     paidDate: iso(b.paidAt),
     hasDocument: !!b.driveUrl,
     driveUrl: b.driveUrl,
-    probablePairId: null,
+    linkedEntryId: null,
+    waiverReason: null,
     countsAsCashOut: true,
     entityKey: entityKeyOf(party),
   };
@@ -265,7 +264,8 @@ function expenseToEntry(e: RawExpense): LedgerEntry {
     paidDate: iso(e.reimbursedAt),
     hasDocument,
     driveUrl: e.driveUrl,
-    probablePairId: null,
+    linkedEntryId: null,
+    waiverReason: null,
     countsAsCashOut: true,
     entityKey: entityKeyOf(party),
   };
@@ -292,37 +292,44 @@ function payoutToEntry(p: RawPayout): LedgerEntry {
     cashMoved: p.status === "paid" || p.status === "confirmed",
     date: (p.paidAt ?? p.createdAt).toISOString(),
     paidDate: iso(p.paidAt),
-    hasDocument: false, // Phase 1: no link column — every payout flags until linked/waived (Phase 2)
+    // Documented iff an MP waived it here, OR (set in linkSettledPairs) the linked
+    // bill carries a Drive doc. A bare payout flags until linked or waived.
+    hasDocument: !!p.invoiceWaivedReason,
     driveUrl: null,
-    probablePairId: null,
+    linkedEntryId: null,
+    waiverReason: p.invoiceWaivedReason,
     countsAsCashOut: true,
     entityKey: entityKeyOf(party),
   };
 }
 
-/** Heuristic pairing: a contractor payout and a bill that probably document the
- *  same dollars (same project, equal amount, matching name, within 60 days).
- *  Mutates entries: links both via probablePairId and drops the BILL from cash-out
- *  subtotals (the payout is the cash). Never auto-dedupes a header total. */
-function markProbablePairs(entries: LedgerEntry[]): void {
-  const bills = entries.filter((e) => e.sourceType === "bill" && e.projectId);
-  const usedBill = new Set<string>();
-  for (const payout of entries) {
-    if (payout.sourceType !== "payout" || !payout.projectId) continue;
-    const match = bills.find(
-      (b) =>
-        !usedBill.has(b.id) &&
-        b.projectId === payout.projectId &&
-        b.amountCad === payout.amountCad &&
-        (nameSlug(b.party.name) === nameSlug(payout.party.name) ||
-          nameSlug(b.party.name).includes(nameSlug(payout.party.name))) &&
-        daysApart(b.paidDate ?? b.date, payout.paidDate ?? payout.date) <= 60,
-    );
-    if (!match) continue;
-    usedBill.add(match.id);
-    payout.probablePairId = match.id;
-    match.probablePairId = payout.id;
-    match.countsAsCashOut = false; // the payout carries the cash; the bill is the doc
+/** Exact cross-reference (Phase 2): for every payout with a confirmed
+ *  ConsultantPayout.settledByBillId, pair it with that bill. The payout is the
+ *  cash that moved, so the bill is DROPPED from cash-out (countsAsCashOut=false)
+ *  and re-filed under the consultant for the entity rollup. The payout inherits
+ *  the bill's document, clearing its missing-invoice flag once the PDF is filed.
+ *  A bill may settle several payouts (a lump invoice); each is linked. */
+function linkSettledPairs(entries: LedgerEntry[], payouts: RawPayout[]): void {
+  const byId = new Map(entries.map((e) => [e.id, e] as const));
+  for (const p of payouts) {
+    if (!p.settledByBillId) continue;
+    const payoutEntry = byId.get(`payout-${p.id}`);
+    const billEntry = byId.get(`bill-${p.settledByBillId}`);
+    if (!payoutEntry || !billEntry) continue;
+    payoutEntry.linkedEntryId = billEntry.id;
+    billEntry.linkedEntryId = payoutEntry.id;
+    // Count the cash exactly once, on whichever side actually settled. Normally the
+    // payout is the cash (the e-transfer) and the bill is its document. But the two
+    // have independent statuses: if the BILL was paid while the payout is still
+    // owed, the bill is the cash that moved and the owed payout becomes the doc side
+    // — otherwise that real disbursement would vanish from the money-out total.
+    if (!payoutEntry.cashMoved && billEntry.cashMoved) {
+      payoutEntry.countsAsCashOut = false; // the paid bill carries the cash
+    } else {
+      billEntry.countsAsCashOut = false; // the payout carries the cash; the bill is the doc
+    }
+    billEntry.entityKey = payoutEntry.entityKey; // group the bill under the consultant (keep its vendor label)
+    if (billEntry.hasDocument) payoutEntry.hasDocument = true; // the bill PDF documents the payout
   }
 }
 
@@ -333,7 +340,7 @@ export function toLedgerEntries(raw: LedgerRaw): LedgerEntry[] {
     ...raw.expenses.map(expenseToEntry),
     ...raw.payouts.map(payoutToEntry),
   ];
-  markProbablePairs(entries);
+  linkSettledPairs(entries, raw.payouts);
   entries.sort((a, b) => b.date.localeCompare(a.date));
   return entries;
 }
@@ -341,15 +348,16 @@ export function toLedgerEntries(raw: LedgerRaw): LedgerEntry[] {
 // ── Compliance ───────────────────────────────────────────────────────────
 
 /** A money-out record that left the firm's "every dollar has a document" net:
- *  no backing doc, not void/draft, and not already shown as a probable pair. */
+ *  no backing doc, not void/draft. The doc-side of a confirmed payout↔bill pair
+ *  (countsAsCashOut=false) is excluded — its compliance is represented through the
+ *  payout it settles, so the gap is counted once (on the payout) not twice. An
+ *  OWED payout (not yet paid) is excluded too: no cash has left, so no invoice is
+ *  expected yet — it flags once it's marked paid. */
 export function isMissingDoc(e: LedgerEntry): boolean {
-  return (
-    e.direction === "out" &&
-    !e.hasDocument &&
-    !e.probablePairId &&
-    e.status !== "void" &&
-    e.status !== "draft"
-  );
+  if (e.direction !== "out" || !e.countsAsCashOut) return false;
+  if (e.status === "void" || e.status === "draft") return false;
+  if (e.sourceType === "payout" && !e.cashMoved) return false;
+  return !e.hasDocument;
 }
 
 // ── Totals (the only summing path; never blends payouts + bills) ────────────
@@ -362,10 +370,15 @@ export type LedgerTotals = {
   payoutsOwed: number;
   billsExpensesPaid: number;
   billsExpensesOutstanding: number;
+  cashOut: number; // the single deduped money-out figure (== payoutsPaid + billsExpensesPaid)
+  committedOut: number; // owed / received-not-paid, deduped (== payoutsOwed + billsExpensesOutstanding)
   missingDocCount: number;
   missingDocExposure: number;
 };
 
+// The ONE summing path. A confirmed payout↔bill pair counts ONCE: the payout is
+// the cash (countsAsCashOut=true); the linked bill (countsAsCashOut=false) is the
+// document and is skipped, so cashOut never double-counts a contractor payment.
 export function ledgerTotals(entries: LedgerEntry[]): LedgerTotals {
   let receivedIn = 0,
     invoicedIn = 0,
@@ -373,20 +386,30 @@ export function ledgerTotals(entries: LedgerEntry[]): LedgerTotals {
     payoutsOwed = 0,
     billsExpensesPaid = 0,
     billsExpensesOutstanding = 0,
+    cashOut = 0,
+    committedOut = 0,
     missingDocCount = 0,
     missingDocExposure = 0;
   for (const e of entries) {
     if (e.direction === "in") {
       if (e.status !== "draft") invoicedIn += e.amountCad;
       if (e.cashMoved) receivedIn += e.amountCad;
-    } else if (e.status !== "void") {
+    } else if (e.status !== "void" && e.countsAsCashOut) {
+      // Only the cash-carrying side reaches here; the doc side of a linked pair
+      // (countsAsCashOut=false — a bill OR an owed payout) is excluded from EVERY
+      // total, so the breakdown sums to the deduped figures with no double-count.
       const paid = e.cashMoved;
       if (e.sourceType === "payout") {
         if (paid) payoutsPaid += e.amountCad;
         else payoutsOwed += e.amountCad;
-      } else {
-        if (paid) billsExpensesPaid += e.amountCad;
-        else if (e.status !== "draft") billsExpensesOutstanding += e.amountCad;
+      } else if (paid) {
+        billsExpensesPaid += e.amountCad;
+      } else if (e.status !== "draft") {
+        billsExpensesOutstanding += e.amountCad;
+      }
+      if (e.status !== "draft") {
+        if (paid) cashOut += e.amountCad;
+        else committedOut += e.amountCad;
       }
     }
     if (isMissingDoc(e)) {
@@ -402,6 +425,8 @@ export function ledgerTotals(entries: LedgerEntry[]): LedgerTotals {
     payoutsOwed,
     billsExpensesPaid,
     billsExpensesOutstanding,
+    cashOut,
+    committedOut,
     missingDocCount,
     missingDocExposure,
   };

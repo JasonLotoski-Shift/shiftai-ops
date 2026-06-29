@@ -70,7 +70,10 @@ export default async function ProjectDetailPage({
         directCosts: { orderBy: { sortOrder: "asc" } },
         originations: { include: { partner: { select: { id: true, name: true } } } },
         payouts: {
-          include: { consultant: { select: { name: true } } },
+          include: {
+            consultant: { select: { name: true } },
+            settledByBill: { select: { vendor: true, number: true, driveUrl: true } },
+          },
         },
         artifacts: {
           orderBy: { createdAt: "desc" },
@@ -193,6 +196,10 @@ export default async function ProjectDetailPage({
           status: p.status as "owed" | "paid" | "confirmed",
           method: p.method,
           clientPaidFirst: p.clientPaidFirst,
+          settledByBill: p.settledByBill
+            ? { vendor: p.settledByBill.vendor, number: p.settledByBill.number, driveUrl: p.settledByBill.driveUrl }
+            : null,
+          invoiceWaivedReason: p.invoiceWaivedReason,
         })),
     }));
   const hasPayouts = project.payouts.length > 0;
@@ -256,6 +263,17 @@ export default async function ProjectDetailPage({
         select: { id: true, monthlyFee: true, status: true, startDate: true },
       })
     : null;
+  // Unlinked, non-void vendor bills on this project — the candidates a managing
+  // partner can attach to a contractor payout in the Team Ledger (Phase 2).
+  const projectBillOptions = managingPartner
+    ? (
+        await prisma.bill.findMany({
+          where: { projectId: id, status: { not: "void" }, settledPayouts: { none: {} } },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, vendor: true, number: true, amount: true, total: true, driveUrl: true },
+        })
+      ).map((b) => ({ id: b.id, vendor: b.vendor, number: b.number, amount: b.total || b.amount, hasDoc: !!b.driveUrl }))
+    : [];
   const projectCommissionRows = projectCommissionRaw.map((r) => ({
     id: r.id,
     partnerId: r.partnerId,
@@ -655,7 +673,7 @@ export default async function ProjectDetailPage({
           />
 
           {(hasPayouts || payoutStages.length > 0) && (
-            <TeamLedger projectId={project.id} stages={payoutStages} />
+            <TeamLedger projectId={project.id} stages={payoutStages} canManage={managingPartner} projectBills={projectBillOptions} />
           )}
 
           <ChangeThread entries={billingThread} title="Billing change log" />

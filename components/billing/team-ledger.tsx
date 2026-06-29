@@ -16,6 +16,7 @@ import {
   markPayoutPaid,
   markPayoutConfirmed,
 } from "@/app/(app)/projects/[id]/payout-actions";
+import { PayoutInvoiceLink, type PayoutLinkCandidate, type PayoutLinkState } from "@/components/billing/payout-invoice-link";
 
 const money = (n: number) => formatCAD(n).replace("CA$", "$");
 
@@ -26,6 +27,10 @@ export type LedgerPayout = {
   status: "owed" | "paid" | "confirmed";
   method: string | null;
   clientPaidFirst: boolean | null;
+  // Phase 2 cross-reference: the vendor invoice this payment is settled by, or an
+  // MP's "no invoice required" reason. Either clears the missing-document flag.
+  settledByBill: { vendor: string; number: string | null; driveUrl: string | null } | null;
+  invoiceWaivedReason: string | null;
 };
 
 export type LedgerStage = {
@@ -36,9 +41,22 @@ export type LedgerStage = {
   payouts: LedgerPayout[];
 };
 
+// Unlinked, non-void bills on THIS project a payout can be attached to.
+export type ProjectBillOption = { id: string; vendor: string; number: string | null; amount: number; hasDoc: boolean };
+
 const statusTone = { owed: "neutral", paid: "gold", confirmed: "steel" } as const;
 
-export function TeamLedger({ projectId, stages }: { projectId: string; stages: LedgerStage[] }) {
+export function TeamLedger({
+  projectId,
+  stages,
+  canManage = false,
+  projectBills = [],
+}: {
+  projectId: string;
+  stages: LedgerStage[];
+  canManage?: boolean;
+  projectBills?: ProjectBillOption[];
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -49,6 +67,15 @@ export function TeamLedger({ projectId, stages }: { projectId: string; stages: L
   const totalOwed = stages.flatMap((s) => s.payouts).filter((p) => p.status === "owed").reduce((s, p) => s + p.amount, 0);
   const totalPaid = stages.flatMap((s) => s.payouts).filter((p) => p.status !== "owed").reduce((s, p) => s + p.amount, 0);
   const hasAny = stages.some((s) => s.payouts.length > 0);
+
+  // Every project bill is same-project for the attach picker.
+  const candidates: PayoutLinkCandidate[] = projectBills.map((b) => ({ ...b, sameProject: true }));
+  const linkState = (p: LedgerPayout): PayoutLinkState => ({
+    payoutId: p.id,
+    amount: p.amount,
+    linked: p.settledByBill,
+    waiverReason: p.invoiceWaivedReason,
+  });
 
   function run(fn: () => Promise<unknown>, onDone?: () => void) {
     setError(null);
@@ -102,7 +129,8 @@ export function TeamLedger({ projectId, stages }: { projectId: string; stages: L
                 <div className="px-5 pb-2.5 text-[11px] text-bone-mute">No payouts for this stage.</div>
               ) : (
                 stage.payouts.map((p) => (
-                  <div key={p.id} className="grid grid-cols-[1.3fr_110px_1fr_auto] gap-3 px-5 py-2.5 items-center border-t border-graphite/30">
+                  <div key={p.id} className="border-t border-graphite/30">
+                  <div className="grid grid-cols-[1.3fr_110px_1fr_auto] gap-3 px-5 py-2.5 items-center">
                     <span className="text-[13px] text-bone truncate">{p.consultantName}</span>
 
                     {editingId === p.id ? (
@@ -168,6 +196,12 @@ export function TeamLedger({ projectId, stages }: { projectId: string; stages: L
                       )}
                       {p.status === "confirmed" && <CircleCheck size={14} strokeWidth={1.5} className="text-diagnostic-steel" />}
                     </div>
+                    </div>
+                    {canManage && (p.status !== "owed" || p.settledByBill || p.invoiceWaivedReason) && (
+                      <div className="px-5 pb-2.5 flex justify-end">
+                        <PayoutInvoiceLink payout={linkState(p)} candidates={candidates} align="end" />
+                      </div>
+                    )}
                   </div>
                 ))
               )}

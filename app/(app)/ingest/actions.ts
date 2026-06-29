@@ -557,7 +557,11 @@ export async function rejectProposal(id: string) {
 // proposal is marked handled (approved) so it can't double-create. Intentionally
 // NOT MP-gated: filing a detected vendor bill is data entry — the managing-partner
 // gate is on viewing/paying in the AP/AR tab, not on logging what arrived.
-export async function createBillFromProposal(id: string) {
+// `settledPayoutIds` (Phase 2) links the new bill to the contractor payout(s) it
+// documents in the SAME transaction — the picker that supplies them is itself
+// MP-gated in the ingest card. The updateMany guards projectId + unlinked, so a
+// stale or cross-project id is silently ignored rather than mis-linked.
+export async function createBillFromProposal(id: string, opts?: { settledPayoutIds?: string[] }) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const label = session.user.name ?? session.user.email ?? "Unknown";
@@ -614,6 +618,17 @@ export async function createBillFromProposal(id: string) {
         createdBy: label,
       },
     });
+    // Phase 2: cross-reference the bill to the contractor payout(s) it settles.
+    // Guarded to this project's still-unlinked payouts so a bad id can't mis-link.
+    let linkedPayouts = 0;
+    if (opts?.settledPayoutIds?.length && proposal.matchedProjectId) {
+      const res = await tx.consultantPayout.updateMany({
+        where: { id: { in: opts.settledPayoutIds }, projectId: proposal.matchedProjectId, settledByBillId: null },
+        // A real invoice supersedes any prior "no invoice required" waiver (matches linkPayoutToBill).
+        data: { settledByBillId: created.id, invoiceWaivedReason: null },
+      });
+      linkedPayouts = res.count;
+    }
     await tx.ingestProposal.update({
       where: { id },
       data: { status: "approved", reviewedBy: label, reviewedAt: new Date() },
@@ -623,7 +638,7 @@ export async function createBillFromProposal(id: string) {
       action: "create.billFromProposal",
       targetType: "Bill",
       targetId: created.id,
-      changes: { vendor: bill.vendor, amount, source: "gmail_ingest", ingestProposalId: id },
+      changes: { vendor: bill.vendor, amount, source: "gmail_ingest", ingestProposalId: id, linkedPayouts },
     });
     await writeActivity(tx, {
       actor,

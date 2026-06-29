@@ -1,7 +1,8 @@
 import { Header } from "@/components/header";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { IngestView, type ProposalProp } from "@/components/ingest-view";
+import { currentIsManagingPartner } from "@/lib/permissions";
+import { IngestView, type ProposalProp, type IngestPayoutOption } from "@/components/ingest-view";
 import type { ExtractedProposal } from "@/app/(app)/ingest/actions";
 import { isUnifiedProposal, type IngestTargetKind, type UnifiedProposal } from "@/lib/ingest/types";
 
@@ -32,7 +33,7 @@ export default async function IngestPage({
     }
   }
 
-  const [pending, partners, consultants, contacts, clients, projects, deals] = await Promise.all([
+  const [pending, partners, consultants, contacts, clients, projects, deals, isMP] = await Promise.all([
     prisma.ingestProposal.findMany({
       // Scope-pricing proposals are reviewed on their project page, not here.
       // NOTE: a `NOT`/`not` filter on a NULLABLE field excludes NULL rows in
@@ -67,11 +68,29 @@ export default async function IngestPage({
       orderBy: { updatedAt: "desc" },
     }),
     prisma.deal.findMany({ select: { id: true, company: true, stage: true }, orderBy: { lastTouchAt: "desc" } }),
+    currentIsManagingPartner(),
   ]);
 
   const projectLabels: Record<string, string> = Object.fromEntries(
     projects.map((p) => [p.id, `${p.client.company} · ${p.name}`]),
   );
+
+  // Phase 2: for managing partners only, gather the unlinked contractor payouts on
+  // each matched project so the ingest card can offer "link this invoice to the
+  // payout(s) it documents" when filing a vendor bill. Non-MPs never see payout
+  // amounts here (the picker is gated client-side AND this fetch is skipped).
+  const matchedProjectIds = [...new Set(pending.map((p) => p.matchedProjectId).filter((x): x is string => !!x))];
+  const payoutsByProject: Record<string, IngestPayoutOption[]> = {};
+  if (isMP && matchedProjectIds.length) {
+    const payoutRows = await prisma.consultantPayout.findMany({
+      where: { projectId: { in: matchedProjectIds }, settledByBillId: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, amount: true, status: true, projectId: true, consultant: { select: { name: true } } },
+    });
+    for (const r of payoutRows) {
+      (payoutsByProject[r.projectId] ??= []).push({ id: r.id, consultantName: r.consultant.name, amount: r.amount, status: r.status });
+    }
+  }
 
   const proposals: ProposalProp[] = pending.map((p) => {
     const raw = p.proposal as unknown;
@@ -108,6 +127,8 @@ export default async function IngestPage({
         projects={projectOpts}
         deals={dealOpts}
         currentPartnerId={partnerId}
+        canLinkPayouts={isMP}
+        payoutsByProject={payoutsByProject}
         initialFocus={initialFocus}
       />
     </>

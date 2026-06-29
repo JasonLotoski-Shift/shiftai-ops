@@ -902,9 +902,9 @@ const flows: Flow[] = [
     blurb: "Financials → Ledger is the general ledger: every invoice coming in, and every bill, expense, and contractor payout going out, in one table. Managing partners only.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Financials → Ledger. Filter by type, money in or out, settled or outstanding, or search a name or project. Group by Entity to see everything for one person or vendor at once (a contractor's payouts and their invoices side by side), by Project, or by Month" },
-      { tone: "review", kind: "You see", label: "Contractor payouts now appear here, not only on the project page. Anything paid without an invoice or receipt on file is flagged at the top under “Needs a document” with the amount, so nothing slips through. A likely payout-and-bill match shows an “≈ pair” chip" },
-      { tone: "claude", kind: "Next", label: "Confirming a payout-to-invoice link (so a contractor's payment and the invoice that documents it never double-count, and the flag clears) lands in the next update, once the one-field change to the database is applied" },
-      { tone: "write", kind: "Saved", label: "Nothing new is stored — the ledger is a read-only view over invoices, bills, expenses, and payouts already in the books. Export CSV hands the whole ledger (now including payouts) to your bookkeeper" },
+      { tone: "review", kind: "You see", label: "Contractor payouts now appear here, not only on the project page. Anything paid without an invoice or receipt on file is flagged at the top under “Needs a document” with the amount and the dollar exposure, so nothing slips through" },
+      { tone: "review", kind: "You do", label: "Link a contractor payout to the vendor invoice that documents it — right in the worklist, on the project's Team payouts, or while filing the invoice from Ingest — or mark it “no invoice required” with a reason. The flag clears, and because the payout is the cash and the invoice is just its paperwork, the two never double-count: “Money out” stays one correct number" },
+      { tone: "write", kind: "Saved", label: "The payout-to-invoice link (and any waiver reason) is stored on the payout with an AuditLog row; everything else is a read-only view over invoices, bills, expenses, and payouts already in the books. Export CSV (now including payouts) adds a column marking which rows count as cash, so the bookkeeper never double-counts a linked pair" },
     ],
   },
   {

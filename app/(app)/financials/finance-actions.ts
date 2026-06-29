@@ -230,6 +230,123 @@ export async function markBillPaid(billId: string, paidDate?: string | null) {
   return { status: "paid" as const, paidAt };
 }
 
+// ── Payout ↔ bill cross-reference (Phase 2) ─────────────────────────────────
+// Tie a contractor payment (ConsultantPayout — the cash that moved) to the vendor
+// invoice (Bill) that justifies it, or mark that it legitimately needs no invoice.
+// Either one clears the payout's "missing a document" flag, with an audit trail —
+// never silently. MP-gated: these surfaces expose contractor pay + vendor spend.
+
+/** Link a payout to the Bill that documents it. NOT exclusive — several payouts
+ *  (stages of one engagement) can settle against one lump invoice. Linking a real
+ *  invoice supersedes any prior "no invoice required" waiver. */
+export async function linkPayoutToBill(payoutId: string, billId: string) {
+  await requireManagingPartner();
+  const { actor } = await getActor();
+
+  const [payout, bill] = await Promise.all([
+    prisma.consultantPayout.findUnique({
+      where: { id: payoutId },
+      select: { id: true, projectId: true, settledByBillId: true, consultant: { select: { name: true } } },
+    }),
+    prisma.bill.findUnique({ where: { id: billId }, select: { id: true, vendor: true, number: true, status: true } }),
+  ]);
+  if (!payout) throw new Error("Payout not found");
+  if (!bill) throw new Error("Bill not found");
+  if (bill.status === "void") throw new Error("That bill is void — pick another invoice");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.consultantPayout.update({
+      where: { id: payoutId },
+      data: { settledByBillId: billId, invoiceWaivedReason: null },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "link.payout.bill",
+      targetType: "ConsultantPayout",
+      targetId: payoutId,
+      changes: { settledByBillId: { before: payout.settledByBillId, after: billId }, billVendor: bill.vendor, billNumber: bill.number },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "doc",
+      target: payout.consultant.name,
+      detail: `Linked payout to invoice · ${bill.vendor}${bill.number ? ` · ${bill.number}` : ""}`,
+      link: "/financials",
+    });
+  });
+
+  revalidatePath("/financials");
+  revalidatePath(`/projects/${payout.projectId}`);
+  return { ok: true as const };
+}
+
+/** Remove a payout↔bill link (the payout flags as missing-doc again unless waived). */
+export async function unlinkPayoutBill(payoutId: string) {
+  await requireManagingPartner();
+  const { actor } = await getActor();
+  const payout = await prisma.consultantPayout.findUnique({
+    where: { id: payoutId },
+    select: { id: true, projectId: true, settledByBillId: true, consultant: { select: { name: true } } },
+  });
+  if (!payout) throw new Error("Payout not found");
+  if (!payout.settledByBillId) return { ok: true as const };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.consultantPayout.update({ where: { id: payoutId }, data: { settledByBillId: null } });
+    await writeAudit(tx, {
+      actor,
+      action: "unlink.payout.bill",
+      targetType: "ConsultantPayout",
+      targetId: payoutId,
+      changes: { settledByBillId: { before: payout.settledByBillId, after: null } },
+    });
+  });
+
+  revalidatePath("/financials");
+  revalidatePath(`/projects/${payout.projectId}`);
+  return { ok: true as const };
+}
+
+/** Mark a payout as legitimately needing no invoice (reason required), or clear
+ *  that waiver (reason = null). Clears the missing-document flag with an audit row. */
+export async function waivePayoutInvoice(payoutId: string, reason: string | null) {
+  await requireManagingPartner();
+  const { actor } = await getActor();
+  const payout = await prisma.consultantPayout.findUnique({
+    where: { id: payoutId },
+    select: { id: true, projectId: true, invoiceWaivedReason: true, consultant: { select: { name: true } } },
+  });
+  if (!payout) throw new Error("Payout not found");
+
+  const trimmed = reason?.trim() ?? "";
+  if (reason !== null && !trimmed) throw new Error("Add a short reason, or cancel");
+  const next = reason === null ? null : trimmed;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.consultantPayout.update({ where: { id: payoutId }, data: { invoiceWaivedReason: next } });
+    await writeAudit(tx, {
+      actor,
+      action: next ? "waive.payout.invoice" : "unwaive.payout.invoice",
+      targetType: "ConsultantPayout",
+      targetId: payoutId,
+      changes: { invoiceWaivedReason: { before: payout.invoiceWaivedReason, after: next } },
+    });
+    if (next) {
+      await writeActivity(tx, {
+        actor,
+        type: "status",
+        target: payout.consultant.name,
+        detail: `Marked payout "no invoice required" · ${next}`,
+        link: "/financials",
+      });
+    }
+  });
+
+  revalidatePath("/financials");
+  revalidatePath(`/projects/${payout.projectId}`);
+  return { ok: true as const, waived: !!next };
+}
+
 // ── Expenses ─────────────────────────────────────────────────────────────
 
 export type CreateExpenseInput = {
@@ -576,7 +693,7 @@ export async function exportLedgerCsv(): Promise<{ filename: string; csv: string
     csvRow([
       "Type", "Direction", "Date", "Party", "Project", "Number", "Category",
       "Description", "Amount_CAD", "Orig_Currency", "Orig_Amount", "Status",
-      "Paid_Date", "Has_Document", "Drive_URL",
+      "Paid_Date", "Has_Document", "Counts_As_Cash", "Drive_URL",
     ]),
   ];
   for (const e of entries) {
@@ -596,6 +713,9 @@ export async function exportLedgerCsv(): Promise<{ filename: string; csv: string
         e.statusLabel,
         iso(e.paidDate),
         e.hasDocument ? "yes" : "no",
+        // "no" on the bill side of a confirmed payout↔bill pair — the payout
+        // carries the cash, so summing only Counts_As_Cash=yes never double-counts.
+        e.countsAsCashOut ? "yes" : "no",
         e.driveUrl ?? "",
       ]),
     );
