@@ -174,7 +174,7 @@ export default async function FinancialsPage() {
   let apAr: ApArProps | null = null;
   if (managingPartner) {
    try {
-    const [arInvoices, bills, expenses, partners, clientList, projectList] = await Promise.all([
+    const [arInvoices, bills, expenses, consultants, clientList, projectList] = await Promise.all([
       prisma.invoice.findMany({
         where: { status: { in: ["sent", "overdue"] } },
         orderBy: { dueAt: "asc" },
@@ -190,7 +190,7 @@ export default async function FinancialsPage() {
         take: 100,
         select: { id: true, vendor: true, description: true, category: true, kind: true, amount: true, total: true, origAmount: true, origCurrency: true, status: true, spentAt: true, needsPhoto: true, driveUrl: true, recurring: true, renewalDate: true, paidBy: { select: { name: true } }, paidByConsultant: { select: { name: true } } },
       }),
-      prisma.partner.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+      prisma.consultant.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
       prisma.client.findMany({ orderBy: { company: "asc" }, select: { id: true, company: true } }),
       prisma.project.findMany({ where: { status: { not: "closed" } }, orderBy: { startDate: "desc" }, select: { id: true, name: true } }),
     ]);
@@ -239,7 +239,7 @@ export default async function FinancialsPage() {
         recurring: e.recurring,
         renewalDate: e.renewalDate ? e.renewalDate.toISOString() : null,
       })),
-      partners,
+      consultants,
       clients: clientList,
       projects: projectList.map((p) => ({ id: p.id, name: p.name.split("·")[1]?.trim() ?? p.name })),
     };

@@ -69,7 +69,7 @@ export type ApArProps = {
   invoices: InvoiceRow[];
   bills: BillRow[];
   expenses: ExpenseRow[];
-  partners: { id: string; name: string }[];
+  consultants: { id: string; name: string }[]; // the people roster — reimburse "Paid by"
   clients: { id: string; company: string }[];
   projects: { id: string; name: string }[];
 };
@@ -104,7 +104,7 @@ export function FinancialsTabs({
   );
 }
 
-function ApArView({ invoices, bills, expenses, partners, clients, projects }: ApArProps) {
+function ApArView({ invoices, bills, expenses, consultants, clients, projects }: ApArProps) {
   const router = useRouter();
   const [pendingId, startPaid] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
@@ -412,7 +412,7 @@ function ApArView({ invoices, bills, expenses, partners, clients, projects }: Ap
 
       {modal && (
         <UploadFinanceModal
-          partners={partners}
+          consultants={consultants}
           clients={clients}
           projects={projects}
           onClose={() => setModal(false)}

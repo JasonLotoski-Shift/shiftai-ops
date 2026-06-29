@@ -43,13 +43,13 @@ function todayISO(): string {
 }
 
 export function UploadFinanceModal({
-  partners,
+  consultants,
   clients,
   projects,
   onClose,
   onSaved,
 }: {
-  partners: { id: string; name: string }[];
+  consultants: { id: string; name: string }[];
   clients: { id: string; company: string }[];
   projects: { id: string; name: string }[];
   onClose: () => void;
@@ -170,7 +170,7 @@ export function UploadFinanceModal({
             spentAt,
             mileageUnit: category === "fuel_mileage" ? mileageUnit : null,
             mileageKm: isMileageKm ? Number(mileageKm) : null,
-            paidById: kind === "reimbursable" ? paidById || null : null,
+            paidByConsultantId: kind === "reimbursable" ? paidById || null : null,
             recurring: kind === "subscription",
             renewalDate: kind === "subscription" ? renewalDate || null : null,
             clientId: clientId || null,
@@ -290,7 +290,7 @@ export function UploadFinanceModal({
                 mileageUnit={mileageUnit} setMileageUnit={setMileageUnit}
                 mileageKm={mileageKm} setMileageKm={setMileageKm}
                 renewalDate={renewalDate} setRenewalDate={setRenewalDate}
-                partners={partners}
+                consultants={consultants}
                 isMileageKm={isMileageKm}
                 disabled={isSaving}
               />
@@ -388,7 +388,7 @@ function ExpenseFields(p: {
   mileageUnit: MileageUnit; setMileageUnit: (v: MileageUnit) => void;
   mileageKm: string; setMileageKm: (v: string) => void;
   renewalDate: string; setRenewalDate: (v: string) => void;
-  partners: { id: string; name: string }[];
+  consultants: { id: string; name: string }[];
   isMileageKm: boolean;
   disabled: boolean;
 }) {
@@ -462,7 +462,7 @@ function ExpenseFields(p: {
             <Label>Paid by</Label>
             <Select value={p.paidById} onChange={(e) => p.setPaidById(e.target.value)} disabled={p.disabled}>
               <option value="">— me —</option>
-              {p.partners.map((pt) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
+              {p.consultants.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </div>
         )}
