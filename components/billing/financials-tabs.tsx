@@ -21,6 +21,8 @@ import type { BillStatus, ExpenseCategory, ExpenseKind, ExpenseStatus } from "@/
 import { markBillPaid, markExpenseReimbursed, markExpensePaid, exportLedgerCsv } from "@/app/(app)/financials/finance-actions";
 import { markInvoicePaid } from "@/app/(app)/invoices/[id]/actions";
 import { UploadFinanceModal } from "@/components/billing/upload-finance-modal";
+import { LedgerTable } from "@/components/billing/ledger-table";
+import type { LedgerEntry } from "@/lib/finance-ledger";
 
 type InvoiceRow = {
   id: string;
@@ -76,22 +78,26 @@ const cad = (n: number) => formatCAD(n).replace("CA$", "$");
 export function FinancialsTabs({
   canSeeApAr,
   apAr,
+  ledger,
   children,
 }: {
   canSeeApAr: boolean;
   apAr: ApArProps | null;
+  ledger: LedgerEntry[] | null;
   children: React.ReactNode;
 }) {
-  const [tab, setTab] = useState<"overview" | "apar">("overview");
+  const [tab, setTab] = useState<"overview" | "ledger" | "apar">("overview");
   const tabs = [{ key: "overview", label: "Overview" }];
+  if (ledger) tabs.push({ key: "ledger", label: "Ledger" });
   if (canSeeApAr) tabs.push({ key: "apar", label: "AP / AR" });
 
   return (
     <>
       <div className="px-8 pt-5 border-b border-graphite">
-        <Tabs tabs={tabs} active={tab} onChange={(k) => setTab(k as "overview" | "apar")} />
+        <Tabs tabs={tabs} active={tab} onChange={(k) => setTab(k as "overview" | "ledger" | "apar")} />
       </div>
       <div className={tab === "overview" ? "" : "hidden"}>{children}</div>
+      {ledger && tab === "ledger" && <LedgerTable entries={ledger} />}
       {canSeeApAr && apAr && tab === "apar" && <ApArView {...apAr} />}
     </>
   );

@@ -11,6 +11,7 @@ import { currentIsManagingPartner } from "@/lib/permissions";
 import { ForecastSummary } from "@/components/billing/forecast-summary";
 import { CommissionSummary, type CommissionFlowRow } from "@/components/billing/commission-summary";
 import { FinancialsTabs, type ApArProps } from "@/components/billing/financials-tabs";
+import { loadLedgerEntries } from "@/app/(app)/financials/ledger-data";
 
 // Firm Financials — the firm-wide revenue rollup (Phase 3). Aggregates every
 // project's economics into contracted / invoiced / received / AR plus the
@@ -248,6 +249,12 @@ export default async function FinancialsPage() {
    }
   }
 
+  // ── General ledger (managing partners only — same gate as AP/AR) ──
+  // The GL pulls every money movement (invoices in + bills/expenses/payouts out)
+  // through one normalizer. loadLedgerEntries degrades to null pre-migration so a
+  // missing money table never 500s the page.
+  const ledger = managingPartner ? await loadLedgerEntries() : null;
+
   return (
     <>
       <Header
@@ -275,7 +282,7 @@ export default async function FinancialsPage() {
         }
       />
 
-      <FinancialsTabs canSeeApAr={apAr !== null} apAr={apAr}>
+      <FinancialsTabs canSeeApAr={apAr !== null} apAr={apAr} ledger={ledger}>
       <div className="px-8 py-8 flex flex-col gap-8">
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-5"><Stat label="Contracted" value={cad(contracted)} delta={`${rows.length} projects`} /></Card>

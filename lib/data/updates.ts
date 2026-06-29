@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-28",
     tag: "new",
+    title: "A general ledger in Financials: every payment in one place",
+    detail:
+      "Financials has a new Ledger tab. It lists every money movement in one table: invoices coming in, plus bills, expenses, and contractor payouts going out. Contractor payouts used to live only on the project page; now they roll up into Financials too. Filter by type, money in or out, settled or outstanding, or search a name or project, and group by Entity to see everything for one person or vendor at once (a contractor's payouts and their invoices side by side), by Project, or by Month. Anything paid without an invoice or receipt on file is flagged at the top under “Needs a document” with the amount, so nothing slips through. A likely payout-and-bill match shows an “≈ pair” chip; confirming that link so the two never double-count comes in the next update. Export CSV now includes payouts. Managing partners only.",
+  },
+  {
+    date: "2026-06-28",
+    tag: "new",
     title: "Money emails sort four ways now — incl. reimbursements and USD",
     detail:
       "An email in the ops-AR/AP label is read as one of four things and filed the right way from the review: a vendor bill we owe (Add to AP); a receipt someone paid on their OWN card (Reimburse — pick the partner or contractor, and it's tracked as owed to them until you pay them back); a receipt already paid on a firm card (Log firm-paid, a record only); or a payment on an invoice we sent (Mark paid). USD invoices convert to CAD automatically at a rough rate, and the original USD figure stays on the record and in the bookkeeper CSV. Filing happens through these actions, so a money email can't be marked done without actually landing in the books.",

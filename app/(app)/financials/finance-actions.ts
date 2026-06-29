@@ -25,6 +25,8 @@ import {
   EXPENSE_CATEGORY_LABELS,
 } from "@/lib/finance";
 import { formatCAD } from "@/lib/format";
+import { loadLedgerEntries } from "@/app/(app)/financials/ledger-data";
+import { LEDGER_TYPE_LABELS } from "@/lib/finance-ledger";
 import type { ExpenseCategory, ExpenseKind, MileageUnit } from "@/lib/types";
 
 export type FinanceFile = { base64: string; mimeType: string; fileName: string };
@@ -554,9 +556,11 @@ export async function scanReceipt(input: { base64: string; mediaType: string }):
   };
 }
 
-// ── Accountant CSV export (Phase 3) ────────────────────────────────────────
-// One unified money ledger (AR invoices + AP bills + expenses) as CSV for the
-// bookkeeper. MP-gated; read-only. The client turns the string into a download.
+// ── Accountant CSV export ──────────────────────────────────────────────────
+// The full general ledger (AR invoices + AP bills + expenses + contractor
+// payouts) as CSV for the bookkeeper. Reads the SAME normalizer as the on-screen
+// Ledger tab (loadLedgerEntries) so the export and the screen never drift.
+// MP-gated; read-only. The client turns the string into a download.
 
 function csvCell(v: unknown): string {
   const s = v == null ? "" : String(v);
@@ -566,33 +570,36 @@ const csvRow = (cells: unknown[]) => cells.map(csvCell).join(",");
 
 export async function exportLedgerCsv(): Promise<{ filename: string; csv: string }> {
   await requireManagingPartner();
-  const [invoices, bills, expenses] = await Promise.all([
-    prisma.invoice.findMany({
-      orderBy: { issuedAt: "desc" },
-      select: { number: true, amount: true, total: true, issuedAt: true, paidAt: true, status: true, client: { select: { company: true } } },
-    }),
-    prisma.bill.findMany({
-      orderBy: { createdAt: "desc" },
-      select: { vendor: true, number: true, amount: true, total: true, origAmount: true, origCurrency: true, issuedAt: true, createdAt: true, paidAt: true, status: true, category: true, description: true, driveUrl: true },
-    }),
-    prisma.expense.findMany({
-      orderBy: { spentAt: "desc" },
-      select: { vendor: true, category: true, amount: true, total: true, origAmount: true, origCurrency: true, spentAt: true, reimbursedAt: true, status: true, description: true, driveUrl: true, paidBy: { select: { name: true } }, paidByConsultant: { select: { name: true } } },
-    }),
-  ]);
-
-  const iso = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
-  const catLabel = (c: ExpenseCategory | null) => (c ? EXPENSE_CATEGORY_LABELS[c] : "");
-  const rows = [csvRow(["Type", "Date", "Party", "Number", "Category", "Description", "Amount_CAD", "Orig_Currency", "Orig_Amount", "Status", "Paid_Date", "Drive_URL"])];
-  for (const i of invoices) {
-    rows.push(csvRow(["AR", iso(i.issuedAt), i.client.company, i.number, "", "", i.total || i.amount, "", "", i.status, iso(i.paidAt), ""]));
+  const entries = (await loadLedgerEntries()) ?? [];
+  const iso = (d?: string | null) => (d ? d.slice(0, 10) : "");
+  const rows = [
+    csvRow([
+      "Type", "Direction", "Date", "Party", "Project", "Number", "Category",
+      "Description", "Amount_CAD", "Orig_Currency", "Orig_Amount", "Status",
+      "Paid_Date", "Has_Document", "Drive_URL",
+    ]),
+  ];
+  for (const e of entries) {
+    rows.push(
+      csvRow([
+        LEDGER_TYPE_LABELS[e.sourceType],
+        e.direction === "in" ? "In" : "Out",
+        iso(e.date),
+        e.party.name,
+        e.projectName ?? "",
+        e.number ?? "",
+        e.categoryLabel ?? "",
+        e.description ?? "",
+        e.amountCad,
+        e.origCurrency ?? "",
+        e.origAmount ?? "",
+        e.statusLabel,
+        iso(e.paidDate),
+        e.hasDocument ? "yes" : "no",
+        e.driveUrl ?? "",
+      ]),
+    );
   }
-  for (const b of bills) {
-    rows.push(csvRow(["AP", iso(b.issuedAt ?? b.createdAt), b.vendor, b.number ?? "", catLabel(b.category), b.description ?? "", b.total || b.amount, b.origCurrency ?? "", b.origAmount ?? "", b.status, iso(b.paidAt), b.driveUrl ?? ""]));
-  }
-  for (const e of expenses) {
-    rows.push(csvRow(["Expense", iso(e.spentAt), e.vendor ?? e.paidBy?.name ?? e.paidByConsultant?.name ?? "", "", catLabel(e.category), e.description ?? "", e.total || e.amount, e.origCurrency ?? "", e.origAmount ?? "", e.status, iso(e.reimbursedAt), e.driveUrl ?? ""]));
-  }
-
-  return { filename: `shift-financials-${iso(new Date())}.csv`, csv: rows.join("\n") };
+  const today = new Date().toISOString().slice(0, 10);
+  return { filename: `shift-financials-${today}.csv`, csv: rows.join("\n") };
 }

@@ -897,6 +897,17 @@ const flows: Flow[] = [
     ],
   },
   {
+    icon: <Calculator size={16} strokeWidth={1.5} />,
+    title: "See every payment in one ledger",
+    blurb: "Financials → Ledger is the general ledger: every invoice coming in, and every bill, expense, and contractor payout going out, in one table. Managing partners only.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "Financials → Ledger. Filter by type, money in or out, settled or outstanding, or search a name or project. Group by Entity to see everything for one person or vendor at once (a contractor's payouts and their invoices side by side), by Project, or by Month" },
+      { tone: "review", kind: "You see", label: "Contractor payouts now appear here, not only on the project page. Anything paid without an invoice or receipt on file is flagged at the top under “Needs a document” with the amount, so nothing slips through. A likely payout-and-bill match shows an “≈ pair” chip" },
+      { tone: "claude", kind: "Next", label: "Confirming a payout-to-invoice link (so a contractor's payment and the invoice that documents it never double-count, and the flag clears) lands in the next update, once the one-field change to the database is applied" },
+      { tone: "write", kind: "Saved", label: "Nothing new is stored — the ledger is a read-only view over invoices, bills, expenses, and payouts already in the books. Export CSV hands the whole ledger (now including payouts) to your bookkeeper" },
+    ],
+  },
+  {
     icon: <FileUp size={16} strokeWidth={1.5} />,
     title: "Import contacts & scan for fit",
     blurb: "Upload a contact export, scan it against your criteria, and push the best into the pipeline.",
