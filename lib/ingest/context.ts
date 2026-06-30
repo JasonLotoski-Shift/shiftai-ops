@@ -33,11 +33,15 @@ export type LinkedPerson = {
   isPrimary: boolean;
 };
 
+// One open task printed as a dedup candidate (id lets the model propose a merge
+// via reassignTaskId, or skip a duplicate). Shared by project + client targets.
+export type OpenTaskRef = { id: string; title: string; owner: string; due: string | null };
+
 // Loaded data for one target, used both to build context and (by the caller's
 // stamping step) as a convenience. Shape is loose — only what we print.
 export type TargetData =
   | { kind: "contact"; id: string; label: string; data: Record<string, unknown> }
-  | { kind: "client"; id: string; label: string; data: Record<string, unknown>; people: LinkedPerson[] }
+  | { kind: "client"; id: string; label: string; data: Record<string, unknown>; people: LinkedPerson[]; openTasks: OpenTaskRef[] }
   | {
       kind: "project";
       id: string;
@@ -45,7 +49,7 @@ export type TargetData =
       data: Record<string, unknown>;
       milestones: { id: string; title: string; status: string }[];
       deliverables: string[];
-      openTasks: { id: string; title: string; owner: string; due: string | null }[];
+      openTasks: OpenTaskRef[];
     }
   | { kind: "deal"; id: string; label: string; data: Record<string, unknown>; people: LinkedPerson[] };
 
@@ -80,6 +84,18 @@ const CONTACT_LINK_SELECT = {
   },
 } as const;
 
+// Open-task select + row→OpenTaskRef map — shared by the project/client target
+// includes and the standalone v1 candidate loader so the dedup list looks
+// identical everywhere it's printed.
+const OPEN_TASK_SELECT = { id: true, title: true, due: true, owner: { select: { name: true } } } as const;
+type OpenTaskRow = { id: string; title: string; due: Date | null; owner: { name: string } | null };
+const mapOpenTask = (t: OpenTaskRow): OpenTaskRef => ({
+  id: t.id,
+  title: t.title,
+  owner: t.owner?.name ?? "—",
+  due: t.due ? formatDate(t.due) : null,
+});
+
 /**
  * Load one target's current data. Returns null if the record doesn't exist
  * (so a bad/stale target id is silently dropped from context).
@@ -111,10 +127,13 @@ export async function fetchTargetData(ref: TargetRef): Promise<TargetData | null
         companyKeyFacts: true, brandColors: true,
         currentSystems: true, painPoints: true, keyServices: true, competitors: true,
         contactLinks: CONTACT_LINK_SELECT,
+        // Open tasks already on this client — the dedup candidate set (3-lane
+        // Phase 2). Capped; the model merges/skips against these via reassignTaskId.
+        tasks: { where: { done: false }, select: OPEN_TASK_SELECT, orderBy: { due: "asc" }, take: 20 },
       },
     });
     if (!c) return null;
-    const { contactLinks, renewalDate, ...rest } = c;
+    const { contactLinks, renewalDate, tasks, ...rest } = c;
     return {
       kind: "client",
       id: ref.id,
@@ -125,6 +144,7 @@ export async function fetchTargetData(ref: TargetRef): Promise<TargetData | null
         unknown
       >,
       people: contactLinks.map(toPerson),
+      openTasks: tasks.map(mapOpenTask),
     };
   }
 
@@ -139,7 +159,7 @@ export async function fetchTargetData(ref: TargetRef): Promise<TargetData | null
         artifacts: { select: { title: true }, orderBy: { createdAt: "desc" }, take: 20 },
         tasks: {
           where: { done: false },
-          select: { id: true, title: true, due: true, owner: { select: { name: true } } },
+          select: OPEN_TASK_SELECT,
           orderBy: { due: "asc" },
         },
       },
@@ -161,12 +181,7 @@ export async function fetchTargetData(ref: TargetRef): Promise<TargetData | null
       },
       milestones: p.milestones.map((m) => ({ id: m.id, title: m.title, status: m.status })),
       deliverables: p.artifacts.map((a) => a.title),
-      openTasks: p.tasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        owner: t.owner?.name ?? "—",
-        due: t.due ? formatDate(t.due) : null,
-      })),
+      openTasks: p.tasks.map(mapOpenTask),
     };
   }
 
@@ -251,6 +266,8 @@ export function buildIngestContext(args: BuildIngestContextArgs): string {
       for (const f of CLIENT_SCALAR_FIELDS) lines.push(`${f}: ${display(t.data[f])}`);
       for (const f of CLIENT_LIST_FIELDS) lines.push(`${f}: ${display(t.data[f])}`);
       pushPeople(lines, t.people);
+      lines.push(t.openTasks.length ? "Open tasks (use the id for reassignTaskId):" : "Open tasks: (none)");
+      for (const ot of t.openTasks) lines.push(`  - [${ot.id}] "${ot.title}" — owner: ${ot.owner}${ot.due ? `, due ${ot.due}` : ""}`);
     } else if (t.kind === "project") {
       lines.push(`phase: ${display(t.data.phase)}`, `status: ${display(t.data.status)}`, `description: ${display(t.data.description)}`);
       lines.push(`objectives: ${display(t.data.objectives)}`, `statusNote: ${display(t.data.statusNote)}`);
@@ -303,5 +320,38 @@ export function formatPartnerRoster(partners: PartnerRosterEntry[]): string {
   const lines: string[] = ["", "## Partner roster (for ownerHint)"];
   if (partners.length === 0) lines.push("(none)");
   for (const p of partners) lines.push(`- ${p.name} (${p.id})`);
+  return lines.join("\n");
+}
+
+/**
+ * Load the bounded open-task candidate list for a client (3-lane Phase 2,
+ * meaning-level dedup). Used by the v1 ingest-meeting context builders (pasted
+ * meeting + Fireflies), which hand-build their context string rather than going
+ * through buildIngestContext. Same select/cap/order as the client target above.
+ * Server-only (touches Prisma).
+ */
+export async function fetchClientOpenTaskCandidates(clientId: string): Promise<OpenTaskRef[]> {
+  const tasks = await prisma.task.findMany({
+    where: { clientId, done: false },
+    select: OPEN_TASK_SELECT,
+    orderBy: { due: "asc" },
+    take: 20,
+  });
+  return tasks.map(mapOpenTask);
+}
+
+/**
+ * Format an open-task candidate list as a context block. The header frames the
+ * tasks as already-on-the-board so the v1 skill skips re-proposing them (v1 has
+ * no reassignTaskId field — dedup there is suppression, not re-own). Returns a
+ * "(none)" block when the client has no open tasks.
+ */
+export function formatOpenTaskCandidates(tasks: OpenTaskRef[]): string {
+  const lines: string[] = ["", "## Open tasks already on this client (do NOT re-propose these — they already exist)"];
+  if (!tasks.length) {
+    lines.push("(none)");
+    return lines.join("\n");
+  }
+  for (const t of tasks) lines.push(`- [${t.id}] "${t.title}" — owner: ${t.owner}${t.due ? `, due ${t.due}` : ""}`);
   return lines.join("\n");
 }

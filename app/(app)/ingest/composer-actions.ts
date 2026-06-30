@@ -292,13 +292,17 @@ export async function extractUnified(input: {
   const raw = await generate({ skill: "ingest", context, intake, maxTokens: 8000, images: images.length ? images : undefined });
   const parsed = parseUnified(raw);
 
-  // Build the set of valid open-task ids (project targets only) for reassign validation.
+  // Build the set of valid open-task ids for reassign validation. Project AND
+  // client targets contribute (3-lane Phase 2: the model can now merge against a
+  // client-scoped open task, not just a project one). Milestones stay project-only.
   const openTaskIds = new Set<string>();
   const milestoneIds = new Set<string>();
   for (const t of loaded) {
     if (t.kind === "project") {
       for (const ot of t.openTasks) openTaskIds.add(ot.id);
       for (const m of t.milestones) if (m.id) milestoneIds.add(m.id);
+    } else if (t.kind === "client") {
+      for (const ot of t.openTasks) openTaskIds.add(ot.id);
     }
   }
 

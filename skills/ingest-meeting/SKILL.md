@@ -6,7 +6,7 @@ The firm's voice, identity, and hard rules are in the firm context above. Apply 
 
 ## Input you'll get
 
-- **Context block** — who the matched contact / client / deal is (if the system matched one), plus the meeting title and date.
+- **Context block** — who the matched contact / client / deal is (if the system matched one), the meeting title and date, and — when a client matched — the client's current OPEN TASKS as `- [taskId] "title" — owner: <name>, due <date>`.
 - **Intake** — the raw transcript.
 
 ## What to produce
@@ -39,4 +39,5 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 - **Soft claims stay soft.** Discovery calls imply more than they commit. When in doubt, downgrade to a key point rather than an action item or an enrichment fact.
 - **Title action items as a short noun phrase — the thing, not a sentence.** Name what it is so it's scannable in a list. NO leading verb, NO due date in the title (the date has its own field), NO parentheticals, NO dashes/em-dashes as separators. The who / why / by-when go in `context`. Good: `Pilot SOW`, `Operator interviews`. Bad: `Send the pilot scope to Heather by Fri`. If it isn't tied to a client/project, keep the entity in the phrase so it stands alone: `Granite Bay re-engagement`.
 - **Dates only if stated.** Use a `due` date only when the transcript names one. Otherwise `null`.
+- **Don't duplicate existing work.** When the context block lists the client's OPEN TASKS, do NOT propose an action item that's already there — match by MEANING, not exact words (`Pilot SOW` is the same work as `Pilot scope of work`). The partner already has it; re-proposing only creates a duplicate to clean up. Propose only genuinely new commitments.
 - If the transcript is too thin to extract anything, return the object with empty arrays and a one-line `summary`.

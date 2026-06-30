@@ -12,6 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import { generate } from "@/lib/ai";
 import { logOps } from "@/lib/ops";
+import { fetchClientOpenTaskCandidates, formatOpenTaskCandidates } from "@/lib/ingest/context";
 
 const FIREFLIES_GRAPHQL = "https://api.fireflies.ai/graphql";
 
@@ -207,9 +208,17 @@ async function ingestOne(opts: {
 
   const match = await matchContact(emails);
 
+  // Meaning-level dedup (3-lane Phase 2): show the matched client's open tasks so
+  // the model doesn't re-propose work already on the board. Advisory — the exact
+  // findDuplicateOpenTask backstop at approve stays the floor.
+  let context = `## Meeting\nTitle: ${title}\nDate: ${meetingDate.toISOString().slice(0, 10)}\nSource: Fireflies`;
+  if (match.clientId) {
+    context += "\n" + formatOpenTaskCandidates(await fetchClientOpenTaskCandidates(match.clientId));
+  }
+
   const raw = await generate({
     skill: "ingest-meeting",
-    context: `## Meeting\nTitle: ${title}\nDate: ${meetingDate.toISOString().slice(0, 10)}\nSource: Fireflies`,
+    context,
     intake: `## Transcript\n${transcript}`,
     maxTokens: 3000,
   });

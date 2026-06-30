@@ -21,6 +21,7 @@ import { notifyPartner } from "@/lib/messaging";
 import { generate } from "@/lib/ai";
 import { formatDate, formatCAD } from "@/lib/format";
 import { findDuplicateOpenTask } from "@/lib/ingest/dedup";
+import { fetchClientOpenTaskCandidates, formatOpenTaskCandidates } from "@/lib/ingest/context";
 import { matchOutstandingInvoice } from "@/lib/finance-match";
 import { convertToCad } from "@/lib/finance";
 import type { ExpenseCategory } from "@/lib/types";
@@ -204,6 +205,13 @@ export async function extractAndQueue(input: {
     ctxLines.push("", "## Matched contact", "Multiple known participants — unassigned (partner will attach).");
   } else {
     ctxLines.push("", "## Matched contact", "No known participant matched — unassigned.");
+  }
+
+  // Meaning-level dedup (3-lane Phase 2): show the matched client's open tasks so
+  // the model doesn't re-propose work already on the board. Advisory — the exact
+  // findDuplicateOpenTask backstop at approve stays the floor.
+  if (match.clientId) {
+    ctxLines.push(formatOpenTaskCandidates(await fetchClientOpenTaskCandidates(match.clientId)));
   }
 
   const raw = await generate({
