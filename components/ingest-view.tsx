@@ -16,21 +16,14 @@ import {
   FolderOpen,
   Link2,
   RefreshCw,
-  Receipt,
-  Info,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Input, Textarea, Select, EmptyState } from "@/components/ui";
 import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
-import { formatCAD } from "@/lib/format";
-import { convertToCad } from "@/lib/finance";
 import {
   extractAndQueue,
   approveProposal,
   rejectProposal,
-  createBillFromProposal,
-  createExpenseFromProposal,
-  reconcileInvoiceFromProposal,
   type ExtractedProposal,
   type ExtractedEnrich,
 } from "@/app/(app)/ingest/actions";
@@ -44,6 +37,7 @@ import { runManualScan, type ScanSource } from "@/app/(app)/ingest/scan-actions"
 import { IngestComposer } from "@/components/ingest/ingest-composer";
 import UnifiedProposalCard from "@/components/ingest/unified-proposal-card";
 import FinancialProposalCard from "@/components/ingest/financial-proposal-card";
+import FirmMeetingProposalCard from "@/components/ingest/firm-meeting-proposal-card";
 import type { IngestTargetKind, UnifiedProposal, CrossReferenceResult } from "@/lib/ingest/types";
 
 export type ProposalProp = {
@@ -175,12 +169,11 @@ export function IngestView({
             const lane = p.lane ?? "client_records";
 
             // The legacy v1 card (ProposalCard). Now ONLY the gold-family fallback
-            // for legacy v1 rows (pasted / Fireflies meetings that aren't
-            // schemaVersion 2 and aren't a project drop). Its in-component finance
-            // branch is DEAD as of Phase 3 — every financial-lane row routes to
-            // FinancialProposalCard below, and client_records / firm_knowledge rows
-            // always carry financeType "none". Left in place to keep this prod
-            // finance push low-risk; safe to delete in a no-behavior cleanup.
+            // for legacy v1 rows (pasted / Fireflies client meetings that aren't
+            // schemaVersion 2 and aren't a project drop). Its dead in-component
+            // finance branch was removed in Phase 4 — financial-lane rows route to
+            // FinancialProposalCard and firm_knowledge rows to FirmMeetingProposalCard,
+            // so this card only ever renders a non-finance client meeting.
             const proposalCard = (
               <ProposalCard
                 key={p.id}
@@ -188,13 +181,10 @@ export function IngestView({
                 open={expanded === p.id}
                 onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
                 partners={partners}
-                consultants={consultants}
                 contacts={contacts}
                 clients={clients}
                 deals={deals}
                 currentPartnerId={currentPartnerId}
-                canLinkPayouts={canLinkPayouts}
-                payoutOptions={p.matchedProjectId ? payoutsByProject[p.matchedProjectId] ?? [] : []}
               />
             );
 
@@ -217,8 +207,22 @@ export function IngestView({
               );
             }
 
-            // client_records (gold) + firm_knowledge (gold until Phase 4): preserve
-            // today's schema/source sub-dispatch.
+            // firm_knowledge (blue) -> the team-meeting card (Phase 4). An all-
+            // internal Fireflies meeting: firm-level records, firm-board tasks, and
+            // a by-exception firm-brain draft behind a second gate.
+            if (lane === "firm_knowledge") {
+              return (
+                <FirmMeetingProposalCard
+                  key={p.id}
+                  p={p}
+                  open={expanded === p.id}
+                  onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
+                  partners={partners}
+                />
+              );
+            }
+
+            // client_records (gold): preserve today's schema/source sub-dispatch.
             if (p.schemaVersion === 2 && p.data) {
               return (
                 <UnifiedProposalCard
@@ -436,39 +440,24 @@ const ENRICH_LABELS: Record<string, string> = {
   logoMonogram: "Logo monogram",
 };
 
-// A small hover (i) that explains a finance action (native title tooltip).
-function FinanceTip({ text }: { text: string }) {
-  return (
-    <span title={text} aria-label={text} tabIndex={0} className="text-bone-mute hover:text-track-gold cursor-help">
-      <Info size={13} strokeWidth={1.5} />
-    </span>
-  );
-}
-
 function ProposalCard({
   p,
   open,
   onToggle,
   partners,
-  consultants,
   contacts,
   clients,
   deals,
   currentPartnerId,
-  canLinkPayouts = false,
-  payoutOptions = [],
 }: {
   p: ProposalProp;
   open: boolean;
   onToggle: () => void;
   partners: { id: string; name: string }[];
-  consultants: { id: string; name: string }[];
   contacts: { id: string; name: string; company: string }[];
   clients: { id: string; company: string }[];
   deals: { id: string; name: string }[];
   currentPartnerId?: string;
-  canLinkPayouts?: boolean;
-  payoutOptions?: IngestPayoutOption[];
 }) {
   const router = useRouter();
   const prop = p.proposal;
@@ -491,9 +480,6 @@ function ProposalCard({
 
   const [contactKeep, setContactKeep] = useState<boolean[]>(prop.enrichment.contact.map(() => true));
   const [clientKeep, setClientKeep] = useState<boolean[]>(prop.enrichment.client.map(() => true));
-
-  // Phase 2: contractor payout(s) this vendor bill settles (MP-only picker below).
-  const [linkPayoutIds, setLinkPayoutIds] = useState<string[]>([]);
 
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -565,92 +551,6 @@ function ProposalCard({
     });
   }
 
-  // Vendor-bill email → file it as a Bill (AP). Marks the proposal handled, and
-  // links any selected contractor payout(s) to the new bill in the same write.
-  function addToBill() {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await createBillFromProposal(p.id, linkPayoutIds.length ? { settledPayoutIds: linkPayoutIds } : undefined);
-        router.refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to add to AP");
-      }
-    });
-  }
-
-  // Payment email → mark the EXISTING invoice paid (AR). Never creates a record.
-  function markPaid() {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await reconcileInvoiceFromProposal(p.id);
-        router.refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to reconcile");
-      }
-    });
-  }
-
-  // Personally-paid receipt → reimbursable Expense for the chosen payer (a partner
-  // OR a consultant). The payer is encoded "p:<id>" / "c:<id>".
-  function reimburse() {
-    setError(null);
-    const [kindTag, payeeId] = payerSel.split(":");
-    if (!payeeId) { setError("Pick who to reimburse"); return; }
-    startTransition(async () => {
-      try {
-        await createExpenseFromProposal(p.id, {
-          kind: "reimbursable",
-          paidById: kindTag === "p" ? payeeId : null,
-          paidByConsultantId: kindTag === "c" ? payeeId : null,
-        });
-        router.refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to log reimbursement");
-      }
-    });
-  }
-
-  // Firm-card receipt (already settled) → a firm-paid Expense record, no payable.
-  function logFirmPaid() {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await createExpenseFromProposal(p.id, { kind: "firm_paid" });
-        router.refresh();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to log expense");
-      }
-    });
-  }
-
-  // Finance classification + payer default (match the detected payer name to a
-  // partner/consultant; else the current partner).
-  const financeType = prop.financeType ?? (prop.billCandidate ? "ap_bill" : prop.arCandidate ? "ar_payment" : "none");
-  const isFinance = (financeType && financeType !== "none") || !!prop.financeIncomplete;
-  const fx = prop.bill ? convertToCad(prop.bill.amount, prop.bill.currency) : null;
-  const billLine = prop.bill
-    ? `${prop.bill.vendor} · ${
-        fx && fx.origCurrency
-          ? `${fx.origCurrency} ${prop.bill.amount} → ${formatCAD(fx.cad).replace("CA$", "$")}`
-          : formatCAD(prop.bill.amount).replace("CA$", "$")
-      }${prop.bill.invoiceNumber ? ` · ${prop.bill.invoiceNumber}` : ""}${prop.bill.dueDate ? ` · due ${prop.bill.dueDate}` : ""}`
-    : "";
-  // The reimburse payer is one of the people on the roster (partners are on it
-  // too). Pre-select ONLY on a confident name match; otherwise leave it empty so
-  // the operator picks the payee deliberately (never silently mis-attribute money).
-  const defaultPayer = (() => {
-    const name = (prop.payer ?? "").toLowerCase().trim();
-    if (name) {
-      const first = name.split(" ")[0];
-      const cm = consultants.find((c) => c.name.toLowerCase().includes(name) || (first && c.name.toLowerCase().includes(first)));
-      if (cm) return `c:${cm.id}`;
-    }
-    return "";
-  })();
-  const [payerSel, setPayerSel] = useState(defaultPayer);
-
   const unassigned = !contactId && !clientId && !dealId;
 
   return (
@@ -665,130 +565,12 @@ function ProposalCard({
           </div>
         </div>
         <span className="flex items-center gap-2 shrink-0">
-          {financeType === "ap_bill" && <Badge tone="steel">AP bill</Badge>}
-          {financeType === "reimbursable" && <Badge tone="steel">reimburse</Badge>}
-          {financeType === "firm_paid" && <Badge tone="steel">firm-paid</Badge>}
-          {financeType === "ar_payment" && <Badge tone="steel">payment (AR)</Badge>}
-          {prop.financeIncomplete && <Badge tone="red">needs detail</Badge>}
           {unassigned ? <Badge tone="red">unassigned</Badge> : <Badge tone="gold">matched</Badge>}
         </span>
       </button>
 
       {open && (
         <div className="px-5 py-5 flex flex-col gap-5">
-          {prop.bill && (financeType === "ap_bill" || financeType === "reimbursable" || financeType === "firm_paid") && (
-            <div className="flex flex-col gap-3 px-4 py-3 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
-              <div className="flex items-start gap-3">
-                <Receipt size={15} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
-                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                  <span className="text-[13px] text-bone font-medium">
-                    {financeType === "ap_bill" ? "Vendor bill we owe (AP)" : financeType === "reimbursable" ? "Paid personally — reimburse" : "Receipt — paid on a firm card"}
-                    {prop.payer ? ` · ${prop.payer}` : ""}
-                  </span>
-                  <span className="text-[12px] text-bone-dim truncate">{billLine}</span>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1">
-                  <Button variant={financeType === "ap_bill" ? "secondary" : "ghost"} size="sm" onClick={addToBill} disabled={isPending}>Add to AP</Button>
-                  <FinanceTip text="A vendor bill we owe (accounts payable). Files it under Financials → AP / AR → Payable, ready to pay. Use this when the email is an invoice billing the firm." />
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Select value={payerSel} onChange={(e) => setPayerSel(e.target.value)} disabled={isPending} className="h-8 text-[12px] w-auto">
-                    {consultants.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.name}</option>)}
-                  </Select>
-                  <Button variant={financeType === "reimbursable" ? "secondary" : "ghost"} size="sm" onClick={reimburse} disabled={isPending}>Reimburse</Button>
-                  <FinanceTip text="Someone paid this on their OWN card and the firm owes them back. Pick who paid in the dropdown — it's tracked as owed to them until you mark it reimbursed on the AP / AR tab." />
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Button variant={financeType === "firm_paid" ? "secondary" : "ghost"} size="sm" onClick={logFirmPaid} disabled={isPending}>Log firm-paid</Button>
-                  <FinanceTip text="Already paid on a FIRM card or account. Records the receipt only, for the books — nothing is owed to anyone. Use this for firm-card purchases and subscriptions." />
-                </span>
-              </div>
-              {canLinkPayouts && financeType === "ap_bill" && payoutOptions.length > 0 && (
-                <div className="flex flex-col gap-1.5 pt-1 border-t border-track-gold/20">
-                  <span className="text-[11px] text-bone-dim">
-                    Settle a contractor payout{p.projectLabel ? ` on ${p.projectLabel}` : ""}? Linking counts the payment once and clears its “needs an invoice” flag.
-                  </span>
-                  <div className="flex flex-col gap-1">
-                    {payoutOptions.map((po) => {
-                      const on = linkPayoutIds.includes(po.id);
-                      return (
-                        <label key={po.id} className="flex items-center gap-2 text-[12px] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            onChange={(e) => setLinkPayoutIds((ids) => (e.target.checked ? [...ids, po.id] : ids.filter((x) => x !== po.id)))}
-                            className="accent-track-gold"
-                          />
-                          <span className="text-bone">{po.consultantName}</span>
-                          <span className="mono text-bone-dim tabular-nums">{formatCAD(po.amount).replace("CA$", "$")}</span>
-                          <Badge tone="neutral">{po.status}</Badge>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <span className="text-[11px] text-bone-mute">
-                Suggested: {financeType === "ap_bill" ? "Add to AP" : financeType === "reimbursable" ? "Reimburse" : "Log firm-paid"}. Pick the right one — filing also clears this item.
-              </span>
-            </div>
-          )}
-          {prop.arCandidate && prop.ar && (
-            <div className="flex items-start gap-3 px-4 py-3 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius)]">
-              <Receipt size={15} strokeWidth={1.5} className="text-track-gold mt-0.5 shrink-0" />
-              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                <span className="text-[13px] text-bone font-medium">Looks like a payment on an invoice (AR)</span>
-                <span className="text-[12px] text-bone-dim truncate">
-                  {prop.ar.invoiceNumber ?? "no invoice # cited"}
-                  {typeof prop.ar.amount === "number" ? ` · ${formatCAD(prop.ar.amount).replace("CA$", "$")}` : ""}
-                  {prop.ar.paidDate ? ` · paid ${prop.ar.paidDate}` : ""}
-                </span>
-                {prop.arMatch ? (
-                  <span className="text-[11px] text-track-gold">
-                    Matches invoice {prop.arMatch.number} · {formatCAD(prop.arMatch.amount).replace("CA$", "$")} (outstanding)
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-bone-mute">
-                    No matching outstanding invoice found — reconcile manually if it&apos;s one we sent.
-                  </span>
-                )}
-              </div>
-              {prop.arMatch && (
-                <Button variant="secondary" size="sm" onClick={markPaid} disabled={isPending}>
-                  {isPending ? "…" : "Mark paid"}
-                </Button>
-              )}
-            </div>
-          )}
-          {prop.financeIncomplete && (
-            <div className="flex items-start gap-3 px-4 py-3 border border-flag-red/40 bg-flag-red/5 rounded-[var(--radius)]">
-              <CircleAlert size={15} strokeWidth={1.5} className="text-flag-red mt-0.5 shrink-0" />
-              <div className="flex flex-col gap-1 min-w-0 flex-1">
-                <span className="text-[13px] text-bone font-medium">Couldn&apos;t read the full invoice</span>
-                <span className="text-[12px] text-bone-dim">
-                  This email links out to the invoice instead of stating the amount. Open it to get the details, then add it manually.
-                </span>
-                {prop.financeLinks && prop.financeLinks.length > 0 && (
-                  <div className="flex flex-col gap-1 pt-1">
-                    {prop.financeLinks.map((href, i) => (
-                      <a
-                        key={i}
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] text-track-gold hover:underline truncate flex items-center gap-1.5"
-                      >
-                        <Link2 size={11} strokeWidth={1.5} className="shrink-0" />
-                        {href}
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
           {/* Attach entity */}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
@@ -922,17 +704,10 @@ function ProposalCard({
 
           <div className="flex justify-between items-center pt-1">
             <Button variant="ghost" size="sm" onClick={reject} disabled={isPending}>Reject</Button>
-            {isFinance ? (
-              // A finance email is handled by its finance action above (Add to AP /
-              // Reimburse / Log firm-paid / Mark paid), not the generic interaction
-              // approve — so it can never be marked done without actually filing.
-              <span className="text-[11px] text-bone-mute">File it with a finance action above, or Reject.</span>
-            ) : (
-              <Button variant="primary" size="sm" onClick={approve} disabled={isPending}>
-                <Check size={13} strokeWidth={1.5} />
-                {isPending ? "Writing…" : "Approve & write"}
-              </Button>
-            )}
+            <Button variant="primary" size="sm" onClick={approve} disabled={isPending}>
+              <Check size={13} strokeWidth={1.5} />
+              {isPending ? "Writing…" : "Approve & write"}
+            </Button>
           </div>
         </div>
       )}

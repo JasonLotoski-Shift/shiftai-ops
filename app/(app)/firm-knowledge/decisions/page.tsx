@@ -12,7 +12,14 @@ import { formatDate } from "@/lib/format";
 // partner decisions never reach a non-MP session. Drafts show an Approve action;
 // only approved decisions are retrievable by skills via fetchHistoricalKnowledge.
 
-export default async function DecisionLogPage() {
+export default async function DecisionLogPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
+  const { filter } = await searchParams;
+  const needsReview = filter === "needs-review";
+
   const [decisions, categories, isManaging] = await Promise.all([
     prisma.decisionRecord.findMany({
       where: { supersededBy: { none: {} } },
@@ -30,6 +37,15 @@ export default async function DecisionLogPage() {
   ]);
 
   const visible = isManaging ? decisions : decisions.filter((d) => d.sensitivity !== "managing_partner");
+
+  // Gate 2 (3-lane Phase 4): meetings promoted toward the firm brain land as
+  // DRAFTS stamped generatedFromSkill "ingest-meeting". "Needs review" narrows to
+  // exactly those — keyed on the skill stamp so manual drafts (generatedFromSkill
+  // null) are never swept in. Any partner may approve (decision 1).
+  const isMeetingDraft = (d: (typeof visible)[number]) =>
+    d.reviewStatus === "draft" && d.generatedFromSkill === "ingest-meeting";
+  const meetingDraftCount = visible.filter(isMeetingDraft).length;
+  const shown = needsReview ? visible.filter(isMeetingDraft) : visible;
 
   return (
     <>
@@ -50,17 +66,39 @@ export default async function DecisionLogPage() {
           Back to firm knowledge
         </Link>
 
-        {visible.length === 0 ? (
+        {meetingDraftCount > 0 && (
+          <div className="flex items-center gap-2">
+            <Link
+              href="/firm-knowledge/decisions"
+              className={`text-[12px] px-3 h-7 inline-flex items-center rounded-full border transition-colors ${!needsReview ? "border-track-gold text-bone" : "border-graphite text-bone-mute hover:text-bone"}`}
+            >
+              All
+            </Link>
+            <Link
+              href="/firm-knowledge/decisions?filter=needs-review"
+              className={`text-[12px] px-3 h-7 inline-flex items-center gap-1.5 rounded-full border transition-colors ${needsReview ? "border-track-gold text-bone" : "border-graphite text-bone-mute hover:text-bone"}`}
+            >
+              Needs review
+              <span className="font-mono tabular-nums">{meetingDraftCount}</span>
+            </Link>
+          </div>
+        )}
+
+        {shown.length === 0 ? (
           <Card>
             <EmptyState
               icon={<Scale size={28} strokeWidth={1.5} />}
-              title="No decisions logged yet"
-              hint="Record the calls that shape the firm — what was decided, the options weighed, the consequences. Skills read approved decisions so they never contradict them."
+              title={needsReview ? "Nothing waiting for review" : "No decisions logged yet"}
+              hint={
+                needsReview
+                  ? "Meeting-ingested decisions awaiting a partner's approval show up here. There are none right now."
+                  : "Record the calls that shape the firm — what was decided, the options weighed, the consequences. Skills read approved decisions so they never contradict them."
+              }
             />
           </Card>
         ) : (
           <div className="flex flex-col gap-4">
-            {visible.map((d) => {
+            {shown.map((d) => {
               const approved = d.reviewStatus === "approved";
               return (
                 <Card key={d.id} className="p-6 flex flex-col gap-3">

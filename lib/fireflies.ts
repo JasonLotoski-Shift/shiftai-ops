@@ -12,7 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import { generate } from "@/lib/ai";
 import { logOps } from "@/lib/ops";
-import { fetchClientOpenTaskCandidates, formatOpenTaskCandidates } from "@/lib/ingest/context";
+import { fetchClientOpenTaskCandidates, fetchFirmOpenTaskCandidates, formatOpenTaskCandidates } from "@/lib/ingest/context";
 
 const FIREFLIES_GRAPHQL = "https://api.fireflies.ai/graphql";
 
@@ -131,13 +131,14 @@ export type FirefliesIngestResult =
   | { status: "deduped"; id: string }
   | { status: "not_found" }
   | { status: "too_short" }
-  | { status: "skipped"; reason: "title-no-match" | "internal-only" }
+  | { status: "skipped"; reason: "title-no-match" }
   | { status: "created"; id: string };
 
 /**
  * Ingest one Fireflies meeting by id → a PENDING IngestProposal. Idempotent on
- * the meeting id (IngestProposal.externalId is UNIQUE). Applies the title +
- * internal-only gate unless `force`.
+ * the meeting id (IngestProposal.externalId is UNIQUE). Applies the title gate
+ * unless `force`. An all-internal meeting routes to the firm_knowledge lane
+ * (BLUE) instead of being skipped; a client meeting routes to client_records.
  */
 export async function ingestFirefliesMeeting(opts: {
   meetingId: string;
@@ -197,22 +198,35 @@ async function ingestOne(opts: {
   const meetingDate = t.date ? new Date(t.date) : new Date();
   const emails = attendeeEmails(t);
 
-  // ── Ingest gate (skipped when force) ──
-  if (!force) {
-    if (!titleMatches(title)) return { status: "skipped", reason: "title-no-match" };
-    // Internal-only meeting (every known attendee on a firm domain) — a partner
-    // sync named "Shift …" shouldn't create a proposal. Only skip when we
-    // actually have attendee emails to judge by.
-    if (emails.length > 0 && emails.every(isInternalEmail)) return { status: "skipped", reason: "internal-only" };
-  }
+  // ── Title gate (skipped when force) ──
+  if (!force && !titleMatches(title)) return { status: "skipped", reason: "title-no-match" };
 
-  const match = await matchContact(emails);
+  // Destination lane (3-lane Phase 4). An all-internal meeting — every known
+  // attendee on a firm domain — is a team/firm sync, so it routes to
+  // firm_knowledge (BLUE): logged at arm's length, feeding the firm brain only by
+  // exception behind two gates. A meeting with an outside attendee (or no
+  // attendee emails to judge by) stays a client record (GOLD). Title-matched
+  // internal meetings are no longer skipped — that filter killed exactly the
+  // meetings Lane 3 wants (docs/ingest-3-lane-plan.md §4a).
+  const allInternal = emails.length > 0 && emails.every(isInternalEmail);
+  const lane = allInternal ? "firm_knowledge" : "client_records";
 
-  // Meaning-level dedup (3-lane Phase 2): show the matched client's open tasks so
-  // the model doesn't re-propose work already on the board. Advisory — the exact
-  // findDuplicateOpenTask backstop at approve stays the floor.
+  // Firm-knowledge meetings are firm-level: never tie to a client / contact /
+  // deal (a partner on the call may also be a Contact row, which would mis-scope
+  // it). Client meetings match an entity as before.
+  const match = allInternal
+    ? { contactId: null, clientId: null, dealId: null }
+    : await matchContact(emails);
+
+  // Meaning-level dedup (3-lane Phase 2/4): print the open tasks the model must
+  // not re-propose. GOLD shows the matched client's board; BLUE shows the firm
+  // board. Advisory — the exact findDuplicateOpenTask backstop at approve stays
+  // the floor.
   let context = `## Meeting\nTitle: ${title}\nDate: ${meetingDate.toISOString().slice(0, 10)}\nSource: Fireflies`;
-  if (match.clientId) {
+  if (allInternal) {
+    context += `\nType: internal team meeting (every attendee is on the firm) — propose firm-level records only; do not invent a client.`;
+    context += "\n" + formatOpenTaskCandidates(await fetchFirmOpenTaskCandidates(), "firm");
+  } else if (match.clientId) {
     context += "\n" + formatOpenTaskCandidates(await fetchClientOpenTaskCandidates(match.clientId));
   }
 
@@ -232,9 +246,9 @@ async function ingestOne(opts: {
       meetingDate,
       transcript,
       proposal: proposal as object,
-      // Title-matched client meeting -> gold. (Phase 4 routes all-internal team
-      // meetings to firm_knowledge; until then those are still skipped above.)
-      lane: "client_records",
+      // All-internal title-matched meeting -> firm_knowledge (BLUE); otherwise a
+      // client meeting -> client_records (GOLD). See docs/ingest-3-lane-plan.md §4.
+      lane,
       status: "pending",
       matchedContactId: match.contactId,
       matchedClientId: match.clientId,

@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-30",
+    tag: "new",
+    title: "File a bill, receipt, or invoice straight from Ingest",
+    detail:
+      "Drop or paste an invoice or receipt into Ingest and it files itself, the same way a bill labeled in Gmail does. Finance now has its own review card: the PDF or photo shows right there so you can read it while you check the numbers, and the vendor, amount, currency, invoice number, and due date are all editable before you file. Tie it to a project, or leave it firm level for overhead like Anthropic, Vercel, or Workspace. Reimburse anyone on the team, partner or contractor, from one list.",
+  },
+  {
+    date: "2026-06-30",
     tag: "improved",
     title: "One commission card per project, and one place for the firm economics",
     detail:

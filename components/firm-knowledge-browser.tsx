@@ -56,6 +56,12 @@ function confidenceTone(c: string | null): "green" | "neutral" | "orange" {
   return "neutral";
 }
 
+// Gate 2 (3-lane Phase 4): a meeting-ingested knowledge item lands as a DRAFT
+// stamped generatedFromSkill "ingest-meeting". "Needs review" narrows to those —
+// keyed on the skill stamp so manual/uploaded drafts are never swept in. Any
+// partner may approve.
+const isMeetingDraft = (r: KnowledgeRow) => r.generatedFromSkill === "ingest-meeting" && r.reviewStatus === "draft";
+
 export function FirmKnowledgeBrowser({
   categories,
   rows,
@@ -70,10 +76,14 @@ export function FirmKnowledgeBrowser({
   const [q, setQ] = useState("");
   // null = all; a slug; or UNCAT for the uncategorised bucket.
   const [cat, setCat] = useState<string | null>(null);
+  const [needsReview, setNeedsReview] = useState(false);
+
+  const needsReviewCount = useMemo(() => rows.filter(isMeetingDraft).length, [rows]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
+      if (needsReview && !isMeetingDraft(r)) return false;
       if (cat === UNCAT && r.categorySlug) return false;
       if (cat && cat !== UNCAT && r.categorySlug !== cat) return false;
       if (!needle) return true;
@@ -84,7 +94,7 @@ export function FirmKnowledgeBrowser({
         humanizeType(r.type).toLowerCase().includes(needle)
       );
     });
-  }, [rows, q, cat]);
+  }, [rows, q, cat, needsReview]);
 
   const activeLabel =
     cat === UNCAT ? "Uncategorised" : cat ? categories.find((c) => c.slug === cat)?.label ?? null : null;
@@ -152,6 +162,19 @@ export function FirmKnowledgeBrowser({
             className="label hover:text-bone flex items-center gap-1.5"
           >
             {activeLabel} ✕
+          </button>
+        )}
+        {needsReviewCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setNeedsReview((v) => !v)}
+            className={cn(
+              "text-[12px] px-3 h-8 inline-flex items-center gap-1.5 rounded-full border transition-colors",
+              needsReview ? "border-track-gold text-bone" : "border-graphite text-bone-mute hover:text-bone",
+            )}
+          >
+            Needs review
+            <span className="font-mono tabular-nums">{needsReviewCount}</span>
           </button>
         )}
         <span className="ml-auto label">

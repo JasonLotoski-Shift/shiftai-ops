@@ -89,6 +89,19 @@ export default async function FirmKnowledgePage() {
   const visibleArtifacts = isManaging ? artifacts : artifacts.filter((a) => a.sensitivity !== "managing_partner");
   const visibleItems = isManaging ? knowledgeItems : knowledgeItems.filter((k) => k.sensitivity !== "managing_partner");
 
+  // Gate 2 (3-lane Phase 4): meeting-ingested DECISION drafts wait behind the
+  // Decision log (a separate page), so badge the button with how many. Knowledge-
+  // item drafts surface via the browser's own "Needs review" pill below. Counted
+  // sensitivity-aware so a non-MP isn't nudged toward drafts the page hides.
+  const meetingDecisionDraftCount = await prisma.decisionRecord.count({
+    where: {
+      reviewStatus: "draft",
+      generatedFromSkill: "ingest-meeting",
+      supersededBy: { none: {} },
+      ...(isManaging ? {} : { sensitivity: "firm_wide" }),
+    },
+  });
+
   const artifactRows: KnowledgeRow[] = visibleArtifacts.map((a) => ({
     id: a.id,
     kind: "artifact",
@@ -161,11 +174,16 @@ export default async function FirmKnowledgePage() {
         actions={
           <div className="flex items-center gap-2">
             <Link
-              href="/firm-knowledge/decisions"
+              href={meetingDecisionDraftCount > 0 ? "/firm-knowledge/decisions?filter=needs-review" : "/firm-knowledge/decisions"}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius)] bg-asphalt border border-graphite text-bone text-[13px] hover:border-bone-mute transition-colors"
             >
               <Scale size={14} strokeWidth={1.5} />
               Decision log
+              {meetingDecisionDraftCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-track-gold/20 text-track-gold text-[11px] font-mono tabular-nums">
+                  {meetingDecisionDraftCount}
+                </span>
+              )}
             </Link>
             <Link
               href="/firm-knowledge/memory"

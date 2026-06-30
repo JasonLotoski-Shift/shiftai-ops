@@ -341,13 +341,35 @@ export async function fetchClientOpenTaskCandidates(clientId: string): Promise<O
 }
 
 /**
+ * Load the bounded open-task candidate list for the FIRM board (firm-level tasks:
+ * no client, no project). The Lane-3 (BLUE) firm-knowledge dedup set, mirroring
+ * findDuplicateOpenTask's firm-level scope (clientId null AND projectId null) so
+ * the candidate list matches what the approve-time backstop dedupes against.
+ * Server-only (touches Prisma).
+ */
+export async function fetchFirmOpenTaskCandidates(): Promise<OpenTaskRef[]> {
+  const tasks = await prisma.task.findMany({
+    where: { clientId: null, projectId: null, done: false },
+    select: OPEN_TASK_SELECT,
+    orderBy: { due: "asc" },
+    take: 20,
+  });
+  return tasks.map(mapOpenTask);
+}
+
+/**
  * Format an open-task candidate list as a context block. The header frames the
  * tasks as already-on-the-board so the v1 skill skips re-proposing them (v1 has
- * no reassignTaskId field — dedup there is suppression, not re-own). Returns a
- * "(none)" block when the client has no open tasks.
+ * no reassignTaskId field — dedup there is suppression, not re-own). `scope`
+ * picks the wording: a client's board (GOLD) or the firm board (BLUE). Returns a
+ * "(none)" block when there are no open tasks.
  */
-export function formatOpenTaskCandidates(tasks: OpenTaskRef[]): string {
-  const lines: string[] = ["", "## Open tasks already on this client (do NOT re-propose these — they already exist)"];
+export function formatOpenTaskCandidates(tasks: OpenTaskRef[], scope: "client" | "firm" = "client"): string {
+  const header =
+    scope === "firm"
+      ? "## Open tasks already on the firm board (do NOT re-propose these; they already exist)"
+      : "## Open tasks already on this client (do NOT re-propose these — they already exist)";
+  const lines: string[] = ["", header];
   if (!tasks.length) {
     lines.push("(none)");
     return lines.join("\n");

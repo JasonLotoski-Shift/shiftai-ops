@@ -56,6 +56,32 @@ export type ExtractedAR = {
 //  firm_paid → Log firm-paid (Expense) · ar_payment → Mark invoice paid · none.
 export type FinanceType = "ap_bill" | "reimbursable" | "ar_payment" | "firm_paid" | "none";
 
+// Lane 3 (firm_knowledge / BLUE) — the by-exception firm-brain candidate the
+// ingest-meeting skill emits for an all-internal team meeting. `isImportant` is
+// false for routine syncs (most meetings produce none); it flips true only when
+// the meeting clears the §9 importance bar. At Gate 1 (approve in /ingest) a kept
+// candidate becomes a DRAFT DecisionRecord (kind "decision") or KnowledgeItem
+// (kind "learning"), stamped generatedFromSkill "ingest-meeting"; Gate 2 (approve
+// in /firm-knowledge) is what makes it skill-readable. Lives in the proposal JSON
+// until Gate 1 promotes it. See docs/ingest-3-lane-plan.md §4c, §9.
+export type KnowledgeCandidate = {
+  isImportant: boolean;
+  kind: "decision" | "learning";
+  title: string;
+  // decision (ADR) fields
+  context?: string | null;
+  optionsConsidered?: string | null;
+  decision?: string | null;
+  consequences?: string | null;
+  // learning (KnowledgeItem) body
+  summary?: string | null;
+  // firm-economics / strategy → managing_partner, so it's filtered from non-MP
+  // reads even after approval (any partner may approve; sensitivity governs reads).
+  sensitivity?: "firm_wide" | "managing_partner";
+  // why it cleared the bar — shown to the partner at Gate 1, not stored.
+  rationale?: string | null;
+};
+
 export type ExtractedProposal = {
   summary: string;
   keyPoints: string[];
@@ -76,6 +102,8 @@ export type ExtractedProposal = {
   // so the figures couldn't be read. The review flags it and surfaces the link(s).
   financeIncomplete?: boolean;
   financeLinks?: string[];
+  // ── Firm knowledge (only set for an all-internal team meeting, Lane 3) ──
+  knowledgeCandidate?: KnowledgeCandidate | null;
 };
 
 const CONTACT_LIST_FIELDS = ["keyFacts", "hobbies", "networkAffiliations"];
@@ -558,6 +586,211 @@ export async function rejectProposal(id: string) {
 
   revalidatePath("/ingest");
   return { ok: true };
+}
+
+// ── Approve a Lane 3 (firm_knowledge / BLUE) team meeting ──
+// A firm-level sibling of approveProposal: the meeting ties to no client/contact/
+// deal. It logs the transcript at ARM'S LENGTH — a firm-level Interaction plus the
+// transcript filed as a firm-scoped Artifact — neither of which any AI skill reads
+// (only APPROVED MemoryBlocks / KnowledgeItems / DecisionRecords load into skill
+// context). Kept action items go to the FIRM task board (category "firm", no
+// client/project), deduped against the firm board. If the partner keeps the
+// meeting's knowledgeCandidate, this writes a DRAFT DecisionRecord/KnowledgeItem
+// (Gate 1) stamped generatedFromSkill "ingest-meeting" — still invisible to skills
+// until a partner approves it in /firm-knowledge (Gate 2). All-or-nothing in one
+// transaction. See docs/ingest-3-lane-plan.md §4.
+export async function approveFirmMeeting(
+  id: string,
+  input: {
+    summary: string;
+    actionItems: { title: string; ownerId: string | null; context: string; due: string }[];
+    // The kept + partner-edited knowledge candidate, or null to discard / none.
+    candidate: KnowledgeCandidate | null;
+  },
+) {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerId = session.user.partnerId;
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = agentActor("ingest-meeting");
+
+  const proposal = await prisma.ingestProposal.findUnique({ where: { id } });
+  if (!proposal) throw new Error("Proposal not found");
+  if (proposal.status !== "pending") throw new Error("Proposal already reviewed");
+
+  const summary = input.summary.trim() || (proposal.proposal as ExtractedProposal).summary || proposal.title;
+
+  // File the transcript to the firm's shared Drive (no client folder — firm-level).
+  // Best-effort, OUTSIDE the transaction (a Drive hiccup must not roll back the DB).
+  const sharedRoot = process.env.DRIVE_SHARED_DRIVE_FOLDER_ID ?? null;
+  let driveUrl: string | null = null;
+  let driveFileId: string | null = null;
+  const fileName = `${proposal.meetingDate.toISOString().slice(0, 10)}-${proposal.title.replace(/\s+/g, "-").slice(0, 60)}-transcript.md`;
+  if (sharedRoot) {
+    try {
+      const res = await drive.files.create({
+        requestBody: { name: fileName, parents: [sharedRoot], mimeType: "text/markdown" },
+        media: { mimeType: "text/markdown", body: Readable.from(`# ${proposal.title}\n\n${proposal.transcript}`) },
+        fields: "id, webViewLink",
+        supportsAllDrives: true,
+      });
+      driveUrl = res.data.webViewLink ?? null;
+      driveFileId = res.data.id ?? null;
+    } catch {
+      // Drive failed — proceed; the transcript text is still on the proposal row + Interaction.
+    }
+  }
+
+  let tasksCreated = 0;
+  const tasksSkipped: { title: string; existingId: string }[] = [];
+  let draft: { kind: "decision" | "learning"; id: string } | null = null;
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Firm-level Interaction (no contact / client / deal) — the arm's-length
+    //    comms body. Its id anchors a meeting-derived DecisionRecord below.
+    const interaction = await tx.interaction.create({
+      data: {
+        contactId: null,
+        type: "meeting",
+        date: proposal.meetingDate,
+        summary,
+        body: proposal.transcript,
+        subject: proposal.title,
+        clientId: null,
+        dealId: null,
+        loggedBy: "AGENT · CLAUDE",
+      },
+      select: { id: true },
+    });
+
+    // 2. Firm-scoped Artifact (the filed transcript) — no client/project/deal, so
+    //    it browses under Firm Knowledge. Skill context never reads Artifacts.
+    if (driveUrl) {
+      await tx.artifact.create({
+        data: {
+          type: "report",
+          title: `Team meeting · ${proposal.title}`,
+          driveUrl,
+          fileName,
+          createdBy: "AGENT · CLAUDE",
+          generatedFromSkill: "ingest-meeting",
+          reviewStatus: "approved",
+        },
+      });
+    }
+
+    // 3. Firm-board tasks from kept action items (category "firm", no client/
+    //    project, owner optional). Dedup against the firm board — never silent.
+    for (const a of input.actionItems) {
+      if (!a.title.trim()) continue;
+      const dup = await findDuplicateOpenTask(tx, { title: a.title, clientId: null, projectId: null });
+      if (dup) {
+        tasksSkipped.push({ title: a.title.trim(), existingId: dup.id });
+        continue;
+      }
+      const d = a.due ? new Date(a.due) : null;
+      await tx.task.create({
+        data: {
+          title: a.title.trim(),
+          priority: "medium",
+          due: d && !Number.isNaN(d.getTime()) ? d : null,
+          context: a.context?.trim() || `From team meeting: ${proposal.title}`,
+          category: "firm",
+          ownerId: a.ownerId || null,
+          assignedById: partnerId,
+        },
+      });
+      tasksCreated++;
+    }
+
+    // 4. Knowledge candidate → a DRAFT record (Gate 1). reviewStatus "draft" keeps
+    //    it out of every skill (fetchHistoricalKnowledge reads approved-only) until
+    //    a partner approves it in /firm-knowledge (Gate 2).
+    const cand = input.candidate;
+    if (cand && cand.title?.trim()) {
+      const sensitivity = cand.sensitivity === "managing_partner" ? "managing_partner" : "firm_wide";
+      if (cand.kind === "decision") {
+        const rec = await tx.decisionRecord.create({
+          data: {
+            title: cand.title.trim(),
+            context: cand.context?.trim() || null,
+            optionsConsidered: cand.optionsConsidered?.trim() || null,
+            decision: cand.decision?.trim() || summary,
+            consequences: cand.consequences?.trim() || null,
+            decidedAt: proposal.meetingDate,
+            decidedByLabel: "AGENT · CLAUDE",
+            sourceInteractionId: interaction.id,
+            reviewStatus: "draft",
+            sensitivity,
+            generatedFromSkill: "ingest-meeting",
+            createdBy: "AGENT · CLAUDE",
+          },
+          select: { id: true },
+        });
+        draft = { kind: "decision", id: rec.id };
+      } else {
+        // KnowledgeItem has no sourceInteractionId — the meeting link is carried by
+        // source "transcript" + generatedFromSkill. Write the body into summary +
+        // extractedText (the columns the generated `fts` tsvector indexes) so it's
+        // retrievable after approval with no re-parse.
+        const body = cand.summary?.trim() || summary;
+        const rec = await tx.knowledgeItem.create({
+          data: {
+            title: cand.title.trim(),
+            source: "transcript",
+            summary: body,
+            extractedText: body,
+            parseStatus: "parsed",
+            parsedAt: new Date(),
+            observedAt: proposal.meetingDate,
+            reviewStatus: "draft",
+            sensitivity,
+            generatedFromSkill: "ingest-meeting",
+            createdBy: "AGENT · CLAUDE",
+            driveUrl: driveUrl ?? null,
+          },
+          select: { id: true },
+        });
+        draft = { kind: "learning", id: rec.id };
+      }
+    }
+
+    // 5. Mark approved + audit + activity. Nothing happens silently.
+    await tx.ingestProposal.update({
+      where: { id },
+      data: { status: "approved", reviewedBy: partnerLabel, reviewedAt: new Date() },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "approve.ingestProposal.firmMeeting",
+      targetType: "IngestProposal",
+      targetId: id,
+      changes: {
+        approvedBy: partnerLabel,
+        lane: "firm_knowledge",
+        tasks: tasksCreated,
+        tasksSkippedAsDuplicate: tasksSkipped.length,
+        tasksSkipped,
+        artifact: !!driveUrl,
+        driveFileId,
+        draftRecord: draft,
+      },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "ai",
+      target: proposal.title,
+      detail: `Team meeting ingested — ${tasksCreated} firm task(s)${tasksSkipped.length ? `, ${tasksSkipped.length} skipped as already-open duplicate(s)` : ""}${draft ? `, 1 draft ${draft.kind === "decision" ? "decision" : "knowledge item"} for review` : ""}`,
+      link: draft?.kind === "decision" ? "/firm-knowledge/decisions" : "/firm-knowledge",
+    });
+  });
+
+  revalidatePath("/ingest");
+  revalidatePath("/firm-knowledge");
+  revalidatePath("/firm-knowledge/decisions");
+  return { ok: true, draft };
 }
 
 // Convert a bill-candidate email (the ingest-email skill flagged it as a vendor
