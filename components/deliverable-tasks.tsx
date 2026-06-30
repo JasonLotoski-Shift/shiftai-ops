@@ -2,7 +2,7 @@
 
 // Feature deliverable→task — the tasks attached to a single deliverable
 // (Artifact), plus an inline "add task" form with a partner-assignment
-// dropdown. Mirrors the task-row styling in components/tasks-views.tsx and
+// dropdown. Mirrors the task-row styling in components/tasks-board.tsx and
 // reuses the assign-to-partner behavior via createDeliverableTask.
 
 import { useState } from "react";

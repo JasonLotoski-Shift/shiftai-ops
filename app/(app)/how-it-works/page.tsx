@@ -1,9 +1,9 @@
 import { Header } from "@/components/header";
 import { HowItWorksView } from "@/components/how-it-works-view";
 
-// Internal reference. The old static doc at public/docs/how-it-works.html stays
-// on disk but is no longer used — this is a real themed page (server shell +
-// client tabbed view) so it stays in step with the design system.
+// Internal reference. A real themed page (server shell + client tabbed view), kept
+// in step with the design system. (Replaced a static public/docs/how-it-works.html,
+// removed in the 2026-06-29 cleanup.)
 
 export default function HowItWorksPage() {
   return (
