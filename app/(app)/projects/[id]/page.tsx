@@ -12,15 +12,15 @@ import { MilestoneEpic } from "@/components/milestone-epic";
 import { ProjectFinancials } from "@/components/project-financials";
 import { EconomicsEditor } from "@/components/billing/economics-editor";
 import { DirectCostsEditor } from "@/components/billing/direct-costs-editor";
-import { OriginationEditor } from "@/components/billing/origination-editor";
-import { ProjectSourceCommissionEditor } from "@/components/billing/project-source-commission-editor";
-import { FirmEconomicsSummary } from "@/components/billing/firm-economics-summary";
+import { CommissionEditor, type CommissionLineView } from "@/components/billing/commission-editor";
 import { BillingSummaryCard } from "@/components/billing/billing-summary-card";
 import { ScopePricingPanel } from "@/components/billing/scope-pricing-panel";
 import { TeamLedger } from "@/components/billing/team-ledger";
 import { SubscriptionMonthButton } from "@/components/billing/subscription-month-button";
 import { ChangeThread } from "@/components/billing/change-thread";
-import { economicsTotals, allocateLaborRevenue, buyoutAllocation } from "@/lib/billing/economics";
+import { economicsTotals } from "@/lib/billing/economics";
+import { allocateLaborRevenueV2 } from "@/lib/billing/allocation-v2";
+import { authoritativeBuildValue } from "@/lib/billing/build-value";
 import { ledgerTotals } from "@/lib/finance-ledger";
 import { loadLedgerEntries } from "@/app/(app)/financials/ledger-data";
 import { ProjectPnl } from "@/components/financials/project-pnl";
@@ -71,7 +71,6 @@ export default async function ProjectDetailPage({
           include: { consultant: { select: { id: true, name: true } } },
         },
         directCosts: { orderBy: { sortOrder: "asc" } },
-        originations: { include: { partner: { select: { id: true, name: true } } } },
         payouts: {
           include: {
             consultant: { select: { name: true } },
@@ -239,25 +238,23 @@ export default async function ProjectDetailPage({
       })
     : [];
 
-  // Direct costs + origination rows for the Financials tab.
+  // Direct costs for the Financials tab.
   const directCostRows = project.directCosts.map((c) => ({ id: c.id, label: c.label, amount: c.amount, notes: c.notes }));
   const directCostsTotal = directCostRows.reduce((s, c) => s + c.amount, 0);
-  const originationRows = project.originations.map((o) => ({
-    id: o.id,
-    partnerId: o.partnerId,
-    partnerName: o.partner.name,
-    sharePct: Number(o.sharePct),
-    notes: o.notes,
-  }));
 
-  // Deal-source commission (firm money — managing partners only; Financials tab
-  // only). On Overview, skip the managing-partner check and both reads entirely.
+  // Commission (firm money — managing partners only; Financials tab only). On
+  // Overview, skip the managing-partner check and the reads entirely. The unified
+  // CommissionLine model (origination + source) replaced Origination +
+  // ProjectSourceCommission at the Phase 4 cutover; payouts carry the dollars.
   const managingPartner = wantFinancials ? await currentIsManagingPartner() : false;
-  const projectCommissionRaw = managingPartner
-    ? await prisma.projectSourceCommission.findMany({
+  const commissionLinesRaw = managingPartner
+    ? await prisma.commissionLine.findMany({
         where: { projectId: id },
-        include: { partner: { select: { id: true, name: true } } },
-        orderBy: { createdAt: "asc" },
+        orderBy: { sortOrder: "asc" },
+        include: {
+          partner: { select: { id: true, name: true } },
+          payouts: { select: { amount: true, status: true, stream: true } },
+        },
       })
     : [];
   const projectServiceContract = managingPartner
@@ -277,36 +274,52 @@ export default async function ProjectDetailPage({
         })
       ).map((b) => ({ id: b.id, vendor: b.vendor, number: b.number, amount: b.total || b.amount, hasDoc: !!b.driveUrl }))
     : [];
-  const projectCommissionRows = projectCommissionRaw.map((r) => ({
-    id: r.id,
-    partnerId: r.partnerId,
-    externalName: r.externalName,
-    partnerName: r.partner?.name ?? r.externalName ?? "—",
-    pct: Number(r.pct),
-    base: r.base,
-    buildAmount: r.buildAmount,
-    notes: r.notes,
-  }));
+  // CommissionLine → editor view. buildAmount / recurringAmount come straight off
+  // the payout rows (§9.6 — read once, never re-derived). For origination, sharePct
+  // is the partner's slice of the rate pool (buildPct ÷ rate × 100).
+  const originationRate = Number(project.originationPct);
+  const commissionLineViews: CommissionLineView[] = commissionLinesRaw.map((l) => {
+    const buildAmount = l.payouts.filter((p) => p.stream === "build").reduce((s, p) => s + p.amount, 0);
+    const recurringAmount = l.payouts.filter((p) => p.stream === "recurring").reduce((s, p) => s + p.amount, 0);
+    const bp = Number(l.buildPct);
+    const share = l.kind === "origination" && originationRate > 0 ? (bp / originationRate) * 100 : 0;
+    return {
+      id: l.id,
+      kind: l.kind,
+      partnerId: l.partnerId,
+      externalName: l.externalName,
+      payeeName: l.partner?.name ?? l.externalName ?? "—",
+      sharePct: l.kind === "origination" ? share : null,
+      pct: l.kind === "origination" ? share : bp,
+      recurringPct: l.recurringPct !== null ? Number(l.recurringPct) : null,
+      buildAmount,
+      recurringAmount,
+    };
+  });
 
-  // The 10/15/75 internal allocation of labour revenue (server-side compute).
-  // A buy-out is exempt — its full value is firm capture, no labour split.
+  // The labour-revenue allocation (rebuild §9.1-9.3) — origination off the labour
+  // pie, source netted from firm reserve. MP-only (firm money). A buy-out is exempt
+  // (its whole value is firm capture, no labour split, no commission).
   const econTotals = economicsTotals(economicsRows);
-  const allocation = project.projectType === "buyout"
-    ? buyoutAllocation(project.budgetFee)
-    : allocateLaborRevenue({
+  const allocation = managingPartner
+    ? allocateLaborRevenueV2({
         laborBillable: econTotals.billableTotal,
         takeHome: econTotals.costTotal,
         directCosts: directCostsTotal,
         originationPct: Number(project.originationPct) / 100,
         isFirstContract: project.isFirstContract,
-      });
+        authoritativeBuildValue: authoritativeBuildValue({ kind: "project", budgetFee: project.budgetFee }),
+        commissionLines: commissionLinesRaw.map((l) => ({ kind: l.kind, buildPct: Number(l.buildPct) })),
+        isBuyout: project.projectType === "buyout",
+      })
+    : null;
 
   // Project P&L (Phase 2) — actuals from the deduped ledger filtered to this
   // project. MP-only (firm cost/margin). Reuses the spine so the figures match
   // /financials exactly. loadLedgerEntries degrades to null pre-migration.
   const projectLedger = managingPartner ? (await loadLedgerEntries())?.filter((e) => e.projectId === project.id) ?? [] : null;
   const projTotals = projectLedger ? ledgerTotals(projectLedger) : null;
-  const commissionPlanned = allocation.origination + projectCommissionRows.reduce((s, r) => s + (r.buildAmount ?? 0), 0);
+  const commissionPlanned = allocation ? allocation.originationFromLabour + allocation.sourceCommissionTotal : 0;
   const plannedProjectCost = econTotals.costTotal + directCostsTotal;
 
   const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, contract: FileText, invoice: FileText, report: FileText, other: FileText } as const;
@@ -609,13 +622,16 @@ export default async function ProjectDetailPage({
 
           {tab === "financials" && (
           <>
-          {managingPartner && projTotals && (
+          {managingPartner && projTotals && allocation && (
             <ProjectPnl
               budgetFee={project.budgetFee}
               billed={projTotals.invoicedIn}
               collected={projTotals.receivedIn}
               plannedCost={plannedProjectCost}
-              actualCostPaid={projTotals.cashOut}
+              // actualCostPaid excludes commission — true margin subtracts commission
+              // separately (commissionPlanned), so counting paid commission here too
+              // would double-subtract it (§9.6 ledger dedup).
+              actualCostPaid={projTotals.cashOut - projTotals.commissionPaid}
               takeHomePlanned={econTotals.costTotal}
               takeHomePaid={projTotals.payoutsPaid}
               plannedFirmReserve={allocation.firmReserve}
@@ -642,21 +658,22 @@ export default async function ProjectDetailPage({
             />
           )}
 
-          <OriginationEditor
-            projectId={project.id}
-            originationPct={Number(project.originationPct)}
-            isFirstContract={project.isFirstContract}
-            scheduleType={project.scheduleType}
-            rows={originationRows}
-            partners={partners}
-          />
-
-          {managingPartner && (
-            <ProjectSourceCommissionEditor
+          {managingPartner && allocation && (
+            <CommissionEditor
               projectId={project.id}
-              rows={projectCommissionRows}
+              originationPct={Number(project.originationPct)}
+              isFirstContract={project.isFirstContract}
+              scheduleType={project.scheduleType}
+              hasServiceContract={!!projectServiceContract}
+              lines={commissionLineViews}
               partners={partners}
-              allowRecurringBase={!!projectServiceContract}
+              summary={{
+                originationFromLabour: allocation.originationFromLabour,
+                sourceCommissionTotal: allocation.sourceCommissionTotal,
+                firmReserve: allocation.firmReserve,
+                firmReserveDeficit: allocation.firmReserveDeficit,
+                overCommitted: allocation.overCommitted,
+              }}
             />
           )}
 
@@ -690,8 +707,6 @@ export default async function ProjectDetailPage({
           />
 
           <DirectCostsEditor projectId={project.id} costs={directCostRows} />
-
-          <FirmEconomicsSummary alloc={allocation} isBuyout={project.projectType === "buyout"} />
 
           <ScopePricingPanel
             projectId={project.id}

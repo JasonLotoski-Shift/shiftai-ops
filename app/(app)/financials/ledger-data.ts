@@ -15,7 +15,7 @@ import { toLedgerEntries, type LedgerEntry } from "@/lib/finance-ledger";
 
 export async function loadLedgerEntries(): Promise<LedgerEntry[] | null> {
   try {
-    const [invoices, bills, expenses, payouts] = await Promise.all([
+    const [invoices, bills, expenses, payouts, commissionRows] = await Promise.all([
       prisma.invoice.findMany({
         orderBy: { issuedAt: "desc" },
         select: {
@@ -92,9 +92,52 @@ export async function loadLedgerEntries(): Promise<LedgerEntry[] | null> {
           invoiceWaivedReason: true,
         },
       }),
+      // Commission payouts (the unified model) join the GL as deduped money-out,
+      // exactly like consultant payouts — paid = cash, owed = committed, and a
+      // settledByBillId pairs with its bill so the cash counts once.
+      prisma.commissionPayout.findMany({
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          amount: true,
+          status: true,
+          method: true,
+          paidAt: true,
+          confirmedAt: true,
+          createdAt: true,
+          stream: true,
+          settledByBillId: true,
+          invoiceWaivedReason: true,
+          commissionLine: {
+            select: {
+              partnerId: true,
+              partner: { select: { name: true } },
+              externalName: true,
+              project: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
     ]);
 
-    return toLedgerEntries({ invoices, bills, expenses, payouts });
+    const commissions = commissionRows.map((c) => ({
+      id: c.id,
+      amount: c.amount,
+      status: c.status,
+      method: c.method,
+      paidAt: c.paidAt,
+      confirmedAt: c.confirmedAt,
+      createdAt: c.createdAt,
+      stream: c.stream,
+      partnerId: c.commissionLine.partnerId,
+      partnerName: c.commissionLine.partner?.name ?? null,
+      externalName: c.commissionLine.externalName,
+      project: c.commissionLine.project,
+      settledByBillId: c.settledByBillId,
+      invoiceWaivedReason: c.invoiceWaivedReason,
+    }));
+
+    return toLedgerEntries({ invoices, bills, expenses, payouts, commissions });
   } catch (e) {
     // Pre-migration ONLY: a money TABLE (Prisma P2021 / Postgres 42P01) or the new
     // cross-reference COLUMN (P2022 / 42703) doesn't exist yet → hide the Ledger

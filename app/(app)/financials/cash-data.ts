@@ -68,9 +68,9 @@ export async function loadCashData(now: Date = new Date()): Promise<CashData | n
           where: { kind: "subscription", renewalDate: { gte: startOfDay(now) } },
           select: { id: true, vendor: true, amount: true, total: true, renewalDate: true },
         }),
-        prisma.ongoingContractCommissionAccrual.findMany({
-          where: { paidAt: null },
-          select: { id: true, amount: true, periodStart: true, commission: { select: { partner: { select: { name: true } }, externalName: true } } },
+        prisma.commissionPayout.findMany({
+          where: { stream: "recurring", status: "owed" },
+          select: { id: true, amount: true, periodStart: true, commissionLine: { select: { partner: { select: { name: true } }, externalName: true } } },
         }),
       ]);
 
@@ -100,11 +100,11 @@ export async function loadCashData(now: Date = new Date()): Promise<CashData | n
         amount: e.total || e.amount,
       })),
       subscriptions: subscriptions.map((e) => ({ id: e.id, vendor: e.vendor ?? "Subscription", amount: e.total || e.amount, renewalDate: e.renewalDate })),
-      commissions: commissions.map((a) => ({
-        id: a.id,
-        party: a.commission.partner?.name ?? a.commission.externalName ?? "Referrer",
-        amount: a.amount,
-        periodStart: a.periodStart,
+      commissions: commissions.map((c) => ({
+        id: c.id,
+        party: c.commissionLine.partner?.name ?? c.commissionLine.externalName ?? "Referrer",
+        amount: c.amount,
+        periodStart: c.periodStart ?? now,
       })),
     };
 

@@ -21,6 +21,7 @@ import { writeAudit, writeActivity, partnerActor } from "@/lib/audit";
 import { applyStandardScheduleTx } from "@/lib/billing/apply";
 import { monthlyDueDate } from "@/lib/billing/schedule";
 import { recomputePayoutsTx } from "@/lib/billing/payouts";
+import { recomputeCommissionPayoutsTx, recomputeRecurringCommissionPayoutsTx } from "@/lib/billing/commission-payouts";
 import { FALLBACK_BILL_RATE_CENTS } from "@/lib/billing/rate-card";
 import { requireManagingPartner } from "@/lib/permissions";
 import { commissionDollars } from "@/lib/billing/commission";
@@ -983,8 +984,29 @@ export async function setProjectBillingMeta(
     data.scheduleType = input.scheduleType as ScheduleTypeStr;
   }
 
+  const rateChanged = data.originationPct !== undefined && data.originationPct !== Number(before.originationPct);
+  const firstContractChanged = data.isFirstContract !== undefined && data.isFirstContract !== before.isFirstContract;
+
   await prisma.$transaction(async (tx) => {
     await tx.project.update({ where: { id: projectId }, data });
+
+    // The origination rate is the pool; each origination line holds the partner's
+    // EFFECTIVE percent (rate × share). When the rate moves, scale every line by
+    // newRate/oldRate so each partner's SHARE is preserved (oldRate 0 → lines are
+    // already 0, nothing to scale). Then regenerate the commission payouts so the
+    // schedule reflects the new origination dollars / first-contract eligibility.
+    const oldRate = Number(before.originationPct);
+    if (rateChanged && oldRate > 0 && data.originationPct !== undefined) {
+      const factor = data.originationPct / oldRate;
+      const origLines = await tx.commissionLine.findMany({ where: { projectId, kind: "origination" }, select: { id: true, buildPct: true } });
+      for (const l of origLines) {
+        await tx.commissionLine.update({ where: { id: l.id }, data: { buildPct: Math.round(Number(l.buildPct) * factor * 100) / 100 } });
+      }
+    }
+    if (rateChanged || firstContractChanged) {
+      await recomputeCommissionPayoutsTx(tx, projectId);
+    }
+
     await writeAudit(tx, {
       actor,
       action: "update.project.billingMeta",
@@ -1103,6 +1125,220 @@ export async function deleteProjectSourceCommission(id: string) {
   revalidatePath(`/projects/${before.projectId}`);
   revalidatePath("/financials");
   return { id };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FEATURE 9c — Unified commission lines (Phase 4 cutover)
+//
+// ONE model (CommissionLine) for origination AND source payees, replacing
+// Origination + ProjectSourceCommission. Firm money — MP-gated. basis is derived
+// from kind: origination earns off the labour pie (the partner's share of the
+// originationPct pool → buildPct = rate × share/100); source earns its own 1-10%
+// of the build value, optionally with a recurring % when a ServiceContract
+// exists. Every write regenerates the commission payout schedule (build +
+// recurring) in the same transaction, mirroring the consultant payout pattern.
+// ──────────────────────────────────────────────────────────────────────
+
+// The transaction client satisfies both recompute Tx shapes; run both streams.
+async function recomputeCommissionStreamsTx(
+  tx: Parameters<typeof recomputeCommissionPayoutsTx>[0] & Parameters<typeof recomputeRecurringCommissionPayoutsTx>[0],
+  projectId: string,
+) {
+  await recomputeCommissionPayoutsTx(tx, projectId);
+  await recomputeRecurringCommissionPayoutsTx(tx, projectId);
+}
+
+const round2 = (n: number) => Math.round(Number(n) * 100) / 100;
+
+/** Sum of origination SHARES already attributed (buildPct ÷ rate × 100). */
+function attributedShare(lines: { buildPct: unknown }[], rate: number): number {
+  if (rate <= 0) return 0;
+  return lines.reduce((s, l) => s + (Number(l.buildPct) / rate) * 100, 0);
+}
+
+export async function addCommissionLine(
+  projectId: string,
+  input: {
+    kind: "origination" | "source";
+    partnerId?: string;
+    externalName?: string;
+    pct: number; // origination → share 0-100 of the pool; source → 1-10
+    recurringPct?: number; // source only; needs a ServiceContract
+    notes?: string;
+  },
+) {
+  const { actor } = await getActor();
+  await requireManagingPartner();
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, originationPct: true, serviceContract: { select: { id: true, termMonths: true } } },
+  });
+  if (!project) throw new Error("Project not found");
+
+  const isOrig = input.kind === "origination";
+  if (isOrig) {
+    if (!input.partnerId) throw new Error("Origination must be attributed to a partner");
+  } else {
+    assertPayeeProj(input);
+  }
+  if (input.partnerId) {
+    const p = await prisma.partner.findUnique({ where: { id: input.partnerId }, select: { id: true } });
+    if (!p) throw new Error("Partner not found");
+  }
+
+  const count = await prisma.commissionLine.count({ where: { projectId, kind: input.kind } });
+  if (count >= 2) throw new Error(isOrig ? "Origination supports at most two people" : "At most two commission payees per project");
+
+  let buildPct: number;
+  let recurringPct: number | null = null;
+  let coveredMonths: number | null = null;
+
+  if (isOrig) {
+    const share = round2(input.pct);
+    if (!Number.isFinite(share) || share <= 0 || share > 100) throw new Error("Share must be between 0 and 100");
+    const rate = Number(project.originationPct);
+    const existing = await prisma.commissionLine.findMany({ where: { projectId, kind: "origination" }, select: { buildPct: true } });
+    if (attributedShare(existing, rate) + share > 100.0001) throw new Error("Origination shares exceed 100%");
+    buildPct = round2((rate * share) / 100);
+  } else {
+    const pct = round2(input.pct);
+    if (!Number.isFinite(pct) || pct < 1 || pct > 10) throw new Error("Commission % must be between 1 and 10");
+    buildPct = pct;
+    if (input.recurringPct !== undefined && input.recurringPct !== null) {
+      if (!project.serviceContract) throw new Error("Recurring commission needs an on-going service contract");
+      const rp = round2(input.recurringPct);
+      if (!Number.isFinite(rp) || rp < 1 || rp > 10) throw new Error("Recurring % must be between 1 and 10");
+      recurringPct = rp;
+      coveredMonths = project.serviceContract.termMonths;
+    }
+  }
+
+  const maxSort = await prisma.commissionLine.aggregate({ where: { projectId }, _max: { sortOrder: true } });
+  const sortOrder = (maxSort._max.sortOrder ?? -1) + 1;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.commissionLine.create({
+      data: {
+        projectId,
+        kind: input.kind,
+        basis: isOrig ? "labor_revenue" : "build_value",
+        buildPct,
+        recurringPct,
+        coveredMonths,
+        onSchedule: true,
+        sortOrder,
+        partnerId: input.partnerId ?? null,
+        externalName: input.partnerId ? null : input.externalName?.trim() ?? null,
+        notes: input.notes?.trim() || null,
+      },
+    });
+    await recomputeCommissionStreamsTx(tx, projectId);
+    await writeAudit(tx, {
+      actor,
+      action: "create.commissionLine",
+      targetType: "CommissionLine",
+      targetId: row.id,
+      changes: { projectId, kind: input.kind, partnerId: input.partnerId ?? null, externalName: input.externalName ?? null, buildPct, recurringPct },
+    });
+    return row;
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/financials");
+  return { id: created.id };
+}
+
+export async function updateCommissionLine(
+  lineId: string,
+  input: { pct?: number; recurringPct?: number | null; notes?: string | null },
+) {
+  const { actor } = await getActor();
+  await requireManagingPartner();
+  const before = await prisma.commissionLine.findUnique({
+    where: { id: lineId },
+    select: {
+      id: true, kind: true, buildPct: true, projectId: true, dealId: true,
+      project: { select: { originationPct: true, serviceContract: { select: { id: true, termMonths: true } } } },
+    },
+  });
+  if (!before || !before.projectId) throw new Error("Commission line not found");
+  const projectId = before.projectId;
+  const isOrig = before.kind === "origination";
+
+  const data: { buildPct?: number; recurringPct?: number | null; coveredMonths?: number | null; notes?: string | null } = {};
+
+  if (input.pct !== undefined) {
+    if (isOrig) {
+      const share = round2(input.pct);
+      if (!Number.isFinite(share) || share <= 0 || share > 100) throw new Error("Share must be between 0 and 100");
+      const rate = Number(before.project?.originationPct ?? 0);
+      const others = await prisma.commissionLine.findMany({ where: { projectId, kind: "origination", id: { not: lineId } }, select: { buildPct: true } });
+      if (attributedShare(others, rate) + share > 100.0001) throw new Error("Origination shares exceed 100%");
+      data.buildPct = round2((rate * share) / 100);
+    } else {
+      const pct = round2(input.pct);
+      if (!Number.isFinite(pct) || pct < 1 || pct > 10) throw new Error("Commission % must be between 1 and 10");
+      data.buildPct = pct;
+    }
+  }
+
+  if (input.recurringPct !== undefined) {
+    if (input.recurringPct === null) {
+      data.recurringPct = null;
+      data.coveredMonths = null;
+    } else {
+      if (isOrig) throw new Error("Origination has no recurring commission");
+      if (!before.project?.serviceContract) throw new Error("Recurring commission needs an on-going service contract");
+      const rp = round2(input.recurringPct);
+      if (!Number.isFinite(rp) || rp < 1 || rp > 10) throw new Error("Recurring % must be between 1 and 10");
+      data.recurringPct = rp;
+      data.coveredMonths = before.project.serviceContract.termMonths;
+    }
+  }
+
+  if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.commissionLine.update({ where: { id: lineId }, data });
+    await recomputeCommissionStreamsTx(tx, projectId);
+    await writeAudit(tx, {
+      actor,
+      action: "update.commissionLine",
+      targetType: "CommissionLine",
+      targetId: lineId,
+      changes: { buildPct: data.buildPct, recurringPct: data.recurringPct },
+    });
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/financials");
+  return { id: lineId };
+}
+
+export async function deleteCommissionLine(lineId: string) {
+  const { actor } = await getActor();
+  await requireManagingPartner();
+  const before = await prisma.commissionLine.findUnique({ where: { id: lineId }, select: { id: true, projectId: true } });
+  if (!before || !before.projectId) throw new Error("Commission line not found");
+  const projectId = before.projectId;
+
+  await prisma.$transaction(async (tx) => {
+    // Payouts cascade on the line delete (onDelete: Cascade); then recompute the
+    // remaining lines so the schedule reflects the removal.
+    await tx.commissionLine.delete({ where: { id: lineId } });
+    await recomputeCommissionStreamsTx(tx, projectId);
+    await writeAudit(tx, {
+      actor,
+      action: "delete.commissionLine",
+      targetType: "CommissionLine",
+      targetId: lineId,
+      changes: { projectId },
+    });
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/financials");
+  return { id: lineId };
 }
 
 // ──────────────────────────────────────────────────────────────────────

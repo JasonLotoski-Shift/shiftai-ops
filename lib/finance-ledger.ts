@@ -125,11 +125,31 @@ export type RawPayout = {
   invoiceWaivedReason: string | null;
 };
 
+export type RawCommissionPayout = {
+  id: string;
+  amount: number;
+  status: string;
+  method: string | null;
+  paidAt: Date | null;
+  confirmedAt: Date | null;
+  createdAt: Date;
+  stream: string; // build | recurring
+  partnerId: string | null;
+  partnerName: string | null;
+  externalName: string | null;
+  project: RawProject;
+  // Reconciliation (mirrors RawPayout): a commission paid via a vendor bill, or an
+  // MP waiver for an external referrer who has no bill.
+  settledByBillId: string | null;
+  invoiceWaivedReason: string | null;
+};
+
 export type LedgerRaw = {
   invoices: RawInvoice[];
   bills: RawBill[];
   expenses: RawExpense[];
   payouts: RawPayout[];
+  commissions: RawCommissionPayout[];
 };
 
 // ── Labels ─────────────────────────────────────────────────────────────────
@@ -303,33 +323,74 @@ function payoutToEntry(p: RawPayout): LedgerEntry {
   };
 }
 
-/** Exact cross-reference (Phase 2): for every payout with a confirmed
- *  ConsultantPayout.settledByBillId, pair it with that bill. The payout is the
- *  cash that moved, so the bill is DROPPED from cash-out (countsAsCashOut=false)
- *  and re-filed under the consultant for the entity rollup. The payout inherits
- *  the bill's document, clearing its missing-invoice flag once the PDF is filed.
- *  A bill may settle several payouts (a lump invoice); each is linked. */
-function linkSettledPairs(entries: LedgerEntry[], payouts: RawPayout[]): void {
+function commissionPayoutToEntry(c: RawCommissionPayout): LedgerEntry {
+  // The payee is a partner (entity) or an outside referrer (free-text external).
+  const party: LedgerParty = c.partnerId
+    ? { kind: "partner", id: c.partnerId, name: c.partnerName ?? "Partner" }
+    : { kind: "external", id: null, name: c.externalName ?? "Referrer" };
+  return {
+    id: `commission-${c.id}`,
+    sourceType: "commission",
+    direction: "out",
+    party,
+    projectId: c.project?.id ?? null,
+    projectName: projName(c.project?.name),
+    number: null,
+    category: null,
+    categoryLabel: null,
+    description: c.stream === "recurring" ? "Recurring commission" : "Build commission",
+    amountCad: c.amount,
+    origCurrency: null,
+    origAmount: null,
+    status: c.status,
+    statusLabel: PAYOUT_STATUS_LABELS[c.status] ?? c.status,
+    cashMoved: c.status === "paid" || c.status === "confirmed",
+    date: (c.paidAt ?? c.createdAt).toISOString(),
+    paidDate: iso(c.paidAt),
+    // Documented iff an MP waived it (external, no bill) OR — set in linkBillSettlement —
+    // the linked bill carries a Drive doc. A bare paid commission flags until then.
+    hasDocument: !!c.invoiceWaivedReason,
+    driveUrl: null,
+    linkedEntryId: null,
+    waiverReason: c.invoiceWaivedReason,
+    countsAsCashOut: true,
+    entityKey: entityKeyOf(party),
+  };
+}
+
+/** Exact cross-reference (Phase 2): for every disbursement (consultant payout OR
+ *  commission payout) with a `settledByBillId`, pair it with that bill. The
+ *  disbursement is the cash that moved, so the bill is DROPPED from cash-out
+ *  (countsAsCashOut=false) and re-filed under the payee for the entity rollup. The
+ *  disbursement inherits the bill's document, clearing its missing-invoice flag
+ *  once the PDF is filed. A bill may settle several disbursements; each is linked.
+ *  `prefix` keys the GL id (`payout-` / `commission-`); both raw shapes carry
+ *  `id` + `settledByBillId`. */
+function linkBillSettlement(
+  entries: LedgerEntry[],
+  rows: { id: string; settledByBillId: string | null }[],
+  prefix: "payout" | "commission",
+): void {
   const byId = new Map(entries.map((e) => [e.id, e] as const));
-  for (const p of payouts) {
+  for (const p of rows) {
     if (!p.settledByBillId) continue;
-    const payoutEntry = byId.get(`payout-${p.id}`);
+    const payEntry = byId.get(`${prefix}-${p.id}`);
     const billEntry = byId.get(`bill-${p.settledByBillId}`);
-    if (!payoutEntry || !billEntry) continue;
-    payoutEntry.linkedEntryId = billEntry.id;
-    billEntry.linkedEntryId = payoutEntry.id;
+    if (!payEntry || !billEntry) continue;
+    payEntry.linkedEntryId = billEntry.id;
+    billEntry.linkedEntryId = payEntry.id;
     // Count the cash exactly once, on whichever side actually settled. Normally the
-    // payout is the cash (the e-transfer) and the bill is its document. But the two
-    // have independent statuses: if the BILL was paid while the payout is still
-    // owed, the bill is the cash that moved and the owed payout becomes the doc side
-    // — otherwise that real disbursement would vanish from the money-out total.
-    if (!payoutEntry.cashMoved && billEntry.cashMoved) {
-      payoutEntry.countsAsCashOut = false; // the paid bill carries the cash
+    // disbursement is the cash and the bill is its document. But the two have
+    // independent statuses: if the BILL was paid while the disbursement is still
+    // owed, the bill is the cash that moved and the owed disbursement becomes the
+    // doc side — otherwise that real outflow would vanish from the money-out total.
+    if (!payEntry.cashMoved && billEntry.cashMoved) {
+      payEntry.countsAsCashOut = false; // the paid bill carries the cash
     } else {
-      billEntry.countsAsCashOut = false; // the payout carries the cash; the bill is the doc
+      billEntry.countsAsCashOut = false; // the disbursement carries the cash; the bill is the doc
     }
-    billEntry.entityKey = payoutEntry.entityKey; // group the bill under the consultant (keep its vendor label)
-    if (billEntry.hasDocument) payoutEntry.hasDocument = true; // the bill PDF documents the payout
+    billEntry.entityKey = payEntry.entityKey; // group the bill under the payee (keep its vendor label)
+    if (billEntry.hasDocument) payEntry.hasDocument = true; // the bill PDF documents the disbursement
   }
 }
 
@@ -339,8 +400,10 @@ export function toLedgerEntries(raw: LedgerRaw): LedgerEntry[] {
     ...raw.bills.map(billToEntry),
     ...raw.expenses.map(expenseToEntry),
     ...raw.payouts.map(payoutToEntry),
+    ...raw.commissions.map(commissionPayoutToEntry),
   ];
-  linkSettledPairs(entries, raw.payouts);
+  linkBillSettlement(entries, raw.payouts, "payout");
+  linkBillSettlement(entries, raw.commissions, "commission");
   entries.sort((a, b) => b.date.localeCompare(a.date));
   return entries;
 }
@@ -356,7 +419,9 @@ export function toLedgerEntries(raw: LedgerRaw): LedgerEntry[] {
 export function isMissingDoc(e: LedgerEntry): boolean {
   if (e.direction !== "out" || !e.countsAsCashOut) return false;
   if (e.status === "void" || e.status === "draft") return false;
-  if (e.sourceType === "payout" && !e.cashMoved) return false;
+  // An OWED disbursement (payout or commission) hasn't moved cash yet, so no
+  // invoice is expected — it flags once it's marked paid.
+  if ((e.sourceType === "payout" || e.sourceType === "commission") && !e.cashMoved) return false;
   return !e.hasDocument;
 }
 
@@ -368,10 +433,12 @@ export type LedgerTotals = {
   outstandingIn: number;
   payoutsPaid: number;
   payoutsOwed: number;
+  commissionPaid: number;
+  commissionOwed: number;
   billsExpensesPaid: number;
   billsExpensesOutstanding: number;
-  cashOut: number; // the single deduped money-out figure (== payoutsPaid + billsExpensesPaid)
-  committedOut: number; // owed / received-not-paid, deduped (== payoutsOwed + billsExpensesOutstanding)
+  cashOut: number; // the single deduped money-out figure (== payoutsPaid + commissionPaid + billsExpensesPaid)
+  committedOut: number; // owed / received-not-paid, deduped (== payoutsOwed + commissionOwed + billsExpensesOutstanding)
   missingDocCount: number;
   missingDocExposure: number;
 };
@@ -384,6 +451,8 @@ export function ledgerTotals(entries: LedgerEntry[]): LedgerTotals {
     invoicedIn = 0,
     payoutsPaid = 0,
     payoutsOwed = 0,
+    commissionPaid = 0,
+    commissionOwed = 0,
     billsExpensesPaid = 0,
     billsExpensesOutstanding = 0,
     cashOut = 0,
@@ -396,12 +465,15 @@ export function ledgerTotals(entries: LedgerEntry[]): LedgerTotals {
       if (e.cashMoved) receivedIn += e.amountCad;
     } else if (e.status !== "void" && e.countsAsCashOut) {
       // Only the cash-carrying side reaches here; the doc side of a linked pair
-      // (countsAsCashOut=false — a bill OR an owed payout) is excluded from EVERY
-      // total, so the breakdown sums to the deduped figures with no double-count.
+      // (countsAsCashOut=false — a bill OR an owed disbursement) is excluded from
+      // EVERY total, so the breakdown sums to the deduped figures with no double-count.
       const paid = e.cashMoved;
       if (e.sourceType === "payout") {
         if (paid) payoutsPaid += e.amountCad;
         else payoutsOwed += e.amountCad;
+      } else if (e.sourceType === "commission") {
+        if (paid) commissionPaid += e.amountCad;
+        else commissionOwed += e.amountCad;
       } else if (paid) {
         billsExpensesPaid += e.amountCad;
       } else if (e.status !== "draft") {
@@ -423,6 +495,8 @@ export function ledgerTotals(entries: LedgerEntry[]): LedgerTotals {
     outstandingIn: invoicedIn - receivedIn,
     payoutsPaid,
     payoutsOwed,
+    commissionPaid,
+    commissionOwed,
     billsExpensesPaid,
     billsExpensesOutstanding,
     cashOut,

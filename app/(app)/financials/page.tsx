@@ -4,9 +4,10 @@ import { Header } from "@/components/header";
 import { Card, Stat } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
-import { economicsTotals, allocateLaborRevenue, buyoutAllocation } from "@/lib/billing/economics";
+import { economicsTotals } from "@/lib/billing/economics";
+import { allocateLaborRevenueV2 } from "@/lib/billing/allocation-v2";
+import { authoritativeBuildValue } from "@/lib/billing/build-value";
 import { weightDeal, weightedPipelineTotal, mrrTotal, bucketCashIn, FORECAST_MONTHS } from "@/lib/billing/forecast";
-import { firmCommissionTotals } from "@/lib/billing/commissions";
 import { currentIsManagingPartner } from "@/lib/permissions";
 import { ForecastSummary } from "@/components/billing/forecast-summary";
 import { CommissionSummary, type CommissionFlowRow } from "@/components/billing/commission-summary";
@@ -50,6 +51,7 @@ export default async function FinancialsPage() {
         economicsLines: { select: { hours: true, payRateCents: true, billRateCents: true, isExtra: true } },
         directCosts: { select: { amount: true } },
         invoices: { select: { amount: true, status: true } },
+        commissionLines: { select: { kind: true, buildPct: true } },
       },
     }),
     prisma.deal.findMany({
@@ -82,18 +84,20 @@ export default async function FinancialsPage() {
       })),
     );
     const directCosts = p.directCosts.reduce((s, c) => s + c.amount, 0);
-    // Buy-outs are exempt from the 10/15/75 labour split — the whole value is
-    // firm capture (no labour, no origination). Everything else splits normally.
+    // Allocation §9.1-9.3: origination off the labour pie, source netted from
+    // firm reserve. A buy-out is exempt (the whole value is firm capture, no
+    // labour split, no commission).
     const isBuyout = p.projectType === "buyout";
-    const alloc = isBuyout
-      ? buyoutAllocation(p.budgetFee)
-      : allocateLaborRevenue({
-          laborBillable: totals.billableTotal,
-          takeHome: totals.costTotal,
-          directCosts,
-          originationPct: Number(p.originationPct) / 100,
-          isFirstContract: p.isFirstContract,
-        });
+    const alloc = allocateLaborRevenueV2({
+      laborBillable: totals.billableTotal,
+      takeHome: totals.costTotal,
+      directCosts,
+      originationPct: Number(p.originationPct) / 100,
+      isFirstContract: p.isFirstContract,
+      authoritativeBuildValue: authoritativeBuildValue({ kind: "project", budgetFee: p.budgetFee }),
+      commissionLines: p.commissionLines.map((l) => ({ kind: l.kind, buildPct: Number(l.buildPct) })),
+      isBuyout,
+    });
     const invoiced = p.invoices.filter((i) => i.status !== "draft").reduce((s, i) => s + i.amount, 0);
     const received = p.invoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amount, 0);
     return {
@@ -106,7 +110,7 @@ export default async function FinancialsPage() {
       received,
       takeHome: alloc.takeHome,
       firmReserve: alloc.firmReserve,
-      origination: alloc.origination,
+      origination: alloc.originationFromLabour,
       // Buy-out is 100% margin (no labour cost) — but a $0 buy-out is 0%, not 100%.
       marginPct: isBuyout ? (p.budgetFee > 0 ? 1 : 0) : totals.marginPct,
     };
@@ -140,34 +144,57 @@ export default async function FinancialsPage() {
     FORECAST_MONTHS,
   );
 
-  // ── Commission flow-through (firm money — managing partners only) ──
-  let commissionTotals: ReturnType<typeof firmCommissionTotals> | null = null;
+  // ── Deal-source commission flow-through (firm money — managing partners only) ──
+  // Reads the unified CommissionLine + CommissionPayout model (§9.6). The build
+  // slice + the recurring buckets come straight off the payout rows; recurring is
+  // split into accrued (period already started, still owed) vs projected (future
+  // month, owed) by periodStart. Origination is excluded here — it has its own KPI
+  // above (the labour-pie slice, not a deal-source cut).
+  let buildTotal = 0;
+  let recurringProjected = 0;
+  let recurringAccrued = 0;
+  let recurringPaid = 0;
+  let commPartnerShare = 0;
+  let commExternalShare = 0;
   let commissionRows: CommissionFlowRow[] = [];
   if (managingPartner) {
-    const [buildRows, accrualRows] = await Promise.all([
-      prisma.projectSourceCommission.findMany({
-        include: {
-          partner: { select: { name: true } },
-          project: { select: { name: true } },
-          ongoing: { select: { coveredMonths: true, projectedAmount: true } },
-        },
-      }),
-      prisma.ongoingContractCommissionAccrual.findMany({
-        select: { amount: true, status: true, periodStart: true, commission: { select: { partnerId: true, externalName: true } } },
-      }),
-    ]);
-    commissionTotals = firmCommissionTotals(
-      buildRows.map((r) => ({ buildAmount: r.buildAmount, partnerId: r.partnerId, externalName: r.externalName })),
-      accrualRows.map((a) => ({ amount: a.amount, status: a.status, periodStart: a.periodStart, partnerId: a.commission.partnerId, externalName: a.commission.externalName })),
-    );
-    commissionRows = buildRows.map((r) => ({
-      label: r.project.name.split("·")[0].trim(),
-      recipient: r.partner?.name ?? r.externalName ?? "—",
-      isExternal: !r.partnerId,
-      buildAmount: r.buildAmount,
-      recurringPerMonth: r.ongoing && r.ongoing.coveredMonths > 0 ? Math.round(r.ongoing.projectedAmount / r.ongoing.coveredMonths) : 0,
-      coveredMonths: r.ongoing?.coveredMonths ?? 0,
-    }));
+    const now = new Date();
+    const isPaid = (s: string) => s === "paid" || s === "confirmed";
+    const sourceLines = await prisma.commissionLine.findMany({
+      where: { kind: "source" },
+      include: {
+        partner: { select: { name: true } },
+        project: { select: { name: true } },
+        payouts: { select: { amount: true, status: true, stream: true, periodStart: true } },
+      },
+    });
+    for (const line of sourceLines) {
+      for (const p of line.payouts) {
+        if (p.stream === "build") {
+          buildTotal += p.amount;
+        } else {
+          if (isPaid(p.status)) recurringPaid += p.amount;
+          else if (p.periodStart && p.periodStart <= now) recurringAccrued += p.amount;
+          else recurringProjected += p.amount;
+        }
+        if (line.partnerId) commPartnerShare += p.amount;
+        else commExternalShare += p.amount;
+      }
+    }
+    commissionRows = sourceLines.map((l) => {
+      const build = l.payouts.filter((p) => p.stream === "build").reduce((s, p) => s + p.amount, 0);
+      const recurring = l.payouts.filter((p) => p.stream === "recurring");
+      const recurringTotal = recurring.reduce((s, p) => s + p.amount, 0);
+      const months = recurring.length;
+      return {
+        label: l.project?.name.split("·")[0].trim() ?? "—",
+        recipient: l.partner?.name ?? l.externalName ?? "—",
+        isExternal: !l.partnerId,
+        buildAmount: build,
+        recurringPerMonth: months > 0 ? Math.round(recurringTotal / months) : 0,
+        coveredMonths: months,
+      };
+    });
   }
 
   // ── AP/AR + Expenses (managing partners only — the whole section is gated) ──
@@ -365,14 +392,14 @@ export default async function FinancialsPage() {
           cashCalendar={cashCalendar}
         />
 
-        {managingPartner && commissionTotals && (
+        {managingPartner && (
           <CommissionSummary
-            buildTotal={commissionTotals.buildTotal}
-            recurringProjected={commissionTotals.recurringProjected}
-            recurringAccrued={commissionTotals.recurringAccrued}
-            recurringPaid={commissionTotals.recurringPaid}
-            partnerShare={commissionTotals.partnerShare}
-            externalShare={commissionTotals.externalShare}
+            buildTotal={buildTotal}
+            recurringProjected={recurringProjected}
+            recurringAccrued={recurringAccrued}
+            recurringPaid={recurringPaid}
+            partnerShare={commPartnerShare}
+            externalShare={commExternalShare}
             rows={commissionRows}
           />
         )}
