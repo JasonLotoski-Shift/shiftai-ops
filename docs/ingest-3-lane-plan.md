@@ -139,6 +139,9 @@ Each phase ships independently behind the drift-safe recipe. The order keeps liv
 3. **Lane 2 (green).** Build the green card: inline PDF preview, Project picker + no-deal rule + firm-overhead allowed, roster payer. Move the finance actions onto it and retire the legacy `ProposalCard` finance branch. Add the dropped/pasted finance attachment pipeline (§3.4).
 4. **Lane 3 (blue).** Route title-matched all-internal meetings to Lane 3 instead of skip; arm's-length Interaction + firm Artifact; firm-board dedup; `knowledgeCandidate` + draft record at Gate 1 (stamp `generatedFromSkill`); the "Needs review" filter + count badge on the existing firm-knowledge surfaces as Gate 2.
 5. **Later.** Wire one skill to `fetchHistoricalKnowledge` once approved firm-knowledge volume justifies it.
+6. **Lane 4 (purple) — Intro / Relationship.** New lane for intro/BD calls (external person, no client/deal): route at Fireflies/paste (external attendee + no match) + a composer "Intro / channel partner" focus; two nullable Contact columns (`isChannelPartner`, `channelNotes`); the purple card (reuse `UnifiedProposalCard` contact path) with the channel-partner toggle, BD tasks (default-OFF), and the reused Lane-3 targeting-candidate block; `ingest-meeting` Lane-4 output mode; a Channel Partners filter on Contacts. **Depends on Phase 4** (reuses the blue Gate 1 / Gate 2 machinery). Detail: [ingest-lane4-intro-and-call-review.md](ingest-lane4-intro-and-call-review.md) §2-3.
+7. **Call Review.** Cross-cutting retro layer on every meeting lane (gold + purple): a `CallReview` model + `CallReviewStatus`; a conservative `callReview` candidate in the meeting skills; an editable card block + approve → row; a standalone `/call-reviews` team surface; durable lessons promote to a `KnowledgeItem` (BD/Sales Playbook category) behind the existing brain gate. Detail: [ingest-lane4-intro-and-call-review.md](ingest-lane4-intro-and-call-review.md) §6.
+8. **Intro pipeline (Phase B).** Per-intro tracking: an `Intro` model + `IntroStatus` + nullable `Task.introId`; an Intros board + per-contact intro list; convert → `Deal` + `ContactLink(introduced_us)` + `DealSourceCommission` handoff. Deferred until named intros exist. Detail: [ingest-lane4-intro-and-call-review.md](ingest-lane4-intro-and-call-review.md) §4.
 
 Before each push: `npx tsc --noEmit` + `npm run build` clean; add a [lib/data/updates.ts](../lib/data/updates.ts) entry; update the How-it-works manual; managing-partner gating check on any firm-money surface.
 
@@ -164,3 +167,7 @@ It stays **false** for routine status, client-specific facts (those are Lane 1 r
 - Multi-invoice emails capture only the first attachment today; multi-attachment capture is a later add.
 - Auto-refreshing the Tier-1 `recent_decisions` MemoryBlock from approved meeting decisions stays manual (it avoids reintroducing an auto-write).
 - Brain retrieval (§4d, §8 step 5) is decoupled from Lane 3 capture and ships when volume justifies it.
+
+## 11. Extends this plan
+
+- **Lane 4 (Intro / Relationship) + Call Review:** intro/BD calls (external person, no client/deal) get a 4th purple lane that records a channel-partner Contact + BD tasks + a firm-targeting candidate; a dedicated `CallReview` model + team surface captures what-worked / what-didn't across intro and client calls. See [ingest-lane4-intro-and-call-review.md](ingest-lane4-intro-and-call-review.md) (build order continues this doc's §8 as phases 6-8).

@@ -543,6 +543,9 @@ model Partner {
   // Financials rebuild (010) — unified commission lines this partner is payee on.
   commissionLines CommissionLine[] @relation("PartnerCommissionLine")
 
+  // Intro lane (Lane 4) — intros this partner owns the follow-up on.
+  introsOwned     Intro[]          @relation("PartnerIntroOwner")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -590,6 +593,13 @@ model Contact {
   relationshipStrength RelationshipStrength?
   importantDates       String[] // free text, e.g. "Birthday — March 12"
 
+  // Channel partner (intro lane / Lane 4). Marks a person who introduces us to
+  // FUTURE deals, before any deal exists — distinct from ContactLink(introduced_us),
+  // which needs a specific deal/client target. isChannelPartner powers the Contacts
+  // "Channel Partners" filter; channelNotes holds the relationship context.
+  isChannelPartner Boolean @default(false)
+  channelNotes     String?
+
   interactions       Interaction[]
   deals              Deal[]
   primaryForClients  Client[]             @relation("ClientPrimaryContact")
@@ -604,6 +614,11 @@ model Contact {
   clientLeadProjects Project[]            @relation("ProjectClientLead")
   tasks              Task[]
   actionDrafts       ActionDraft[]
+
+  // Intro lane (Lane 4) — intros this person makes / receives + call retros.
+  introsMade     Intro[]      @relation("ContactIntrosMade")
+  introsReceived Intro[]      @relation("ContactIntrosReceived")
+  callReviews    CallReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -670,6 +685,9 @@ model Interaction {
   // Decisions distilled from this interaction (e.g. a meeting transcript →
   // DecisionRecord). Back-relation for DecisionRecord.sourceInteraction.
   decisionsSourced DecisionRecord[] @relation("DecisionSourceInteraction")
+
+  // Call retros distilled from this meeting interaction (Lane 4 + client calls).
+  callReviewsSourced CallReview[] @relation("CallReviewSource")
 
   createdAt DateTime @default(now())
 
@@ -796,6 +814,9 @@ model Deal {
   sourceCommissions DealSourceCommission[]
   // 010 — pre-convert commission lines (canonical home is the project post-convert).
   commissionLines   CommissionLine[]
+  // Intro lane (Lane 4) — intros that converted into this deal + call retros.
+  intros            Intro[]
+  callReviews       CallReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -913,6 +934,8 @@ model Client {
   serviceContracts ServiceContract[]
   bills            Bill[]
   expenses         Expense[]
+  // Call retros scoped to this client's meetings (Lane 4 cross-call learning).
+  callReviews      CallReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1320,6 +1343,10 @@ model Task {
   milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
   milestoneId String?
 
+  // The intro (channel-partner introduction) this task follows up, if any.
+  intro     Intro?     @relation(fields: [introId], references: [id])
+  introId   String?
+
   // Reviewer — a partner asked to review this task's output (optional).
   reviewer   Partner? @relation("TaskReviewer", fields: [reviewerId], references: [id])
   reviewerId String?
@@ -1338,6 +1365,7 @@ model Task {
   @@index([artifactId])
   @@index([milestoneId])
   @@index([reviewerId])
+  @@index([introId])
   @@index([status])
 }
 
@@ -1762,6 +1790,117 @@ model ActionDraft {
   @@index([contactId])
   @@index([projectId])
   @@index([skill])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Intro — a single introduction in flight from a channel partner (the intro
+// lane, Lane 4). The pre-deal opportunity-via-relationship: an introducer
+// Contact points us at a target, tracked through to a Deal. On convert, the
+// deal pipeline (ContactLink introduced_us + DealSourceCommission) owns the
+// economics. Brand-new enum → plain underscored values, no @map.
+// ──────────────────────────────────────────────────────────────────────
+
+enum IntroStatus {
+  proposed
+  requested
+  made
+  meeting_set
+  converted
+  declined
+  dead
+}
+
+model Intro {
+  id            String      @id @default(cuid())
+  targetCompany String // free text until the target firms up
+  status        IntroStatus @default(proposed)
+  notes         String?
+
+  // The channel partner who makes the introduction (the intro is theirs).
+  introducer   Contact @relation("ContactIntrosMade", fields: [introducerId], references: [id], onDelete: Cascade)
+  introducerId String
+
+  // The person being introduced, once known (optional).
+  targetContact   Contact? @relation("ContactIntrosReceived", fields: [targetContactId], references: [id])
+  targetContactId String?
+
+  // The partner following up on this intro.
+  owner   Partner? @relation("PartnerIntroOwner", fields: [ownerId], references: [id])
+  ownerId String?
+
+  // On convert, the Deal this intro produced. The deal pipeline then owns it.
+  deal   Deal?   @relation(fields: [dealId], references: [id])
+  dealId String?
+
+  // Follow-up tasks attached to this specific introduction.
+  tasks Task[]
+
+  createdBy String // partner name or "AGENT · CLAUDE"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([introducerId])
+  @@index([targetContactId])
+  @@index([ownerId])
+  @@index([dealId])
+  @@index([status])
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// CallReview — the cross-call learning record (intro + client meetings). A
+// retro distilled from a meeting Interaction at ingest, edited + approved by a
+// partner. The /call-reviews surface aggregates patterns; a durable lesson
+// promotes into a KnowledgeItem behind the firm-brain approve gate. Candid
+// critique is firm_wide; an economics/strategy lesson is managing_partner.
+// Brand-new enum → plain values, no @map.
+// ──────────────────────────────────────────────────────────────────────
+
+enum CallReviewStatus {
+  draft
+  approved
+}
+
+model CallReview {
+  id            String           @id @default(cuid())
+  title         String
+  callDate      DateTime
+  whatWorked    String[]
+  whatDidnt     String[]
+  lessons       String[]
+  coachingNotes String?
+
+  // The meeting this reviews.
+  sourceInteraction   Interaction? @relation("CallReviewSource", fields: [sourceInteractionId], references: [id])
+  sourceInteractionId String?
+  // Destination-lane snapshot for filtering ("client_records" | "intro").
+  lane                String?
+
+  // Polymorphic scope — which call this reviews (all nullable).
+  client    Client?  @relation(fields: [clientId], references: [id])
+  clientId  String?
+  deal      Deal?    @relation(fields: [dealId], references: [id])
+  dealId    String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  contactId String?
+
+  status      CallReviewStatus     @default(draft)
+  sensitivity KnowledgeSensitivity @default(firm_wide)
+
+  // A lesson promoted into the firm brain becomes a KnowledgeItem (BD/Sales
+  // Playbook category). Loose-coupled id (no FK), like Activity.link. Null
+  // until promoted.
+  promotedKnowledgeItemId String?
+
+  createdBy String // partner name or "AGENT · CLAUDE"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lane, callDate])
+  @@index([clientId])
+  @@index([dealId])
+  @@index([contactId])
+  @@index([sourceInteractionId])
+  @@index([status])
 }
 
 // ──────────────────────────────────────────────────────────────────────

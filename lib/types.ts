@@ -79,6 +79,10 @@ export type Contact = {
   preferredChannel?: PreferredChannel;
   relationshipStrength?: RelationshipStrength; // partner judgment — manual only
   importantDates?: string[]; // free text, e.g. "Birthday — March 12"
+
+  // Channel partner (intro lane / Lane 4) — see schema Contact.isChannelPartner.
+  isChannelPartner?: boolean; // DB-defaulted false; optional in the fixture subset
+  channelNotes?: string;
 };
 
 /* A contact's company hats (employment / roles). The isPrimary row mirrors the
@@ -478,11 +482,66 @@ export type Task = {
   contactId?: string; // contact this task hangs off, if any
   artifactId?: string; // deliverable this task hangs off, if any
   milestoneId?: string; // milestone (epic) this task is a sub-task of, if any
+  introId?: string; // intro (channel-partner introduction) this task follows up, if any
   status?: TaskStatus; // board column (DB-defaulted; optional in the fixture subset)
   category?: WorkCategory; // card colour/tag (DB-defaulted)
   categoryLabel?: string;
   archivedAt?: string; // ISO date — set when moved to the board's Archive column
   done: boolean; // kept in sync with status === "done"
+};
+
+/* Intro — a single introduction in flight from a channel partner (intro lane,
+ * Lane 4). Pre-deal opportunity-via-relationship; converts into a Deal, where
+ * ContactLink(introduced_us) + DealSourceCommission then own the economics. */
+
+export type IntroStatus =
+  | "proposed"
+  | "requested"
+  | "made"
+  | "meeting_set"
+  | "converted"
+  | "declined"
+  | "dead";
+
+export type Intro = {
+  id: string;
+  targetCompany: string;
+  status: IntroStatus;
+  notes?: string | null;
+  introducerId: string; // the channel-partner contact
+  targetContactId?: string | null;
+  ownerId?: string | null; // partner following up
+  dealId?: string | null; // set on convert
+  createdBy: string;
+  createdAt: string; // ISO date
+  updatedAt: string; // ISO date
+};
+
+/* CallReview — cross-call learning record (intro + client meetings). A retro
+ * distilled at ingest, approved by a partner; durable lessons promote to the
+ * firm brain. firm_wide critique by default; managing_partner for economics. */
+
+export type CallReviewStatus = "draft" | "approved";
+
+export type CallReview = {
+  id: string;
+  title: string;
+  callDate: string; // ISO date
+  whatWorked: string[];
+  whatDidnt: string[];
+  lessons: string[];
+  coachingNotes?: string | null;
+  sourceInteractionId?: string | null;
+  lane?: string | null; // "client_records" | "intro" — snapshot for filtering
+  clientId?: string | null;
+  dealId?: string | null;
+  contactId?: string | null;
+  status: CallReviewStatus;
+  sensitivity: "firm_wide" | "managing_partner";
+  promotedKnowledgeItemId?: string | null; // KnowledgeItem id once promoted
+  createdBy: string;
+  createdAt: string; // ISO date
+  updatedAt: string; // ISO date
 };
 
 /* Artifact — first-class deliverable tracking.
