@@ -91,10 +91,14 @@ export function LeadFilters({
   leads,
   value,
   onChange,
+  hideClaim = false,
 }: {
   leads: ProspectLead[];
   value: LeadFilterState;
   onChange: (next: LeadFilterState) => void;
+  /** Hide the generic "Any claim" dropdown — the Promoted Leads tab supplies its
+   *  own richer Owner filter (claimedBy ?? promotedBy) instead. */
+  hideClaim?: boolean;
 }) {
   const { industries, surfacers, claimers } = useMemo(() => {
     const ind = new Set<string>();
@@ -127,13 +131,15 @@ export function LeadFilters({
       {surfacers.length > 0 && (
         <FilterSelect label="Anyone surfaced" value={value.surfacedBy} onChange={(v) => set({ surfacedBy: v })} options={surfacers} />
       )}
-      <FilterSelect
-        label="Any claim"
-        value={value.claimedBy}
-        onChange={(v) => set({ claimedBy: v })}
-        options={claimers}
-        extra={[{ value: "__unclaimed", label: "Unclaimed" }]}
-      />
+      {!hideClaim && (
+        <FilterSelect
+          label="Any claim"
+          value={value.claimedBy}
+          onChange={(v) => set({ claimedBy: v })}
+          options={claimers}
+          extra={[{ value: "__unclaimed", label: "Unclaimed" }]}
+        />
+      )}
       {active && (
         <button
           onClick={() => onChange(EMPTY_LEAD_FILTER)}

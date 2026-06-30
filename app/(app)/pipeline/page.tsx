@@ -4,7 +4,7 @@ import { AddDeal } from "@/components/add-deal";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { stageAgeTier } from "@/lib/format";
-import type { ProspectLead, ProspectPerson } from "@/lib/types";
+import type { ProspectLead, ProspectPerson, LeadOutreachChannel } from "@/lib/types";
 
 // The promoted-lead enrichment SEARCH (Apollo + Firecrawl) runs synchronously
 // from this route — give it wall-clock budget.
@@ -50,6 +50,11 @@ function loadLeads() {
       outreachDraft: true,
       outreachPersonIndex: true,
       outreachSentAt: true,
+      dismissReason: true,
+      touchChannel: true,
+      touchAt: true,
+      repliedAt: true,
+      notes: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -92,6 +97,11 @@ function toLead(row: LeadRow): ProspectLead {
     outreachDraft: row.outreachDraft ?? undefined,
     outreachPersonIndex: row.outreachPersonIndex ?? undefined,
     outreachSentAt: row.outreachSentAt?.toISOString(),
+    dismissReason: row.dismissReason ?? undefined,
+    touchChannel: (row.touchChannel as LeadOutreachChannel | null) ?? undefined,
+    touchAt: row.touchAt?.toISOString(),
+    repliedAt: row.repliedAt?.toISOString(),
+    notes: row.notes ?? undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -170,6 +180,8 @@ export default async function PipelinePage({
           tab === "found" ? "leads" : tab === "promoted" ? "promoted" : tab === "cold" ? "cold" : "board"
         }
         segment={segment}
+        currentPartnerId={session?.user?.partnerId}
+        currentPartnerLabel={session?.user?.name ?? undefined}
       />
     </>
   );

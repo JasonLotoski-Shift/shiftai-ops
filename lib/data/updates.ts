@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-29",
     tag: "new",
+    title: "Promoted Leads is now a working list: track outreach, replies, and notes",
+    detail:
+      "On Pipeline → Promoted Leads, each lead now carries your outreach. Log how and when you reached out (LinkedIn, email, call, or other) right on the card, flag it once they reply, and keep free-text notes. A status shows on every lead — New, Reached out, Replied, or In pipeline — and you can filter by status and owner (including a “Mine”), and sort by status, score, or last touch. Leads that aren't worth chasing go to a Set aside lane with a reason (Not a fit, Not now, or Declined) so they stop cluttering your list — and you can restore one anytime.",
+  },
+  {
+    date: "2026-06-29",
+    tag: "new",
     title: "Financials leads with a live cash position and a cashflow forecast",
     detail:
       "Financials now opens with your cash position: cash on hand (from a bank balance you enter once and the tool carries forward as money moves), what's coming in and going out over the next 30 days, where the balance lands, and how many months of runway that leaves. A new Cashflow tab projects money in and out week by week (or month by month) with a running balance, and lists every obligation due in the window. Each project's Financials tab gains a P&L that reconciles the plan against what's actually been paid and collected, with an at-risk flag when cost runs over. Managing partners only.",

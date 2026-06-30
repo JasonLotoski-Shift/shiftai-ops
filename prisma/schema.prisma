@@ -1938,6 +1938,21 @@ model ProspectLead {
   outreachPersonIndex Int?
   outreachSentAt      DateTime?
 
+  // Promoted-lead working layer (the Pipeline "Promoted Leads" outreach tracker).
+  // All nullable/additive; loose strings (no enums) matching the claimedBy/
+  // promotedBy convention. dismissReason is stamped when a lead is set aside
+  // (status → ghost). touchChannel/touchAt record the last manual outreach
+  // (LinkedIn/email/call/other) a partner did themselves; repliedAt is set when
+  // the prospect writes back. notes is free-text. These drive a derived working
+  // status (New / Reached out / Replied / In pipeline / Set aside) — see
+  // lib/leads.ts. Distinct from the in-app cold-email flow above (outreach*),
+  // which routes a lead to the "Cold email sent" tab via status "contacted".
+  dismissReason String? // "Not a fit" | "Not now" | "Declined" | free text
+  touchChannel  String? // "linkedin" | "email" | "call" | "other"
+  touchAt       DateTime?
+  repliedAt     DateTime?
+  notes         String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

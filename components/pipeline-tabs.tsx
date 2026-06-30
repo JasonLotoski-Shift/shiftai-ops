@@ -53,6 +53,8 @@ export function PipelineTabs({
   coldLeads,
   initialTab = "board",
   segment,
+  currentPartnerId,
+  currentPartnerLabel,
 }: {
   deals: DealWithRel[];
   stats: { totalValue: number; openDeals: number; staleCount: number };
@@ -62,6 +64,8 @@ export function PipelineTabs({
   coldLeads: ProspectLead[];
   initialTab?: PipelineTab;
   segment?: string;
+  currentPartnerId?: string;
+  currentPartnerLabel?: string;
 }) {
   const [tab, setTab] = useState<PipelineTab>(initialTab);
 
@@ -102,7 +106,13 @@ export function PipelineTabs({
         <FoundLeads pending={foundLeads} filtered={filteredLeads} segment={segment} />
       )}
 
-      {tab === "promoted" && <PromotedLeads leads={promotedLeads} />}
+      {tab === "promoted" && (
+        <PromotedLeads
+          leads={promotedLeads}
+          currentPartnerId={currentPartnerId}
+          currentPartnerLabel={currentPartnerLabel}
+        />
+      )}
 
       {tab === "cold" && <ColdLeads leads={coldLeads} />}
     </div>

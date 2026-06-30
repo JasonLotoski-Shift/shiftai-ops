@@ -662,9 +662,19 @@ export type ProspectLead = {
   outreachDraft?: string;
   outreachPersonIndex?: number;
   outreachSentAt?: string; // ISO date — set when marked sent (status → contacted)
+  // Promoted-lead working layer (Promoted Leads outreach tracker). See lib/leads.ts.
+  dismissReason?: string; // why set aside ("Not a fit" | "Not now" | "Declined" | free text)
+  touchChannel?: LeadOutreachChannel; // last manual outreach channel
+  touchAt?: string; // ISO date — when the last manual outreach happened
+  repliedAt?: string; // ISO date — when the prospect replied
+  notes?: string; // free-text working notes
   createdAt: string; // ISO date
   updatedAt: string; // ISO date
 };
+
+/* How a partner reached out to a promoted lead (manual, outside the in-app
+   cold-email flow). Loose string on the row; this union types the UI. */
+export type LeadOutreachChannel = "linkedin" | "email" | "call" | "other";
 
 export type LeadRun = {
   id: string;

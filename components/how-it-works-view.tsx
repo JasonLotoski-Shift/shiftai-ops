@@ -917,6 +917,7 @@ const flows: Flow[] = [
       { tone: "claude", kind: "Claude", label: "Rates every contact 1–10 against the criteria — decision-maker, connector, or no fit — saved as its own report tab" },
       { tone: "review", kind: "You review", label: "Open the report, tick the strong ones (name-only set aside) → Add to Pipeline Leads. Delete reports/contacts anytime" },
       { tone: "write", kind: "Saved", label: "Picks become firm-wide Promoted Leads; Enrich runs Apollo + Firecrawl and builds the company picture + \"how we'd sell to them\" view (same as AI Found leads), then add to the funnel — the profile carries onto the deal + AuditLog" },
+      { tone: "review", kind: "You work it", label: "On Pipeline → Promoted Leads, log how and when you reached out (LinkedIn, email, call, other), flag a reply, and keep notes — right on the card. Each lead shows a status (New / Reached out / Replied / In pipeline); filter by status and owner (incl. Mine) and sort by status, score, or last touch. Set a dead lead aside with a reason (Not a fit / Not now / Declined) so it leaves your list — restore it anytime" },
     ],
   },
   {

@@ -210,7 +210,10 @@ export async function declineLead(leadId: string, input: { reason?: string } = {
   await prisma.$transaction(async (tx) => {
     await tx.prospectLead.update({
       where: { id: leadId },
-      data: { status: "ghost", reviewedBy: partnerLabel, reviewedAt: now },
+      // dismissReason persists the structured "why" (e.g. promoted-lead presets
+      // "Not a fit" / "Not now" / "Declined") onto the row, so the Set-aside
+      // lane can show + filter it — not just bury it in the audit log.
+      data: { status: "ghost", reviewedBy: partnerLabel, reviewedAt: now, dismissReason: reason ?? null },
     });
     await writeAudit(tx, {
       actor,
@@ -295,6 +298,7 @@ export async function restoreLead(leadId: string): Promise<{ ok: true }> {
       data: {
         status: "pending",
         reviewedAt: null,
+        dismissReason: null, // clear the set-aside reason on restore (null for AI-Found leads anyway)
         ...(revealedPrimary
           ? {
               people: people.map((p, i) =>
@@ -325,6 +329,151 @@ export async function restoreLead(leadId: string): Promise<{ ok: true }> {
       type: "status",
       target: lead.companyName,
       detail: "Restored AI-found lead to the review queue",
+    });
+  });
+
+  revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  return { ok: true };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Promoted-lead working layer (Jay's outreach tracker). Lightweight actions on
+// the Pipeline "Promoted Leads" tab: record a manual outreach (LinkedIn/email/
+// call), flag a reply, and keep free-text notes — without touching the in-app
+// cold-email state machine (that uses status "contacted" + the Cold tab). These
+// drive the derived working status in lib/leads.ts. Each follows the canonical
+// recipe: one transaction + writeAudit (+ writeActivity where feed-worthy) +
+// revalidate.
+// ──────────────────────────────────────────────────────────────────────
+
+const OUTREACH_CHANNELS = ["linkedin", "email", "call", "other"] as const;
+type OutreachChannel = (typeof OUTREACH_CHANNELS)[number];
+const CHANNEL_LABEL: Record<OutreachChannel, string> = {
+  linkedin: "LinkedIn",
+  email: "email",
+  call: "a call",
+  other: "another channel",
+};
+
+// logLeadOutreach — stamp the last manual outreach (channel + now). Logging
+// outreach also claims an unclaimed lead for the sender, so the "Mine" owner
+// filter reflects who's actually working it (mirrors the cold-email claim).
+export async function logLeadOutreach(leadId: string, channel: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  if (!OUTREACH_CHANNELS.includes(channel as OutreachChannel)) throw new Error("Pick a valid channel");
+  const ch = channel as OutreachChannel;
+
+  const lead = await prisma.prospectLead.findUnique({
+    where: { id: leadId },
+    select: { status: true, companyName: true, claimedById: true },
+  });
+  if (!lead) throw new Error("Lead not found");
+  if (lead.status === "added" || lead.status === "ghost")
+    throw new Error("This lead has already been reviewed");
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.prospectLead.update({
+      where: { id: leadId },
+      data: {
+        touchChannel: ch,
+        touchAt: now,
+        ...(lead.claimedById
+          ? {}
+          : { claimedById: session.user!.partnerId, claimedBy: partnerLabel, claimedAt: now }),
+      },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "update.prospectLead.outreach",
+      targetType: "ProspectLead",
+      targetId: leadId,
+      changes: { channel: ch },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "touch",
+      target: lead.companyName,
+      detail: `Reached out to ${lead.companyName} via ${CHANNEL_LABEL[ch]}`,
+      link: `/pipeline/leads/${leadId}`,
+    });
+  });
+
+  revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  return { ok: true };
+}
+
+// markLeadReplied — set/clear the reply flag. Preserves an existing repliedAt
+// when re-flagging so the original reply timestamp isn't overwritten.
+export async function markLeadReplied(leadId: string, replied: boolean): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const lead = await prisma.prospectLead.findUnique({
+    where: { id: leadId },
+    select: { status: true, companyName: true, repliedAt: true },
+  });
+  if (!lead) throw new Error("Lead not found");
+  if (lead.status === "added" || lead.status === "ghost")
+    throw new Error("This lead has already been reviewed");
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.prospectLead.update({
+      where: { id: leadId },
+      data: { repliedAt: replied ? (lead.repliedAt ?? now) : null },
+    });
+    await writeAudit(tx, {
+      actor,
+      action: "update.prospectLead.replied",
+      targetType: "ProspectLead",
+      targetId: leadId,
+      changes: { replied },
+    });
+    await writeActivity(tx, {
+      actor,
+      type: "status",
+      target: lead.companyName,
+      detail: replied
+        ? `${lead.companyName} replied to outreach`
+        : `Cleared the reply flag on ${lead.companyName}`,
+      link: `/pipeline/leads/${leadId}`,
+    });
+  });
+
+  revalidatePath("/pipeline");
+  revalidatePath(`/pipeline/leads/${leadId}`);
+  return { ok: true };
+}
+
+// setLeadNotes — persist free-text working notes (empty → null). Audit only; no
+// activity-feed row (notes churn shouldn't spam the firm feed).
+export async function setLeadNotes(leadId: string, notes: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = partnerActor(session.user.partnerId, partnerLabel);
+
+  const trimmed = notes.trim();
+  const lead = await prisma.prospectLead.findUnique({ where: { id: leadId }, select: { id: true } });
+  if (!lead) throw new Error("Lead not found");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.prospectLead.update({ where: { id: leadId }, data: { notes: trimmed || null } });
+    await writeAudit(tx, {
+      actor,
+      action: "update.prospectLead.notes",
+      targetType: "ProspectLead",
+      targetId: leadId,
+      changes: { length: trimmed.length },
     });
   });
 

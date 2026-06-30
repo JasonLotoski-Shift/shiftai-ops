@@ -7,6 +7,7 @@ import { LeadEmailPanel } from "@/components/lead-email-panel";
 import { LeadPeopleList } from "@/components/lead-people-list";
 import { LeadClaimCard } from "@/components/lead-claim-card";
 import { RestoreLeadButton } from "@/components/restore-lead-button";
+import { PromotedLeadControls, PromotedLeadStatusChip } from "@/components/promoted-lead-controls";
 import { LeadCompanyPictureCard, LeadPositioningCard } from "@/components/lead-profile-cards";
 import { LeadEnrichButton } from "@/components/lead-enrich-button";
 import { FindMorePeopleButton } from "@/components/find-more-people-button";
@@ -14,7 +15,7 @@ import { LeadWebsiteSetter } from "@/components/lead-website-setter";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCAD } from "@/lib/format";
-import type { ProspectLead, ProspectPerson } from "@/lib/types";
+import type { ProspectLead, ProspectPerson, LeadOutreachChannel } from "@/lib/types";
 import { ArrowLeft, ExternalLink, Sparkles } from "lucide-react";
 
 // The lead Enrich pass (Apollo + Firecrawl + web-search rounds) runs
@@ -100,6 +101,11 @@ export default async function LeadDetailPage({
     outreachDraft: row.outreachDraft ?? undefined,
     outreachPersonIndex: row.outreachPersonIndex ?? undefined,
     outreachSentAt: row.outreachSentAt?.toISOString(),
+    dismissReason: row.dismissReason ?? undefined,
+    touchChannel: (row.touchChannel as LeadOutreachChannel | null) ?? undefined,
+    touchAt: row.touchAt?.toISOString(),
+    repliedAt: row.repliedAt?.toISOString(),
+    notes: row.notes ?? undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -259,6 +265,18 @@ export default async function LeadDetailPage({
             currentPartnerId={session?.user?.partnerId}
             readOnly={lead.status === "added" || lead.status === "ghost"}
           />
+
+          {/* Working status — the promoted-lead outreach tracker (roomy layout
+              with a full notes box). Only while the lead is live (pending). */}
+          {lead.origin === "imported" && lead.status === "pending" && (
+            <Card className="p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-2">
+                <Label gold>Working status</Label>
+                <PromotedLeadStatusChip lead={lead} />
+              </div>
+              <PromotedLeadControls lead={lead} />
+            </Card>
+          )}
 
           {/* The email panel self-routes: composer for pending leads, the
               awaiting-reply state (with the two exits) while contacted, and the
