@@ -5,13 +5,8 @@ import { Card, CardBody, Label, Badge, Hairline } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatCAD, formatDate } from "@/lib/format";
 import { currentIsManagingPartner } from "@/lib/permissions";
-import { effectiveAccrualStatus } from "@/lib/billing/commission";
-import { MarkAccrualPaidButton } from "@/components/mark-accrual-paid-button";
-import { ArrowLeft, Repeat } from "lucide-react";
-
-function baseLabel(b: string): string {
-  return b === "total_12mo" ? "12-month total" : b === "total_6mo" ? "6-month total" : "deal value";
-}
+import { MarkCommissionPaidButton } from "@/components/mark-commission-paid-button";
+import { ArrowLeft } from "lucide-react";
 
 export default async function ServiceContractDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -39,16 +34,30 @@ export default async function ServiceContractDetailPage({ params }: { params: Pr
       client: { select: { id: true, company: true } },
       partnerLead: { select: { name: true } },
       project: { select: { id: true, name: true } },
-      commissions: {
-        include: {
-          partner: { select: { id: true, name: true } },
-          projectCommission: { select: { buildAmount: true } },
-          accruals: { orderBy: { periodIndex: "asc" } },
-        },
-      },
     },
   });
   if (!contract) notFound();
+
+  // Recurring commission now lives on the unified CommissionLine: the lines for
+  // this contract's build project that carry a recurring %, each with its build
+  // (one-time) and recurring (per-month) payout rows.
+  const lines = await prisma.commissionLine.findMany({
+    where: { projectId: contract.projectId, recurringPct: { not: null } },
+    include: {
+      partner: { select: { id: true, name: true } },
+      payouts: true,
+    },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  const now = new Date();
+  // Recurring payout status, mirroring the old effective-accrual flip: a paid row
+  // reads "paid"; an owed row whose month has started is "accrued" (payable now);
+  // a future month is still "projected".
+  function effStatus(p: { status: string; periodStart: Date | null }): "paid" | "accrued" | "projected" {
+    if (p.status === "paid" || p.status === "confirmed") return "paid";
+    return p.periodStart && p.periodStart <= now ? "accrued" : "projected";
+  }
 
   const tone: "gold" | "steel" | "neutral" =
     contract.status === "active" ? "gold" : contract.status === "pending_start" ? "steel" : "neutral";
@@ -98,37 +107,42 @@ export default async function ServiceContractDetailPage({ params }: { params: Pr
           </Card>
         </div>
 
-        {contract.commissions.length === 0 ? (
+        {lines.length === 0 ? (
           <Card>
             <CardBody>
               <p className="text-[13px] text-bone-mute">No commission tracked on this contract.</p>
             </CardBody>
           </Card>
         ) : (
-          contract.commissions.map((cm) => {
-            const payee = cm.partner?.name ?? cm.externalName ?? "—";
+          lines.map((line) => {
+            const payee = line.partner?.name ?? line.externalName ?? "—";
+            const buildTotal = line.payouts.filter((p) => p.stream === "build").reduce((s, p) => s + p.amount, 0);
+            const recurring = line.payouts
+              .filter((p) => p.stream === "recurring")
+              .sort((a, b) => (a.periodIndex ?? 0) - (b.periodIndex ?? 0));
+            const projectedRecurring = recurring.reduce((s, p) => s + p.amount, 0);
             return (
-              <Card key={cm.id}>
+              <Card key={line.id}>
                 <div className="px-5 pt-5 pb-3 flex items-center justify-between gap-4">
                   <div className="flex flex-col gap-0.5">
                     <span className="title-md">{payee}</span>
                     <span className="text-[11px] text-bone-mute">
-                      {Number(cm.pct)}% of {baseLabel(cm.base)} · {cm.coveredMonths} months
+                      {Number(line.recurringPct)}% of monthly fee · {line.coveredMonths ?? recurring.length} months
                     </span>
                   </div>
                   <div className="flex items-center gap-6">
-                    {cm.projectCommission && (
+                    {buildTotal > 0 && (
                       <div className="flex flex-col items-end">
                         <Label>Build (payable now)</Label>
                         <span className="mono text-[13px] text-bone tabular-nums">
-                          {formatCAD(cm.projectCommission.buildAmount).replace("CA$", "$")}
+                          {formatCAD(buildTotal).replace("CA$", "$")}
                         </span>
                       </div>
                     )}
                     <div className="flex flex-col items-end">
                       <Label>Projected recurring</Label>
                       <span className="mono text-[13px] text-track-gold tabular-nums">
-                        {formatCAD(cm.projectedAmount).replace("CA$", "$")}
+                        {formatCAD(projectedRecurring).replace("CA$", "$")}
                       </span>
                     </div>
                   </div>
@@ -141,25 +155,25 @@ export default async function ServiceContractDetailPage({ params }: { params: Pr
                     <span className="text-[11px] text-bone-dim text-right">Amount</span>
                     <span className="text-[11px] text-bone-dim text-right">Status</span>
                   </div>
-                  {cm.accruals.map((a) => {
-                    const eff = effectiveAccrualStatus(a.status, a.periodStart);
+                  {recurring.map((p) => {
+                    const eff = effStatus(p);
                     const effTone: "gold" | "steel" | "neutral" =
                       eff === "paid" ? "steel" : eff === "accrued" ? "gold" : "neutral";
                     return (
                       <div
-                        key={a.id}
+                        key={p.id}
                         className="grid grid-cols-[70px_1fr_130px_130px] gap-4 px-5 py-2.5 items-center hover:bg-[var(--color-row-hover)]"
                       >
-                        <span className="mono text-[12px] text-bone-mute tabular-nums">M{a.periodIndex + 1}</span>
+                        <span className="mono text-[12px] text-bone-mute tabular-nums">M{(p.periodIndex ?? 0) + 1}</span>
                         <span className="mono text-[12px] text-bone-dim tabular-nums">
-                          {formatDate(a.periodStart).split(",")[0]}
+                          {p.periodStart ? formatDate(p.periodStart).split(",")[0] : "—"}
                         </span>
                         <span className="mono text-[13px] text-bone tabular-nums text-right">
-                          {formatCAD(a.amount).replace("CA$", "$")}
+                          {formatCAD(p.amount).replace("CA$", "$")}
                         </span>
                         <div className="flex justify-end items-center gap-2">
                           <Badge tone={effTone}>{eff}</Badge>
-                          {eff === "accrued" && <MarkAccrualPaidButton accrualId={a.id} />}
+                          {eff === "accrued" && <MarkCommissionPaidButton payoutId={p.id} />}
                         </div>
                       </div>
                     );

@@ -14,7 +14,6 @@ import { CommissionSummary, type CommissionFlowRow } from "@/components/billing/
 import { FinancialsTabs, type ApArProps } from "@/components/billing/financials-tabs";
 import { loadLedgerEntries } from "@/app/(app)/financials/ledger-data";
 import { loadCashData } from "@/app/(app)/financials/cash-data";
-import { SnapshotButton } from "@/components/financials/snapshot-button";
 import { CashStrip } from "@/components/financials/cash-strip";
 
 // Firm Financials — the firm-wide revenue rollup (Phase 3). Aggregates every
@@ -402,12 +401,6 @@ export default async function FinancialsPage() {
             externalShare={commExternalShare}
             rows={commissionRows}
           />
-        )}
-
-        {managingPartner && (
-          <Card className="p-5">
-            <SnapshotButton />
-          </Card>
         )}
       </div>
       </FinancialsTabs>

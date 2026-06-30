@@ -1,14 +1,15 @@
 "use client";
 
-// Small client child for the service-contract accrual ledger — marks one month's
-// recurring commission paid. Keeps the detail page a server component.
+// Small client child for the service-contract recurring ledger — marks one
+// month's recurring commission payout paid. Keeps the detail page a server
+// component.
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
-import { markAccrualPaid } from "@/app/(app)/service-contracts/actions";
+import { markRecurringCommissionPaid } from "@/app/(app)/service-contracts/actions";
 
-export function MarkAccrualPaidButton({ accrualId }: { accrualId: string }) {
+export function MarkCommissionPaidButton({ payoutId }: { payoutId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState(false);
@@ -17,7 +18,7 @@ export function MarkAccrualPaidButton({ accrualId }: { accrualId: string }) {
     setError(false);
     startTransition(async () => {
       try {
-        await markAccrualPaid(accrualId);
+        await markRecurringCommissionPaid(payoutId);
         router.refresh();
       } catch {
         setError(true);

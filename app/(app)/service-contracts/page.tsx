@@ -32,10 +32,21 @@ export default async function ServiceContractsPage() {
       client: { select: { company: true } },
       partnerLead: { select: { name: true } },
       project: { select: { id: true, name: true } },
-      commissions: { select: { projectedAmount: true } },
     },
     orderBy: { startDate: "asc" },
   });
+
+  // Projected recurring commission per contract, from the unified CommissionPayout
+  // (recurring stream), keyed by the contract's build project.
+  const recurringPayouts = await prisma.commissionPayout.findMany({
+    where: { stream: "recurring", commissionLine: { projectId: { in: contracts.map((c) => c.projectId) } } },
+    select: { amount: true, commissionLine: { select: { projectId: true } } },
+  });
+  const projectedByProject = new Map<string, number>();
+  for (const p of recurringPayouts) {
+    const pid = p.commissionLine.projectId;
+    if (pid) projectedByProject.set(pid, (projectedByProject.get(pid) ?? 0) + p.amount);
+  }
 
   const active = contracts.filter((c) => c.status === "active");
   const pending = contracts.filter((c) => c.status === "pending_start");
@@ -76,7 +87,7 @@ export default async function ServiceContractsPage() {
               </div>
 
               {contracts.map((c) => {
-                const projected = c.commissions.reduce((s, cm) => s + cm.projectedAmount, 0);
+                const projected = projectedByProject.get(c.projectId) ?? 0;
                 const tone: "gold" | "steel" | "neutral" =
                   c.status === "active" ? "gold" : c.status === "pending_start" ? "steel" : "neutral";
                 return (

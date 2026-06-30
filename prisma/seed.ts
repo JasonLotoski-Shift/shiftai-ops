@@ -60,7 +60,6 @@ async function main() {
   await prisma.billingInstallment.deleteMany();
   await prisma.projectEconomicsLine.deleteMany();
   await prisma.projectDirectCost.deleteMany();
-  await prisma.origination.deleteMany();
   await prisma.estimateLine.deleteMany();
   await prisma.estimate.deleteMany();
   await prisma.rateTier.deleteMany();
