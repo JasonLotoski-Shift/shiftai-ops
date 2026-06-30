@@ -49,6 +49,34 @@ Both depend on 007 and apply in order after it. Schema edits are already in
 `npx prisma migrate dev` (it emits 007+008+009 as one migration) or paste them into
 the Supabase SQL editor in order. **Still needs Jason's approval — the shared Supabase is prod.**
 
+## 010 — Financials rebuild, Phase 1 (additive schema; STAGED differently)
+
+> ✅ **APPLIED 2026-06-29.** Run via `prisma db execute` against the shared Supabase
+> (additive only: zero existing reads broke), the staged `schema.prisma` +
+> `lib/types.ts` edits made live, the Prisma client regenerated, and recorded in
+> Prisma's ledger as migration `20260629120000_financials_rebuild_phase1`
+> (`migrate resolve --applied`). The applied copy lives at
+> `prisma/migrations/20260629120000_financials_rebuild_phase1/migration.sql`; this
+> file is retained as the human-readable record + companion to the schema notes.
+
+`010_financials_rebuild_phase1.sql` is the additive schema for the Financials
+rebuild: 3 new enums + 6 new tables (`CommissionLine`, `CommissionPayout`,
+`FxRate`, `OpeningBalance`, `BankReconciliation`, `InvoicePayment`) + 2 nullable
+columns on existing tables (`Deal.budgetFee`, `Invoice.driveUrl`). Purely additive,
+depends on nothing in 001–009, applies on its own.
+
+**This one breaks the "edits already in `schema.prisma` + client regenerated"
+rule above, on purpose.** Because it adds columns to the hot `Deal` / `Invoice`
+tables and the apply is deferred (the rebuild applies it in a later, owner-approved
+landing), the matching `schema.prisma` + `lib/types.ts` edits are STAGED in
+`010_financials_rebuild_phase1.schema.md` rather than made live, and the Prisma
+client is **not** regenerated yet. Regenerating ahead of the un-applied DDL would
+make every bare `Deal` / `Invoice` read SELECT columns the prod DB lacks
+(`42703`) and break them everywhere. Apply the SQL, paste the companion edits,
+`prisma generate`, and `migrate resolve` **together** — full recipe in the
+companion file. **Needs Jason's approval — the shared Supabase is prod.** Do NOT
+run `migrate dev`.
+
 ## How to apply (recommended path)
 
 The clean way is to let Prisma generate the migration from the edited schema and

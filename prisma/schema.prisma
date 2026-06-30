@@ -324,6 +324,23 @@ enum CommissionAccrualStatus {
   paid
 }
 
+// Financials rebuild (010) — unified commission v2. Plain underscored values,
+// NO @map (brand-new, no legacy data to map).
+enum CommissionKind {
+  origination
+  source
+}
+
+enum CommissionBasis {
+  labor_revenue
+  build_value
+}
+
+enum CommissionStream {
+  build
+  recurring
+}
+
 // Work category — colours/tags a milestone or task on the board. Defaults from
 // what it's tied to (project → project, deal → pipeline, else firm/other) and
 // is editable. Firm items can carry a free sub-label (BD, Admin).
@@ -471,29 +488,29 @@ model Partner {
   role     String
   email    String @unique
 
-  contactsLed        Contact[]       @relation("PartnerContactLead")
-  dealsLed           Deal[]          @relation("PartnerDealLead")
-  clientsLed         Client[]        @relation("PartnerClientLead")
-  projectsLed        Project[]       @relation("PartnerProjectLead")
-  projectsConsult    Project[]       @relation("ProjectConsultants")
-  tasksOwned         Task[]          @relation("TaskOwner")
-  tasksAssigned      Task[]          @relation("TaskAssignedBy")
-  reviewTasks        Task[]          @relation("TaskReviewer")
-  milestonesOwned    Milestone[]     @relation("MilestoneOwner")
-  agentPlans         AgentPlan[]     @relation("AgentPlanCreatedBy")
-  channelMemberships ChannelMember[]
-  messagesAuthored   Message[]
-  originations       Origination[]
+  contactsLed         Contact[]                   @relation("PartnerContactLead")
+  dealsLed            Deal[]                      @relation("PartnerDealLead")
+  clientsLed          Client[]                    @relation("PartnerClientLead")
+  projectsLed         Project[]                   @relation("PartnerProjectLead")
+  projectsConsult     Project[]                   @relation("ProjectConsultants")
+  tasksOwned          Task[]                      @relation("TaskOwner")
+  tasksAssigned       Task[]                      @relation("TaskAssignedBy")
+  reviewTasks         Task[]                      @relation("TaskReviewer")
+  milestonesOwned     Milestone[]                 @relation("MilestoneOwner")
+  agentPlans          AgentPlan[]                 @relation("AgentPlanCreatedBy")
+  channelMemberships  ChannelMember[]
+  messagesAuthored    Message[]
+  originations        Origination[]
   dealCommissions     DealSourceCommission[]      @relation("PartnerDealCommission")
   projectCommissions  ProjectSourceCommission[]   @relation("PartnerProjectCommission")
   ongoingCommissions  OngoingContractCommission[] @relation("PartnerOngoingCommission")
   serviceContractsLed ServiceContract[]           @relation("PartnerServiceContractLead")
 
   // Reimbursable expenses this partner fronted (firm financials · AP/AR).
-  expensesPaid        Expense[]
+  expensesPaid Expense[]
 
   // Team notes left on architecture-map cards (the /architecture tab).
-  architectureNotes  ArchitectureNote[]
+  architectureNotes ArchitectureNote[]
 
   // Gmail ingest — per-partner OAuth connection + incremental poll cursors.
   gmailAuth        PartnerGmailAuth?
@@ -523,6 +540,9 @@ model Partner {
   knowledgeItemsOwned KnowledgeItem[]  @relation("KnowledgeItemOwner")
   decisionsRecorded   DecisionRecord[] @relation("DecisionDecidedBy")
   knowledgeTagsOwned  KnowledgeTag[]   @relation("KnowledgeTagSteward")
+
+  // Financials rebuild (010) — unified commission lines this partner is payee on.
+  commissionLines CommissionLine[] @relation("PartnerCommissionLine")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -571,20 +591,20 @@ model Contact {
   relationshipStrength RelationshipStrength?
   importantDates       String[] // free text, e.g. "Birthday — March 12"
 
-  interactions      Interaction[]
-  deals             Deal[]
-  primaryForClients Client[]      @relation("ClientPrimaryContact")
-  billingForClients Client[]      @relation("ClientBillingContact")
-  links             ContactLink[]
+  interactions       Interaction[]
+  deals              Deal[]
+  primaryForClients  Client[]             @relation("ClientPrimaryContact")
+  billingForClients  Client[]             @relation("ClientBillingContact")
+  links              ContactLink[]
   // The person's company hats — one row per {company, role}. The isPrimary row
   // mirrors the scalar `company`/`title` above (the synced source of truth all
   // legacy reads use); the others are additional affiliations (e.g. CEO of two
   // companies). Managed via lib/contact-affiliations.ts. Distinct from `links`,
   // which is the buying relationship to a specific Deal/Client.
-  affiliations      ContactAffiliation[]
-  clientLeadProjects Project[]    @relation("ProjectClientLead")
-  tasks             Task[]
-  actionDrafts      ActionDraft[]
+  affiliations       ContactAffiliation[]
+  clientLeadProjects Project[]            @relation("ProjectClientLead")
+  tasks              Task[]
+  actionDrafts       ActionDraft[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -619,14 +639,14 @@ model ContactAffiliation {
 // ──────────────────────────────────────────────────────────────────────
 
 model Interaction {
-  id       String          @id @default(cuid())
-  type     InteractionType
-  date     DateTime
-  summary  String
+  id         String          @id @default(cuid())
+  type       InteractionType
+  date       DateTime
+  summary    String
   // Full original text (email/meeting body). Source of truth for "show me the
   // thread"; `summary` stays the collapsed one-liner. Nullable — legacy rows + a
   // manual log have no body.
-  body     String?
+  body       String?
   // Email subject + the source message/meeting id (dedup; NON-unique — app-level
   // dedup, see lib/ingest). threadId groups a Gmail thread's messages so a client
   // page can show one growing conversation and the poll can detect "already filed".
@@ -635,8 +655,8 @@ model Interaction {
   threadId   String?
   // Free-text actor — partner name OR agent label like "AGENT · CLAUDE".
   // Not a Partner FK because agents aren't Partners (yet).
-  loggedBy String
-  channel  String?
+  loggedBy   String
+  channel    String?
 
   // Comms is now scoped to whichever of contact / client / deal apply. contactId
   // is NULLABLE: auto-ingested mail that matched no contact still lands, scoped by
@@ -710,6 +730,9 @@ model Deal {
   company           String
   stage             DealStage
   valueEstimate     Int
+  // 010 — budget overrides the estimate once set (authoritativeBuildValue); the
+  // accepted estimate then valueEstimate are the fallbacks. Null until set.
+  budgetFee         Int?
   industry          Industry
   closeTargetDate   DateTime
   lastTouchAt       DateTime
@@ -762,16 +785,18 @@ model Deal {
   partnerLead   Partner @relation("PartnerDealLead", fields: [partnerLeadId], references: [id])
   partnerLeadId String
 
-  artifacts  Artifact[]
-  interactions Interaction[]
-  knowledgeItems KnowledgeItem[]
-  estimates  Estimate[]
-  discoverySurveys DiscoverySurvey[]
-  contactLinks ContactLink[]
-  tasks      Task[]
-  actionDrafts ActionDraft[]
-  prototypeRuns PrototypeRun[]
+  artifacts         Artifact[]
+  interactions      Interaction[]
+  knowledgeItems    KnowledgeItem[]
+  estimates         Estimate[]
+  discoverySurveys  DiscoverySurvey[]
+  contactLinks      ContactLink[]
+  tasks             Task[]
+  actionDrafts      ActionDraft[]
+  prototypeRuns     PrototypeRun[]
   sourceCommissions DealSourceCommission[]
+  // 010 — pre-convert commission lines (canonical home is the project post-convert).
+  commissionLines   CommissionLine[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -802,7 +827,7 @@ model DiscoverySurvey {
   respondentEmail      String?
   submittedAt          DateTime?
   driveUrl             String?
-  externalSubmissionId String? @unique // Tally responseId — idempotency
+  externalSubmissionId String?   @unique // Tally responseId — idempotency
 
   dealId   String? // set at deal stage; retained for provenance after conversion
   clientId String? // added when the deal converts to a client
@@ -875,20 +900,20 @@ model Client {
   billingContact   Contact?  @relation("ClientBillingContact", fields: [billingContactId], references: [id])
   billingContactId String?
 
-  projects   Project[]
-  invoices   Invoice[]
-  tasks      Task[]
-  artifacts  Artifact[]
-  interactions Interaction[]
-  knowledgeItems KnowledgeItem[]
-  milestones Milestone[]
+  projects         Project[]
+  invoices         Invoice[]
+  tasks            Task[]
+  artifacts        Artifact[]
+  interactions     Interaction[]
+  knowledgeItems   KnowledgeItem[]
+  milestones       Milestone[]
   discoverySurveys DiscoverySurvey[]
-  contactLinks ContactLink[]
-  actionDrafts ActionDraft[]
-  prototypeRuns PrototypeRun[]
+  contactLinks     ContactLink[]
+  actionDrafts     ActionDraft[]
+  prototypeRuns    PrototypeRun[]
   serviceContracts ServiceContract[]
-  bills      Bill[]
-  expenses   Expense[]
+  bills            Bill[]
+  expenses         Expense[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -930,18 +955,20 @@ model Project {
 
   consultants Partner[] @relation("ProjectConsultants")
 
-  milestones     Milestone[]
-  invoices       Invoice[]
-  tasks          Task[]
-  artifacts      Artifact[]
-  knowledgeItems KnowledgeItem[]
-  installments   BillingInstallment[]
-  economicsLines ProjectEconomicsLine[]
-  directCosts    ProjectDirectCost[]
-  payouts        ConsultantPayout[]
-  originations   Origination[]
-  actionDrafts   ActionDraft[]
+  milestones        Milestone[]
+  invoices          Invoice[]
+  tasks             Task[]
+  artifacts         Artifact[]
+  knowledgeItems    KnowledgeItem[]
+  installments      BillingInstallment[]
+  economicsLines    ProjectEconomicsLine[]
+  directCosts       ProjectDirectCost[]
+  payouts           ConsultantPayout[]
+  originations      Origination[]
+  actionDrafts      ActionDraft[]
   sourceCommissions ProjectSourceCommission[]
+  // 010 — unified commission lines (replaces origination + source once Phase 4 cuts over).
+  commissionLines   CommissionLine[]
   serviceContract   ServiceContract?
   bills             Bill[]
   expenses          Expense[]
@@ -989,7 +1016,9 @@ model BillingInstallment {
   invoiceId String?  @unique
 
   // Consultant payouts owed for this stage.
-  payouts ConsultantPayout[]
+  payouts           ConsultantPayout[]
+  // 010 — commission payouts owed on this stage (build stream).
+  commissionPayouts CommissionPayout[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1022,8 +1051,8 @@ model Consultant {
   partner   Partner? @relation("PartnerConsultant", fields: [partnerId], references: [id])
   partnerId String?  @unique
 
-  economicsLines ProjectEconomicsLine[]
-  payouts        ConsultantPayout[]
+  economicsLines     ProjectEconomicsLine[]
+  payouts            ConsultantPayout[]
   // Reimbursable expenses this person (a non-partner employee/contractor) fronted.
   reimbursedExpenses Expense[]
 
@@ -1112,8 +1141,8 @@ model ConsultantPayout {
   // cover several stages = several payout rows, so many payouts point at one
   // bill. The payout is the cash that moved; the bill is the supporting doc, so
   // the deduped cash-out total counts the payout and drops the linked bill.
-  settledByBill   Bill?   @relation("BillSettledPayouts", fields: [settledByBillId], references: [id], onDelete: SetNull)
-  settledByBillId String?
+  settledByBill       Bill?   @relation("BillSettledPayouts", fields: [settledByBillId], references: [id], onDelete: SetNull)
+  settledByBillId     String?
   // Set by a managing partner to clear the missing-invoice flag on a payout that
   // legitimately will never have an invoice (an informal e-transfer). Null = not
   // waived; any text = waived, and the text is the reason (rendered on the row).
@@ -1198,6 +1227,8 @@ model Invoice {
   // (the row's creation date) — the two usually match but need not.
   sentAt   DateTime?
   status   InvoiceStatus
+  // 010 — the stored invoice PDF in Drive (was null in every export before).
+  driveUrl String?
 
   client   Client @relation(fields: [clientId], references: [id])
   clientId String
@@ -1207,6 +1238,9 @@ model Invoice {
 
   // The billing installment this invoice was generated from (if any).
   installment BillingInstallment?
+
+  // 010 — partial / multiple receipts against this invoice.
+  payments InvoicePayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1267,7 +1301,7 @@ model Task {
 
   // When set, the task has been moved to the board's Archive column. The
   // timestamp drives the 7-day auto-hide (mirrors Milestone.archivedAt).
-  archivedAt    DateTime?
+  archivedAt DateTime?
 
   // Scoping FKs (nullable — firm-wide tasks have neither).
   // Enables "what's open on Acme" queries without parsing relatedTo.
@@ -1532,9 +1566,9 @@ model Artifact {
 // ──────────────────────────────────────────────────────────────────────
 
 model KnowledgeItem {
-  id       String          @id @default(cuid())
-  title    String
-  source   KnowledgeSource @default(uploaded)
+  id     String          @id @default(cuid())
+  title  String
+  source KnowledgeSource @default(uploaded)
 
   // Curated one-paragraph summary (what a skill reads first); extractedText is
   // the full parsed body (FTS + deep context). Both nullable until parsed.
@@ -1625,14 +1659,14 @@ model DecisionRecord {
 
   // The ADR body. context = the situation; optionsConsidered = what was weighed;
   // decision = what was chosen; consequences = what it commits the firm to.
-  context          String?
+  context           String?
   optionsConsidered String?
-  decision         String
-  consequences     String?
+  decision          String
+  consequences      String?
 
-  decidedAt   DateTime
-  decidedBy   Partner? @relation("DecisionDecidedBy", fields: [decidedById], references: [id])
-  decidedById String?
+  decidedAt      DateTime
+  decidedBy      Partner? @relation("DecisionDecidedBy", fields: [decidedById], references: [id])
+  decidedById    String?
   // Free-text actor fallback when the decider is not a Partner row (or for an
   // agent-distilled draft). Parallel to Interaction.loggedBy.
   decidedByLabel String?
@@ -2385,9 +2419,9 @@ model ProjectSourceCommission {
   notes                  String?
   sourceDealCommissionId String? // provenance; null = direct project-level fallback
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId String
-  partner   Partner? @relation("PartnerProjectCommission", fields: [partnerId], references: [id], onDelete: SetNull)
+  partner   Partner?                   @relation("PartnerProjectCommission", fields: [partnerId], references: [id], onDelete: SetNull)
   partnerId String?
   ongoing   OngoingContractCommission? // back-relation of the 1:1 link below
 
@@ -2437,6 +2471,147 @@ model OngoingContractCommissionAccrual {
 
   @@unique([commissionId, periodIndex])
   @@index([periodStart])
+}
+
+// ─── Financials rebuild (010) — unified commission v2 + cash / integrity models ───
+// Additive. The four old commission tables above stay AUTHORITATIVE through Phase
+// 4; nothing reads these until Phase 2 (cash strip / Money home) and Phase 3
+// (backfill). CHECK constraints + the two partial unique indexes are SQL-only
+// (Prisma can't author them) — see prisma/_prepared-migrations/010_*.sql.
+
+// The ONE unified commission line (Ask 2 / §9.5) — replaces Origination +
+// DealSourceCommission + ProjectSourceCommission + OngoingContractCommission once
+// Phase 4 cuts over. Canonical home is the project; dealId carries a pre-convert
+// line. recurringPct is null unless a ServiceContract exists (how build-vs-recurring
+// is inferred; the CommissionBase enum is dropped). payee is a partner XOR an
+// external referrer (CHECK in SQL).
+model CommissionLine {
+  id            String          @id @default(cuid())
+  kind          CommissionKind
+  basis         CommissionBasis
+  buildPct      Decimal         @default(0) @db.Decimal(5, 2)
+  recurringPct  Decimal?        @db.Decimal(5, 2)
+  coveredMonths Int?
+  onSchedule    Boolean         @default(true)
+  sortOrder     Int             @default(0)
+  externalName  String?
+  notes         String?
+
+  // Provenance for the Phase 4 parity gate (which old row seeded this line).
+  backfillSourceId    String?
+  backfillSourceTable String?
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String?
+  deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealId    String?
+  partner   Partner? @relation("PartnerCommissionLine", fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerId String?
+
+  payouts CommissionPayout[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([dealId])
+  @@index([partnerId])
+}
+
+// Mirrors ConsultantPayout (Ask 3 / §9.5): one row per line per stage (build →
+// installment) or per covered month (recurring → periodIndex/periodStart).
+// settledByBill + invoiceWaivedReason are the same reconciliation primitive
+// ConsultantPayout uses. The two stream uniques are PARTIAL → SQL-only; the
+// stream/target XOR is a CHECK in SQL.
+model CommissionPayout {
+  id              String        @id @default(cuid())
+  amount          Int
+  status          PayoutStatus  @default(owed)
+  method          PayoutMethod?
+  paidAt          DateTime?
+  confirmedAt     DateTime?
+  clientPaidFirst Boolean?
+  notes           String?
+
+  stream        CommissionStream
+  installment   BillingInstallment? @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  installmentId String?
+  periodIndex   Int?
+  periodStart   DateTime?
+
+  commissionLine   CommissionLine @relation(fields: [commissionLineId], references: [id], onDelete: Cascade)
+  commissionLineId String
+
+  settledByBill       Bill?   @relation("BillSettledCommissionPayouts", fields: [settledByBillId], references: [id], onDelete: SetNull)
+  settledByBillId     String?
+  invoiceWaivedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([commissionLineId])
+  @@index([settledByBillId])
+  @@index([installmentId])
+}
+
+// Dated FX rates (§2 / §9 fx) — replaces the hard-coded USD 1.37 in lib/finance.ts.
+// rate = CAD per 1 unit of `currency`, true as of `asOf`.
+model FxRate {
+  id        String   @id @default(cuid())
+  currency  String
+  rate      Decimal  @db.Decimal(10, 4)
+  asOf      DateTime
+  source    String?
+  createdAt DateTime @default(now())
+
+  @@index([currency, asOf])
+}
+
+// Firm bank-balance anchor the cash strip carries forward (v1 = one balance).
+model OpeningBalance {
+  id        String   @id @default(cuid())
+  amount    Int
+  asOf      DateTime
+  label     String?
+  note      String?
+  active    Boolean  @default(true)
+  enteredBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, asOf])
+}
+
+// Statement-vs-computed reconciliation rows (Export & integrity surface).
+model BankReconciliation {
+  id               String   @id @default(cuid())
+  statementDate    DateTime
+  statementBalance Int
+  computedBalance  Int?
+  delta            Int?
+  note             String?
+  reconciledBy     String
+  createdAt        DateTime @default(now())
+
+  @@index([statementDate])
+}
+
+// Partial / multiple receipts against one Invoice. Invoice.status/paidAt stay
+// authoritative until Phase 2 derives "paid in full" from SUM(amount).
+model InvoicePayment {
+  id         String   @id @default(cuid())
+  amount     Int
+  receivedAt DateTime
+  method     String?
+  note       String?
+  createdBy  String
+
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -2612,7 +2787,7 @@ model PrototypeRun {
   model     String?
 
   // The approved brief this run was built from (snapshot; the run is self-contained).
-  brief String?
+  brief      String?
   // The final Artifact written on success — lets Home's approve action find it.
   artifactId String?
 
@@ -2645,12 +2820,12 @@ model PrototypeIteration {
   run   PrototypeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   runId String
 
-  round         Int
+  round          Int
   partnerComment String? // the partner's note that triggered this round (refine pass only; null on auto rounds)
-  htmlUrl       String? // Supabase Storage URL of this round's HTML snapshot
-  screenshotUrl String? // Supabase Storage URL of this round's screenshot
-  critique      String? // the round's self-critique (gate summary + open issues)
-  score         Int? // this round's overall (0–100)
+  htmlUrl        String? // Supabase Storage URL of this round's HTML snapshot
+  screenshotUrl  String? // Supabase Storage URL of this round's screenshot
+  critique       String? // the round's self-critique (gate summary + open issues)
+  score          Int? // this round's overall (0–100)
 
   // The gate sub-scores for this round, kept for the run timeline / tuning.
   structure     Int?
@@ -2737,27 +2912,27 @@ enum ExpenseCategory {
 }
 
 model Bill {
-  id          String           @id @default(cuid())
-  vendor      String
-  number      String? // vendor's invoice number (NOT unique — different vendors reuse)
-  description String?
-  amount      Int // subtotal, whole CAD (already converted if the source was USD)
-  gstBps      Int              @default(0)
-  total       Int              @default(0)
-  currency    String           @default("CAD") // currency of `amount`/`total` — always CAD once stored
+  id           String           @id @default(cuid())
+  vendor       String
+  number       String? // vendor's invoice number (NOT unique — different vendors reuse)
+  description  String?
+  amount       Int // subtotal, whole CAD (already converted if the source was USD)
+  gstBps       Int              @default(0)
+  total        Int              @default(0)
+  currency     String           @default("CAD") // currency of `amount`/`total` — always CAD once stored
   // Foreign-currency source (e.g. a USD invoice): the original figure + the rate
   // used to convert to CAD. Null when the invoice was already CAD. amount/total
   // stay CAD so all AP/AR/forecast math is unchanged.
   origAmount   Int?
   origCurrency String?
   fxRate       Decimal?         @db.Decimal(10, 4)
-  category    ExpenseCategory?
-  issuedAt    DateTime?
-  dueAt       DateTime?
-  paidAt      DateTime?
-  status      BillStatus       @default(received)
-  source      BillSource       @default(manual)
-  notes       String?
+  category     ExpenseCategory?
+  issuedAt     DateTime?
+  dueAt        DateTime?
+  paidAt       DateTime?
+  status       BillStatus       @default(received)
+  source       BillSource       @default(manual)
+  notes        String?
 
   // Optional pass-through cost tag — a vendor bill billable to a client/project.
   client    Client?  @relation(fields: [clientId], references: [id])
@@ -2773,7 +2948,9 @@ model Bill {
   // Contractor payouts this bill documents (Phase 2 cross-reference). Virtual
   // back-relation — the FK column (settledByBillId) lives on ConsultantPayout.
   // Many payouts may point at one lump bill.
-  settledPayouts ConsultantPayout[] @relation("BillSettledPayouts")
+  settledPayouts           ConsultantPayout[] @relation("BillSettledPayouts")
+  // 010 — commission payouts this bill documents (external-referrer reconciliation).
+  settledCommissionPayouts CommissionPayout[] @relation("BillSettledCommissionPayouts")
 
   createdBy String // partner name or "AGENT · CLAUDE"
   createdAt DateTime @default(now())
@@ -2784,22 +2961,22 @@ model Bill {
 }
 
 model Expense {
-  id          String          @id @default(cuid())
-  kind        ExpenseKind     @default(reimbursable)
-  category    ExpenseCategory
-  vendor      String?
-  description String?
-  amount      Int // whole CAD (already converted if the source was USD)
-  gstBps      Int             @default(0)
-  total       Int             @default(0)
-  currency    String          @default("CAD") // currency of `amount`/`total` — always CAD once stored
+  id           String          @id @default(cuid())
+  kind         ExpenseKind     @default(reimbursable)
+  category     ExpenseCategory
+  vendor       String?
+  description  String?
+  amount       Int // whole CAD (already converted if the source was USD)
+  gstBps       Int             @default(0)
+  total        Int             @default(0)
+  currency     String          @default("CAD") // currency of `amount`/`total` — always CAD once stored
   // Foreign-currency source (e.g. a USD receipt): original figure + rate used.
   // Null when already CAD. amount/total stay CAD.
   origAmount   Int?
   origCurrency String?
   fxRate       Decimal?        @db.Decimal(10, 4)
-  spentAt     DateTime
-  status      ExpenseStatus   @default(submitted)
+  spentAt      DateTime
+  status       ExpenseStatus   @default(submitted)
 
   // fuel_mileage only — $/km (CRA rate snapshot) or an actual fuel receipt.
   mileageUnit      MileageUnit?
@@ -2809,11 +2986,11 @@ model Expense {
   // reimbursable only — who fronted it (a partner OR a non-partner
   // employee/contractor on the Consultant roster; exactly one is set), and when
   // we paid them back.
-  paidBy            Partner?    @relation(fields: [paidById], references: [id])
-  paidById          String?
-  paidByConsultant  Consultant? @relation(fields: [paidByConsultantId], references: [id])
+  paidBy             Partner?    @relation(fields: [paidById], references: [id])
+  paidById           String?
+  paidByConsultant   Consultant? @relation(fields: [paidByConsultantId], references: [id])
   paidByConsultantId String?
-  reimbursedAt      DateTime?
+  reimbursedAt       DateTime?
 
   // subscription only — recurring SaaS/phone/office + next renewal.
   recurring   Boolean   @default(false)

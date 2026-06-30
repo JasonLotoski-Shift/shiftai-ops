@@ -24,6 +24,13 @@ export type Update = {
 export const updates: Update[] = [
   {
     date: "2026-06-29",
+    tag: "new",
+    title: "Financials leads with a live cash position and a cashflow forecast",
+    detail:
+      "Financials now opens with your cash position: cash on hand (from a bank balance you enter once and the tool carries forward as money moves), what's coming in and going out over the next 30 days, where the balance lands, and how many months of runway that leaves. A new Cashflow tab projects money in and out week by week (or month by month) with a running balance, and lists every obligation due in the window. Each project's Financials tab gains a P&L that reconciles the plan against what's actually been paid and collected, with an at-risk flag when cost runs over. Managing partners only.",
+  },
+  {
+    date: "2026-06-29",
     tag: "improved",
     title: "One Team list: partners and contractors, one record per person",
     detail:

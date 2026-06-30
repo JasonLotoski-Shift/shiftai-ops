@@ -22,7 +22,9 @@ import { markBillPaid, markExpenseReimbursed, markExpensePaid, exportLedgerCsv }
 import { markInvoicePaid } from "@/app/(app)/invoices/[id]/actions";
 import { UploadFinanceModal } from "@/components/billing/upload-finance-modal";
 import { LedgerTable } from "@/components/billing/ledger-table";
+import { CashflowView } from "@/components/financials/cashflow-view";
 import type { LedgerEntry } from "@/lib/finance-ledger";
+import type { CashflowResult } from "@/lib/billing/cashflow";
 
 type InvoiceRow = {
   id: string;
@@ -76,28 +78,42 @@ export type ApArProps = {
 
 const cad = (n: number) => formatCAD(n).replace("CA$", "$");
 
+type FinTab = "overview" | "cashflow" | "ledger" | "apar";
+
 export function FinancialsTabs({
   canSeeApAr,
   apAr,
   ledger,
+  cashflow,
+  hasOpening,
+  cashStrip,
   children,
 }: {
   canSeeApAr: boolean;
   apAr: ApArProps | null;
   ledger: LedgerEntry[] | null;
+  cashflow: CashflowResult | null;
+  hasOpening: boolean;
+  cashStrip?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const [tab, setTab] = useState<"overview" | "ledger" | "apar">("overview");
+  const [tab, setTab] = useState<FinTab>("overview");
   const tabs = [{ key: "overview", label: "Overview" }];
+  if (cashflow) tabs.push({ key: "cashflow", label: "Cashflow" });
   if (ledger) tabs.push({ key: "ledger", label: "Ledger" });
   if (canSeeApAr) tabs.push({ key: "apar", label: "AP / AR" });
 
   return (
     <>
+      {/* Persistent cash-position strip (MP-only; the page passes null otherwise). */}
+      {cashStrip && <div className="px-8 pt-6">{cashStrip}</div>}
       <div className="px-8 pt-5 border-b border-graphite">
-        <Tabs tabs={tabs} active={tab} onChange={(k) => setTab(k as "overview" | "ledger" | "apar")} />
+        <Tabs tabs={tabs} active={tab} onChange={(k) => setTab(k as FinTab)} />
       </div>
       <div className={tab === "overview" ? "" : "hidden"}>{children}</div>
+      {cashflow && tab === "cashflow" && (
+        <CashflowView weekly={cashflow.weekly} monthly={cashflow.monthly} items={cashflow.items} hasOpening={hasOpening} />
+      )}
       {ledger && tab === "ledger" && <LedgerTable entries={ledger} />}
       {canSeeApAr && apAr && tab === "apar" && <ApArView {...apAr} />}
     </>

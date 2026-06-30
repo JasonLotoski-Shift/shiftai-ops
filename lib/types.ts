@@ -789,3 +789,53 @@ export type ScanResult = {
   rationale?: string;
   createdAt: string; // ISO date
 };
+
+/* ── Financials rebuild (010) — unified commission v2 + cash / integrity types ──
+   UI-facing mirrors of the new Prisma models. The four old commission tables stay
+   authoritative through Phase 4; these describe the new shape the rebuild reads. */
+export type CommissionKind = "origination" | "source";
+export type CommissionBasis = "labor_revenue" | "build_value";
+export type CommissionStream = "build" | "recurring";
+// PayoutStatus / PayoutMethod are the same enums ConsultantPayout uses.
+export type PayoutStatus = "owed" | "paid" | "confirmed";
+export type PayoutMethod = "etransfer" | "wire" | "cheque" | "other";
+
+export type CommissionLine = {
+  id: string;
+  kind: CommissionKind;
+  basis: CommissionBasis;
+  buildPct: number; // percent
+  recurringPct?: number | null;
+  coveredMonths?: number | null;
+  onSchedule: boolean;
+  sortOrder: number;
+  projectId?: string | null;
+  dealId?: string | null;
+  partnerId?: string | null;
+  externalName?: string | null;
+  backfillSourceId?: string | null;
+  backfillSourceTable?: string | null;
+  notes?: string | null;
+};
+
+export type CommissionPayout = {
+  id: string;
+  amount: number; // whole CAD
+  status: PayoutStatus;
+  method?: PayoutMethod | null;
+  stream: CommissionStream;
+  commissionLineId: string;
+  installmentId?: string | null;
+  periodIndex?: number | null;
+  periodStart?: string | null; // ISO
+  settledByBillId?: string | null;
+  invoiceWaivedReason?: string | null;
+  paidAt?: string | null; // ISO
+  confirmedAt?: string | null; // ISO
+  clientPaidFirst?: boolean | null;
+};
+
+export type FxRate = { id: string; currency: string; rate: number; asOf: string; source?: string | null };
+export type OpeningBalance = { id: string; amount: number; asOf: string; label?: string | null; note?: string | null; active: boolean; enteredBy: string };
+export type BankReconciliation = { id: string; statementDate: string; statementBalance: number; computedBalance?: number | null; delta?: number | null; note?: string | null; reconciledBy: string };
+export type InvoicePayment = { id: string; invoiceId: string; amount: number; receivedAt: string; method?: string | null; note?: string | null; createdBy: string };

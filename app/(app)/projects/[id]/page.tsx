@@ -21,6 +21,9 @@ import { TeamLedger } from "@/components/billing/team-ledger";
 import { SubscriptionMonthButton } from "@/components/billing/subscription-month-button";
 import { ChangeThread } from "@/components/billing/change-thread";
 import { economicsTotals, allocateLaborRevenue, buyoutAllocation } from "@/lib/billing/economics";
+import { ledgerTotals } from "@/lib/finance-ledger";
+import { loadLedgerEntries } from "@/app/(app)/financials/ledger-data";
+import { ProjectPnl } from "@/components/financials/project-pnl";
 import { isScopePricingProposal } from "@/lib/ingest/scope-pricing-types";
 import { getProjectBillingThread } from "@/lib/audit-read";
 import { ProjectFeeEdit } from "@/components/project-fee-edit";
@@ -297,6 +300,14 @@ export default async function ProjectDetailPage({
         originationPct: Number(project.originationPct) / 100,
         isFirstContract: project.isFirstContract,
       });
+
+  // Project P&L (Phase 2) — actuals from the deduped ledger filtered to this
+  // project. MP-only (firm cost/margin). Reuses the spine so the figures match
+  // /financials exactly. loadLedgerEntries degrades to null pre-migration.
+  const projectLedger = managingPartner ? (await loadLedgerEntries())?.filter((e) => e.projectId === project.id) ?? [] : null;
+  const projTotals = projectLedger ? ledgerTotals(projectLedger) : null;
+  const commissionPlanned = allocation.origination + projectCommissionRows.reduce((s, r) => s + (r.buildAmount ?? 0), 0);
+  const plannedProjectCost = econTotals.costTotal + directCostsTotal;
 
   const artifactIcon = { proposal: FileText, deck: Presentation, email: Mail, sow: FileText, contract: FileText, invoice: FileText, report: FileText, other: FileText } as const;
   const reviewTone = { draft: "neutral", approved: "steel", sent: "gold", archived: "bone" } as const;
@@ -598,6 +609,22 @@ export default async function ProjectDetailPage({
 
           {tab === "financials" && (
           <>
+          {managingPartner && projTotals && (
+            <ProjectPnl
+              budgetFee={project.budgetFee}
+              billed={projTotals.invoicedIn}
+              collected={projTotals.receivedIn}
+              plannedCost={plannedProjectCost}
+              actualCostPaid={projTotals.cashOut}
+              takeHomePlanned={econTotals.costTotal}
+              takeHomePaid={projTotals.payoutsPaid}
+              plannedFirmReserve={allocation.firmReserve}
+              commissionPlanned={commissionPlanned}
+              missingDocCount={projTotals.missingDocCount}
+              isBuyout={project.projectType === "buyout"}
+            />
+          )}
+
           <Card>
             <ProjectFinancials
               projectId={project.id}

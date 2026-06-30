@@ -12,6 +12,9 @@ import { ForecastSummary } from "@/components/billing/forecast-summary";
 import { CommissionSummary, type CommissionFlowRow } from "@/components/billing/commission-summary";
 import { FinancialsTabs, type ApArProps } from "@/components/billing/financials-tabs";
 import { loadLedgerEntries } from "@/app/(app)/financials/ledger-data";
+import { loadCashData } from "@/app/(app)/financials/cash-data";
+import { SnapshotButton } from "@/components/financials/snapshot-button";
+import { CashStrip } from "@/components/financials/cash-strip";
 
 // Firm Financials — the firm-wide revenue rollup (Phase 3). Aggregates every
 // project's economics into contracted / invoiced / received / AR plus the
@@ -259,6 +262,12 @@ export default async function FinancialsPage() {
   // missing money table never 500s the page.
   const ledger = managingPartner ? await loadLedgerEntries() : null;
 
+  // ── Cash position + cashflow lens (managing partners only — Phase 2). Reads the
+  // opening balance + committed obligations + deduped ledger; degrades to null if a
+  // money table/column is missing so the page never 500s.
+  const cashData = managingPartner ? await loadCashData() : null;
+  const todayISO = new Date().toISOString().slice(0, 10);
+
   return (
     <>
       <Header
@@ -286,7 +295,23 @@ export default async function FinancialsPage() {
         }
       />
 
-      <FinancialsTabs canSeeApAr={apAr !== null} apAr={apAr} ledger={ledger}>
+      <FinancialsTabs
+        canSeeApAr={apAr !== null}
+        apAr={apAr}
+        ledger={ledger}
+        cashflow={cashData?.cashflow ?? null}
+        hasOpening={cashData?.cashOnHand != null}
+        cashStrip={
+          cashData ? (
+            <CashStrip
+              opening={cashData.opening}
+              cashOnHand={cashData.cashOnHand}
+              position={cashData.cashflow.position}
+              todayISO={todayISO}
+            />
+          ) : null
+        }
+      >
       <div className="px-8 py-8 flex flex-col gap-8">
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-5"><Stat label="Contracted" value={cad(contracted)} delta={`${rows.length} projects`} /></Card>
@@ -350,6 +375,12 @@ export default async function FinancialsPage() {
             externalShare={commissionTotals.externalShare}
             rows={commissionRows}
           />
+        )}
+
+        {managingPartner && (
+          <Card className="p-5">
+            <SnapshotButton />
+          </Card>
         )}
       </div>
       </FinancialsTabs>
