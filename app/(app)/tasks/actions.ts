@@ -14,16 +14,18 @@ import { notifyPartner } from "@/lib/messaging";
 import type { TaskPriority, TaskStatus, WorkCategory, MilestoneStatus } from "@/lib/generated/prisma/enums";
 
 const VALID_PRIORITIES: TaskPriority[] = ["high", "medium", "low"];
-const VALID_TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "in_review", "done"];
+const VALID_TASK_STATUSES: TaskStatus[] = ["backlog", "todo", "todo_priority", "staging", "in_progress", "done"];
 const VALID_CATEGORIES: WorkCategory[] = ["firm", "project", "pipeline", "other"];
 
 // Board column → milestone health status, for promoteTaskToMilestone. Mirrors
 // BOARD_TO_MILESTONE_STATUS in projects/[id]/actions.ts so a promoted card lands
 // on the timeline with the right health.
 const BOARD_TO_MILESTONE_STATUS: Record<TaskStatus, MilestoneStatus> = {
+  backlog: "pending",
   todo: "pending",
+  todo_priority: "pending",
+  staging: "in_progress",
   in_progress: "in_progress",
-  in_review: "in_progress",
   done: "complete",
 };
 
@@ -224,14 +226,13 @@ export async function createTask(input: {
 // `done` boolean in sync (done === status "done") so dashboard widgets and
 // toggleTaskDone stay consistent.
 //
-// Two pseudo-statuses ride on top of the real TaskStatus enum:
+// One pseudo-status rides on top of the real TaskStatus enum:
 //   • "archive" → sets archivedAt = now() (the board's Archive column, 2g).
 //     We do NOT push "archive" into the `status` column — it's not a valid
 //     enum value. Use unarchiveTask / a real status move to bring it back.
-//   • "in_review" → optionally records a reviewer and pings them (2h).
 // ──────────────────────────────────────────────────────────────────────
 
-export async function updateTaskStatus(taskId: string, status: string, reviewerId?: string) {
+export async function updateTaskStatus(taskId: string, status: string) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const actingPartnerId = session.user.partnerId;
@@ -268,14 +269,6 @@ export async function updateTaskStatus(taskId: string, status: string, reviewerI
     throw new Error(`Invalid status: ${status}`);
   }
 
-  // Reviewer (2h) — only honoured on the in_review move. Validate + remember to
-  // ping (outside the txn would race the write; we ping inside it).
-  let reviewer: { id: string } | null = null;
-  if (status === "in_review" && reviewerId) {
-    reviewer = await prisma.partner.findUnique({ where: { id: reviewerId }, select: { id: true } });
-    if (!reviewer) throw new Error("Reviewer not found");
-  }
-
   await prisma.$transaction(async (tx) => {
     await tx.task.update({
       where: { id: taskId },
@@ -285,7 +278,6 @@ export async function updateTaskStatus(taskId: string, status: string, reviewerI
         // Moving into a real column clears any archive state (mirrors the
         // milestone board behaviour).
         archivedAt: null,
-        ...(reviewer ? { reviewerId: reviewer.id } : {}),
       },
     });
     await writeAudit(tx, {
@@ -295,21 +287,9 @@ export async function updateTaskStatus(taskId: string, status: string, reviewerI
       targetId: taskId,
       changes: {
         status: { before: before.status, after: status },
-        ...(reviewer ? { reviewerId: reviewer.id } : {}),
         ...(before.archivedAt ? { unarchived: true } : {}),
       },
     });
-
-    // Reviewer ping (2h) — skip self-review. Lands in the reviewer's "Claude" chat.
-    if (reviewer && reviewer.id !== actingPartnerId) {
-      await notifyPartner(
-        tx,
-        reviewer.id,
-        "approval_needed",
-        `${actorName} asked you to review a task: ${before.title}`,
-        { taskId, link: "/tasks" },
-      );
-    }
   });
 
   revalidatePath("/tasks");

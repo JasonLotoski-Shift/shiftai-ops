@@ -879,9 +879,9 @@ const flows: Flow[] = [
     blurb: "Note up to two people who get a cut for bringing in a deal — a partner or an outside referrer — and the commission carries through to the project and any recurring service contract when the deal converts. Managing partners only.",
     steps: [
       { tone: "trigger", kind: "You do", label: "On a deal, open Deal-source commission → add up to two payees: a partner or a typed external name, each 1–10%, on the deal value or the total 6/12-month value" },
-      { tone: "claude", kind: "On convert", label: "When you Convert → Client, each commission snapshots onto the build project (the one-time build slice). If it's a subscription with a 6/12-month base, an On-going Service Contract is created with a future start date and a month-by-month commission ledger" },
-      { tone: "review", kind: "You review", label: "If a deal converted without a commission set, add it on the project's Financials tab. The recurring side lives on the Service Contracts tab (under Projects); mark each month paid as it comes due" },
-      { tone: "write", kind: "Saved", label: "DealSourceCommission / ProjectSourceCommission / ServiceContract + per-month accruals + AuditLog. Financials shows the firm-wide commission line and per-partner economics — managing partners only" },
+      { tone: "claude", kind: "On convert", label: "When you Convert → Client, each commission becomes a payee on the project's one Commission card (the one-time build slice, paid out across the billing stages). If it's a subscription with a 6/12-month base, an On-going Service Contract is created with a future start date and a month-by-month commission payout schedule" },
+      { tone: "review", kind: "You review", label: "On the project's Financials tab, the Commission card holds it all — origination payees and deal-source payees in one place. Add or adjust here if a deal converted without commission set. The recurring side runs against the Service Contract; mark each month paid as it comes due" },
+      { tone: "write", kind: "Saved", label: "One CommissionLine per payee + its CommissionPayout schedule (build + recurring) + ServiceContract + AuditLog. The firm-wide Financials and Partner economics read this same record, so every commission figure comes from one source — managing partners only" },
     ],
   },
   {
@@ -1113,9 +1113,9 @@ const flows: Flow[] = [
     blurb: "What you bill vs. what you pay — and where every billed dollar goes.",
     steps: [
       { tone: "trigger", kind: "You do", label: "Project → Financials tab → Economics · add a line per person (pick a tier, hours)" },
-      { tone: "claude", kind: "Shown", label: "Cost vs. billable + the 10/15/75 split: commission, firm pool, team, reserve" },
-      { tone: "review", kind: "You do", label: "Set the commission % + who sourced it · split team payouts per stage · mark paid" },
-      { tone: "write", kind: "Tracked", label: "Owed vs. paid per consultant + firm reserve + change log + AuditLog" },
+      { tone: "claude", kind: "Shown", label: "One Project P&L: cost vs. billable, take-home, commission, and the firm's keep after commission — plan vs. what's actually been paid and collected" },
+      { tone: "review", kind: "You do", label: "On the one Commission card set origination + deal-source payees · split team payouts per stage · mark paid" },
+      { tone: "write", kind: "Tracked", label: "Owed vs. paid per consultant + commission payout schedule + firm reserve + change log + AuditLog" },
     ],
   },
   {

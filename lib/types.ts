@@ -292,16 +292,6 @@ export type ProjectDirectCost = {
   sortOrder: number;
 };
 
-/* Origination — who sourced the contract + their share of the commission
- * pool (Phase 2). sharePct rows for a project sum to 100. */
-export type Origination = {
-  id: string;
-  projectId: string;
-  partnerId: string;
-  sharePct: number;
-  notes?: string;
-};
-
 /* Estimate — pre-proposal scoping on a Deal (Phase 5). */
 export type Estimate = {
   id: string;
@@ -324,7 +314,7 @@ export type EstimateLine = {
   rateTierId?: string;
 };
 export type WorkCategory = "firm" | "project" | "pipeline" | "other";
-export type TaskStatus = "todo" | "in-progress" | "in-review" | "done";
+export type TaskStatus = "backlog" | "todo" | "todo-priority" | "staging" | "in-progress" | "done";
 
 export type Milestone = {
   id: string;

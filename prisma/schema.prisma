@@ -354,9 +354,11 @@ enum WorkCategory {
 // Task board status — the Kanban columns. `done` boolean is kept in sync
 // (done === status "done") so existing dashboard widgets keep working.
 enum TaskStatus {
+  backlog
   todo
-  in_progress @map("in-progress")
-  in_review   @map("in-review")
+  todo_priority @map("todo-priority")
+  staging
+  in_progress   @map("in-progress")
   done
 }
 
@@ -500,10 +502,7 @@ model Partner {
   agentPlans          AgentPlan[]                 @relation("AgentPlanCreatedBy")
   channelMemberships  ChannelMember[]
   messagesAuthored    Message[]
-  originations        Origination[]
   dealCommissions     DealSourceCommission[]      @relation("PartnerDealCommission")
-  projectCommissions  ProjectSourceCommission[]   @relation("PartnerProjectCommission")
-  ongoingCommissions  OngoingContractCommission[] @relation("PartnerOngoingCommission")
   serviceContractsLed ServiceContract[]           @relation("PartnerServiceContractLead")
 
   // Reimbursable expenses this partner fronted (firm financials · AP/AR).
@@ -964,10 +963,8 @@ model Project {
   economicsLines    ProjectEconomicsLine[]
   directCosts       ProjectDirectCost[]
   payouts           ConsultantPayout[]
-  originations      Origination[]
   actionDrafts      ActionDraft[]
-  sourceCommissions ProjectSourceCommission[]
-  // 010 — unified commission lines (replaces origination + source once Phase 4 cuts over).
+  // unified commission lines (origination + source payees).
   commissionLines   CommissionLine[]
   serviceContract   ServiceContract?
   bills             Bill[]
@@ -1167,9 +1164,9 @@ model Milestone {
   // Nullable: a milestone may be undated (then it doesn't appear on the timeline).
   dueDate     DateTime?
   status      MilestoneStatus
-  // Board column (To Do / In Progress / In Review / Done). The milestone CARD
-  // moves through the funnel on the Task Board; `status` above stays for the
-  // timeline and is synced from this on the board.
+  // Board column (Backlog / To Do / To Do Priority / Staging / In Progress /
+  // Done). The milestone CARD moves through the funnel on the Task Board;
+  // `status` above stays for the timeline and is synced from this on the board.
   boardStatus TaskStatus      @default(todo)
   // When set, the milestone has been moved to the board's Archive column. The
   // timestamp drives the 7-day auto-hide: the Task Board query omits milestones
@@ -2347,32 +2344,6 @@ model ProjectDirectCost {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Origination — who sourced a contract and their share of the 10% origination
-// slot (Phase 2). 1–2 rows per project (shared origination), or zero (brand /
-// website / non-partner referral → 0% to anyone, the slot rolls to firm pool).
-// `sharePct` rows for a project sum to 100. Paid on the FIRST contract per
-// client only (Project.isFirstContract); logged before SOW signature.
-// ──────────────────────────────────────────────────────────────────────
-
-model Origination {
-  id       String  @id @default(cuid())
-  sharePct Decimal @db.Decimal(5, 2) // share of the origination pool; rows sum to 100
-  notes    String?
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId String
-
-  partner   Partner @relation(fields: [partnerId], references: [id])
-  partnerId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([projectId, partnerId])
-  @@index([projectId])
-}
-
-// ──────────────────────────────────────────────────────────────────────
 // Deal-source commission + On-going Service Contracts (2026-06-22)
 //
 // A SEPARATE firm-money system from Origination above. A deal can carry 1-2
@@ -2423,76 +2394,11 @@ model ServiceContract {
   partnerLead   Partner @relation("PartnerServiceContractLead", fields: [partnerLeadId], references: [id])
   partnerLeadId String
 
-  commissions OngoingContractCommission[]
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([status])
-}
-
-model ProjectSourceCommission {
-  id                     String         @id @default(cuid())
-  pct                    Decimal        @db.Decimal(5, 2)
-  base                   CommissionBase @default(deal_value)
-  buildAmount            Int // = round(pct/100 * build budgetFee); the ONE-TIME build slice
-  externalName           String?
-  notes                  String?
-  sourceDealCommissionId String? // provenance; null = direct project-level fallback
-
-  project   Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId String
-  partner   Partner?                   @relation("PartnerProjectCommission", fields: [partnerId], references: [id], onDelete: SetNull)
-  partnerId String?
-  ongoing   OngoingContractCommission? // back-relation of the 1:1 link below
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
-  @@index([partnerId])
-}
-
-model OngoingContractCommission {
-  id              String         @id @default(cuid())
-  pct             Decimal        @db.Decimal(5, 2)
-  base            CommissionBase
-  coveredMonths   Int // 6 or 12 (= N)
-  projectedAmount Int // = round(pct/100 * monthlyFee * N)
-  externalName    String?
-
-  contract            ServiceContract          @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  contractId          String
-  projectCommission   ProjectSourceCommission? @relation(fields: [projectCommissionId], references: [id], onDelete: SetNull)
-  projectCommissionId String?                  @unique // 1:1 link to the build twin (one logical line, both surfaces)
-  partner             Partner?                 @relation("PartnerOngoingCommission", fields: [partnerId], references: [id], onDelete: SetNull)
-  partnerId           String?
-
-  accruals OngoingContractCommissionAccrual[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([contractId])
-}
-
-model OngoingContractCommissionAccrual {
-  id          String                  @id @default(cuid())
-  periodIndex Int // 0..N-1
-  periodStart DateTime // = startDate + periodIndex months (the placeholder→payable flip date)
-  amount      Int // = round(pct/100 * monthlyFee); remainder pushed to the LAST row
-  status      CommissionAccrualStatus @default(projected)
-  paidAt      DateTime?
-
-  commission   OngoingContractCommission @relation(fields: [commissionId], references: [id], onDelete: Cascade)
-  commissionId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([commissionId, periodIndex])
-  @@index([periodStart])
 }
 
 // ─── Financials rebuild (010) — unified commission v2 + cash / integrity models ───

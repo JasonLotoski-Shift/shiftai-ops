@@ -23,6 +23,20 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-06-30",
+    tag: "improved",
+    title: "One commission card per project, and one place for the firm economics",
+    detail:
+      "A project's Financials tab had two commission boxes (origination settings and deal-source commission) plus a separate firm-economics summary that repeated the Project P&L. They're now one Commission card — origination payees, deal-source payees (partner or outside referrer), and the schedule, in one place — and a single Project P&L that shows the firm's keep after commission, with a warning if promised commission runs past the reserve. The firm-wide Financials and Partner economics pages read the same single commission record, so every commission figure across the tool now comes from one source. Commission is managing-partners-only, the same as the rest of the firm-money views.",
+  },
+  {
+    date: "2026-06-29",
+    tag: "improved",
+    title: "The task board has more columns: Backlog, To Do, To Do Priority, Staging",
+    detail:
+      "The task board now runs Backlog → To Do → To Do Priority → Staging → In Progress → Done, plus Archive — so you can park work for later, flag what's next, and hold finished-but-not-shipped work in Staging. The old In Review column is gone; anything that was sitting in it has moved to Staging. Drag milestones and loose tasks across the new columns the same way as before.",
+  },
+  {
     date: "2026-06-29",
     tag: "new",
     title: "Promoted Leads is now a working list: track outreach, replies, and notes",

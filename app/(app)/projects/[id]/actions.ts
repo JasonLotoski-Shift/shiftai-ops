@@ -25,14 +25,16 @@ import type {
   TaskStatus,
 } from "@/lib/generated/prisma/enums";
 
-const VALID_TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "in_review", "done"];
+const VALID_TASK_STATUSES: TaskStatus[] = ["backlog", "todo", "todo_priority", "staging", "in_progress", "done"];
 
 // Board column → milestone health status, so the timeline stays coherent when
 // a milestone card is dragged through the funnel.
 const BOARD_TO_MILESTONE_STATUS: Record<TaskStatus, MilestoneStatus> = {
+  backlog: "pending",
   todo: "pending",
+  todo_priority: "pending",
+  staging: "in_progress",
   in_progress: "in_progress",
-  in_review: "in_progress",
   done: "complete",
 };
 

@@ -32,7 +32,6 @@ import {
   Trash2,
   ArrowUpToLine,
   ArrowDownToLine,
-  UserCheck,
 } from "lucide-react";
 import type { PartnerModel as Partner } from "@/lib/generated/prisma/models";
 import type { TaskStatus, WorkCategory } from "@/lib/generated/prisma/enums";
@@ -119,9 +118,11 @@ interface TasksBoardProps {
 }
 
 export const COLUMNS: { key: StatusKey; label: string }[] = [
+  { key: "backlog", label: "Backlog" },
   { key: "todo", label: "To Do" },
+  { key: "todo_priority", label: "To Do Priority" },
+  { key: "staging", label: "Staging" },
   { key: "in_progress", label: "In Progress" },
-  { key: "in_review", label: "In Review" },
   { key: "done", label: "Done" },
 ];
 
@@ -137,9 +138,11 @@ export const BOARD_COLUMNS: { key: BoardColumnKey; label: string }[] = [
 ];
 
 export const STATUS_LABEL: Record<StatusKey, string> = {
+  backlog: "Backlog",
   todo: "To Do",
+  todo_priority: "To Do Priority",
+  staging: "Staging",
   in_progress: "In Progress",
-  in_review: "In Review",
   done: "Done",
 };
 
@@ -222,15 +225,6 @@ export function TasksBoard({
   const [orphans, setOrphans] = useState(initialOrphans);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<BoardColumnKey | null>(null);
-
-  // 2h — a task drop into In Review opens a reviewer-picker. We hold the pending
-  // move here and only apply it once the partner confirms (or discard cleanly on
-  // cancel) so a cancelled tag never leaves a card visually moved. Milestones
-  // have no reviewer, so this only fires for tasks.
-  const [reviewPrompt, setReviewPrompt] = useState<
-    | { id: string; title: string }
-    | null
-  >(null);
 
   // 2e — warn-before-delete. Holds the card pending deletion (task or milestone)
   // until the confirm modal resolves.
@@ -335,15 +329,14 @@ export function TasksBoard({
     }
   }
 
-  // Commit an orphan-task move into a real board column. reviewerId is only
-  // honoured on the in_review move (2h).
-  async function commitTaskMove(id: string, status: StatusKey, reviewerId?: string) {
+  // Commit an orphan-task move into a real board column.
+  async function commitTaskMove(id: string, status: StatusKey) {
     const prev = orphans;
     setOrphans((cur) =>
       cur.map((x) => (x.id === id ? { ...x, status, done: status === "done", archivedAt: null } : x)),
     );
     try {
-      await updateTaskStatus(id, status, reviewerId);
+      await updateTaskStatus(id, status);
       router.refresh();
     } catch (err) {
       console.error("updateTaskStatus failed:", err);
@@ -460,12 +453,6 @@ export function TasksBoard({
       // No-op only if already in this column AND not archived (a drag out of
       // Archive into its current column still needs to un-archive).
       if (t.status === status && !t.archivedAt) return;
-
-      // 2h — In Review opens the reviewer-picker; defer the move until confirm.
-      if (status === "in_review") {
-        setReviewPrompt({ id, title: t.title });
-        return;
-      }
 
       await commitTaskMove(id, status);
     }
@@ -696,21 +683,6 @@ export function TasksBoard({
           onClose={() => {
             setCreating(null);
             router.refresh();
-          }}
-        />
-      )}
-
-      {/* 2h — reviewer-picker for a task dropped into In Review. */}
-      {reviewPrompt && (
-        <ReviewerPickerModal
-          taskTitle={reviewPrompt.title}
-          partners={partners}
-          currentPartnerId={currentPartnerId}
-          onCancel={() => setReviewPrompt(null)}
-          onConfirm={async (reviewerId) => {
-            const { id } = reviewPrompt;
-            setReviewPrompt(null);
-            await commitTaskMove(id, "in_review", reviewerId || undefined);
           }}
         />
       )}
@@ -1710,90 +1682,6 @@ function CreateMilestoneModal({
         </Button>
       </div>
     </ModalShell>
-  );
-}
-
-/* ──────────────────────────────────────────────────────────────────────
-   Reviewer picker (2h) — shown when a task is dropped into In Review. The
-   board defers the optimistic move until this resolves: confirm fires the
-   status change with the chosen reviewerId; cancel reverts cleanly (the card
-   never visually moved). guard={false} so cancel/click-out closes without a
-   discard prompt.
-   ────────────────────────────────────────────────────────────────────── */
-
-function ReviewerPickerModal({
-  taskTitle,
-  partners,
-  currentPartnerId,
-  onCancel,
-  onConfirm,
-}: {
-  taskTitle: string;
-  partners: PartnerOption[];
-  currentPartnerId: string;
-  onCancel: () => void;
-  onConfirm: (reviewerId: string) => void | Promise<void>;
-}) {
-  const [reviewerId, setReviewerId] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function confirm() {
-    setBusy(true);
-    await onConfirm(reviewerId);
-    // Parent unmounts this modal on confirm — no need to reset busy.
-  }
-
-  return (
-    <GuardedModalShell
-      onClose={onCancel}
-      guard={false}
-      positionClassName="items-center justify-center p-6"
-      scroll={false}
-    >
-      <Card
-        className="w-full max-w-md p-6 flex flex-col gap-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <Label gold>In Review</Label>
-            <h2 className="text-[18px] text-bone">Who should review this?</h2>
-          </div>
-          <button onClick={onCancel} aria-label="Close" className="text-bone-mute hover:text-bone">
-            <X size={18} strokeWidth={1.5} />
-          </button>
-        </div>
-
-        <p className="text-[12px] text-bone-dim leading-relaxed">
-          Moving <span className="text-bone">{taskTitle}</span> into In Review. Tag a
-          partner to review it — they get a ping in their Claude chat. Leave it
-          unassigned to just park it for review.
-        </p>
-
-        <div className="flex flex-col gap-1.5">
-          <Label>Reviewer</Label>
-          <Select value={reviewerId} onChange={(e) => setReviewerId(e.target.value)} autoFocus>
-            <option value="">No specific reviewer</option>
-            {partners.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.id === currentPartnerId ? " (you)" : ""}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="flex items-center justify-end gap-2">
-          <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button size="sm" variant="primary" onClick={confirm} disabled={busy}>
-            <UserCheck size={13} strokeWidth={1.5} />
-            {busy ? "Moving…" : "Move to In Review"}
-          </Button>
-        </div>
-      </Card>
-    </GuardedModalShell>
   );
 }
 
