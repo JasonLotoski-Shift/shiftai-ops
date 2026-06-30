@@ -81,6 +81,9 @@ export async function extractScopePricing(input: { projectId: string; content: s
       meetingDate: new Date(),
       transcript: content,
       proposal: parsed as object,
+      // Reviewed on the project page (filtered out of /ingest), but lane is set
+      // for consistency with every other create path.
+      lane: "client_records",
       status: "pending",
       matchedProjectId: project.id,
       createdBy: partner.label,

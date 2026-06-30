@@ -2223,6 +2223,13 @@ model IngestProposal {
   // is also carried in `proposal` JSON. Used for list filtering / labels.
   ingestType  String?
 
+  // Destination lane (3-lane redesign): client_records | financial | firm_knowledge.
+  // App-validated string (no DB enum), mirroring the ingestType convention. Set
+  // deterministically at every create path; nullable so legacy rows stay valid —
+  // the /ingest router falls back null -> client_records (gold). See
+  // docs/ingest-3-lane-plan.md §1, §5, §6.
+  lane        String?
+
   matchedContactId String?
   matchedClientId  String?
   matchedDealId    String?

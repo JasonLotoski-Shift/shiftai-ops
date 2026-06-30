@@ -223,6 +223,9 @@ async function ingestOne(opts: {
       meetingDate,
       transcript,
       proposal: proposal as object,
+      // Title-matched client meeting -> gold. (Phase 4 routes all-internal team
+      // meetings to firm_knowledge; until then those are still skipped above.)
+      lane: "client_records",
       status: "pending",
       matchedContactId: match.contactId,
       matchedClientId: match.clientId,

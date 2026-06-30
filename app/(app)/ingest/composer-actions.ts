@@ -414,6 +414,7 @@ export async function extractUnified(input: {
       meetingDate,
       transcript: content,
       proposal: unified as object,
+      lane: "client_records",
       status: "pending",
       matchedContactId: focusKind === "contact" ? focusId : null,
       matchedClientId: focusKind === "client" ? focusId : null,

@@ -56,6 +56,9 @@ export type ProposalProp = {
   matchedProjectId: string | null;
   matchedDealId: string | null;
   projectLabel: string | null;
+  // Destination lane (3-lane redesign). Null on legacy rows — the dispatch router
+  // falls back null -> client_records (gold). See docs/ingest-3-lane-plan.md §6.
+  lane: string | null;
   // v1 (legacy) shape — read by ProposalCard / ProjectProposalCard.
   proposal: ExtractedProposal;
   // v2 (unified) — present when schemaVersion === 2; read by UnifiedProposalCard.
@@ -165,37 +168,16 @@ export function IngestView({
         </Card>
       ) : (
         <div className="flex flex-col gap-3">
-          {proposals.map((p) =>
-            p.schemaVersion === 2 && p.data ? (
-              <UnifiedProposalCard
-                key={p.id}
-                proposal={{
-                  id: p.id,
-                  title: p.title,
-                  ingestType: p.data.ingestType,
-                  summary: p.data.summary,
-                  createdBy: p.createdBy,
-                  matchedContactId: p.matchedContactId,
-                  matchedClientId: p.matchedClientId,
-                  matchedProjectId: p.matchedProjectId,
-                  matchedDealId: p.matchedDealId,
-                  data: p.data,
-                }}
-                partners={partners}
-                contacts={contacts}
-                clients={clients}
-                projects={projects}
-                deals={deals}
-                currentPartnerId={currentPartnerId ?? ""}
-              />
-            ) : p.source === "drop" && p.matchedProjectId ? (
-              <ProjectProposalCard
-                key={p.id}
-                p={p}
-                open={expanded === p.id}
-                onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
-              />
-            ) : (
+          {proposals.map((p) => {
+            // Destination lane drives the card. Null -> client_records (gold) so no
+            // row ever renders blank (legacy rows + the defensive default of §6).
+            const lane = p.lane ?? "client_records";
+
+            // The legacy finance card (ProposalCard self-detects finance via the
+            // proposal JSON). Defined once — used by the financial lane now and as
+            // the gold-family fallback below. Phase 3 swaps the financial branch to
+            // the green card; this stays the fallback.
+            const proposalCard = (
               <ProposalCard
                 key={p.id}
                 p={p}
@@ -210,8 +192,50 @@ export function IngestView({
                 canLinkPayouts={canLinkPayouts}
                 payoutOptions={p.matchedProjectId ? payoutsByProject[p.matchedProjectId] ?? [] : []}
               />
-            ),
-          )}
+            );
+
+            // financial -> keep the existing ProposalCard until the green card lands.
+            if (lane === "financial") return proposalCard;
+
+            // client_records (gold) + firm_knowledge (gold until Phase 4): preserve
+            // today's schema/source sub-dispatch.
+            if (p.schemaVersion === 2 && p.data) {
+              return (
+                <UnifiedProposalCard
+                  key={p.id}
+                  proposal={{
+                    id: p.id,
+                    title: p.title,
+                    ingestType: p.data.ingestType,
+                    summary: p.data.summary,
+                    createdBy: p.createdBy,
+                    matchedContactId: p.matchedContactId,
+                    matchedClientId: p.matchedClientId,
+                    matchedProjectId: p.matchedProjectId,
+                    matchedDealId: p.matchedDealId,
+                    data: p.data,
+                  }}
+                  partners={partners}
+                  contacts={contacts}
+                  clients={clients}
+                  projects={projects}
+                  deals={deals}
+                  currentPartnerId={currentPartnerId ?? ""}
+                />
+              );
+            }
+            if (p.source === "drop" && p.matchedProjectId) {
+              return (
+                <ProjectProposalCard
+                  key={p.id}
+                  p={p}
+                  open={expanded === p.id}
+                  onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
+                />
+              );
+            }
+            return proposalCard;
+          })}
         </div>
       )}
 

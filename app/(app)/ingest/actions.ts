@@ -221,6 +221,7 @@ export async function extractAndQueue(input: {
       meetingDate,
       transcript,
       proposal: proposal as object,
+      lane: "client_records",
       status: "pending",
       matchedContactId: match.contactId,
       matchedClientId: match.clientId,

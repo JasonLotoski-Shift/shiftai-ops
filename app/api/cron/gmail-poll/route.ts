@@ -509,6 +509,9 @@ export async function GET(req: Request) {
             data: {
               transcript: combined,
               proposal: { ...proposal, direction, messageIds: [...seenIds, id], ...(threadDoc ? { attachment: threadDoc } : {}) } as object,
+              // A finance reply on an existing thread escalates the lane (never
+              // downgrades) so lane stays aligned with finance detection.
+              ...(fromFinance ? { lane: "financial" } : {}),
               // Never clobber a partner-confirmed match — only fill what's empty.
               matchedContactId: pendingThread.matchedContactId ?? match.contactId,
               matchedClientId: pendingThread.matchedClientId ?? match.clientId,
@@ -553,6 +556,8 @@ export async function GET(req: Request) {
             transcript: fullBody,
             proposal: { ...proposal, direction, messageIds: [id], ...(priorAnswered ? { replyToThread: true } : {}), ...(filedDoc ? { attachment: filedDoc } : {}) } as object,
             ingestType: "email",
+            // Finance-labelled email -> financial lane; everything else -> gold.
+            lane: fromFinance ? "financial" : "client_records",
             status: "pending",
             matchedContactId: match.contactId,
             matchedClientId: match.clientId,

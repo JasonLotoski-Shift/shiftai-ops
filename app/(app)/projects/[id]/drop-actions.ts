@@ -176,6 +176,7 @@ export async function extractProjectDrop(
       meetingDate: new Date(), // no inherent meeting date for a drop — use now
       transcript: content,
       proposal: proposal as object,
+      lane: "client_records",
       status: "pending",
       matchedProjectId: project.id,
       matchedClientId: client.id,
