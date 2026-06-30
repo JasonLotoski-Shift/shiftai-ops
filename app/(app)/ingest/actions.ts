@@ -570,7 +570,19 @@ export async function rejectProposal(id: string) {
 // documents in the SAME transaction — the picker that supplies them is itself
 // MP-gated in the ingest card. The updateMany guards projectId + unlinked, so a
 // stale or cross-project id is silently ignored rather than mis-linked.
-export async function createBillFromProposal(id: string, opts?: { settledPayoutIds?: string[] }) {
+export async function createBillFromProposal(
+  id: string,
+  opts?: {
+    settledPayoutIds?: string[];
+    // Phase 3 (green card) overrides. `projectId` sets which project the bill
+    // files under; an explicit null is a valid firm-overhead bill (no project).
+    // `bill` is the partner-reviewed vendor+amount+number+due (Gmail rows pre-fill
+    // it from the detected values; composer drops supply it). Both optional and
+    // back-compatible: omitted falls back to the proposal row.
+    projectId?: string | null;
+    bill?: { vendor: string; amount: number; currency?: string; invoiceNumber?: string; dueDate?: string };
+  },
+) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const label = session.user.name ?? session.user.email ?? "Unknown";
@@ -583,10 +595,13 @@ export async function createBillFromProposal(id: string, opts?: { settledPayoutI
   if (!proposal) throw new Error("Proposal not found");
   if (proposal.status !== "pending") throw new Error("This item was already handled");
 
-  const bill = (proposal.proposal as { bill?: unknown } | null)?.bill as ExtractedBill | null | undefined;
+  const bill = (opts?.bill ?? (proposal.proposal as { bill?: unknown } | null)?.bill) as ExtractedBill | null | undefined;
   if (!bill?.vendor?.trim() || !bill.amount || bill.amount <= 0) {
     throw new Error("No vendor-bill details detected on this item");
   }
+  // Effective project: the green-card picker's choice (incl. null = firm overhead)
+  // wins; an omitted projectId keeps whatever the proposal matched.
+  const effProjectId = opts?.projectId !== undefined ? opts.projectId : proposal.matchedProjectId;
   // Convert to CAD (the books' currency) — amount/total stay CAD; the source
   // currency + rate are kept on the row when it was foreign (e.g. USD).
   const fx = convertToCad(bill.amount, bill.currency);
@@ -628,7 +643,7 @@ export async function createBillFromProposal(id: string, opts?: { settledPayoutI
         source: "gmail_ingest",
         description: proposal.title,
         clientId: proposal.matchedClientId,
-        projectId: proposal.matchedProjectId,
+        projectId: effProjectId,
         driveFileId: att?.driveFileId ?? null,
         driveUrl: att?.driveUrl ?? null,
         fileName: att?.fileName ?? null,
@@ -646,7 +661,7 @@ export async function createBillFromProposal(id: string, opts?: { settledPayoutI
           createdBy: label,
           reviewStatus: "approved",
           clientId: proposal.matchedClientId,
-          projectId: proposal.matchedProjectId,
+          projectId: effProjectId,
         },
       });
     }
@@ -701,6 +716,11 @@ export async function createExpenseFromProposal(
     paidById?: string | null;
     paidByConsultantId?: string | null;
     category?: ExpenseCategory | null;
+    // Phase 3 (green card) overrides. `projectId` (incl. null = firm-overhead)
+    // sets which project the expense files under; `bill` is the partner-reviewed
+    // vendor+amount+number+due. Omitted falls back to the proposal row.
+    projectId?: string | null;
+    bill?: { vendor: string; amount: number; currency?: string; invoiceNumber?: string; dueDate?: string };
   },
 ) {
   const session = await auth();
@@ -715,10 +735,13 @@ export async function createExpenseFromProposal(
   if (!proposal) throw new Error("Proposal not found");
   if (proposal.status !== "pending") throw new Error("This item was already handled");
 
-  const bill = (proposal.proposal as { bill?: unknown } | null)?.bill as ExtractedBill | null | undefined;
+  const bill = (opts?.bill ?? (proposal.proposal as { bill?: unknown } | null)?.bill) as ExtractedBill | null | undefined;
   if (!bill?.vendor?.trim() || !bill.amount || bill.amount <= 0) {
     throw new Error("No invoice/receipt details detected on this item");
   }
+  // Effective project: the green-card picker's choice (incl. null = firm overhead)
+  // wins; an omitted projectId keeps whatever the proposal matched.
+  const effProjectId = opts?.projectId !== undefined ? opts.projectId : proposal.matchedProjectId;
 
   // Resolve + validate the payer (exactly one, and only for reimbursable).
   let paidById: string | null = null;
@@ -763,7 +786,7 @@ export async function createExpenseFromProposal(
         paidByConsultantId,
         reimbursedAt: opts.kind === "firm_paid" ? proposal.meetingDate : null,
         clientId: proposal.matchedClientId,
-        projectId: proposal.matchedProjectId,
+        projectId: effProjectId,
         needsPhoto: !att?.driveUrl,
         driveFileId: att?.driveFileId ?? null,
         driveUrl: att?.driveUrl ?? null,
@@ -781,7 +804,7 @@ export async function createExpenseFromProposal(
           createdBy: label,
           reviewStatus: "approved",
           clientId: proposal.matchedClientId,
-          projectId: proposal.matchedProjectId,
+          projectId: effProjectId,
         },
       });
     }
@@ -817,7 +840,12 @@ export async function createExpenseFromProposal(
 // record — if no confident match exists, the partner reconciles manually. Mirrors
 // markInvoicePaid's status guard. Same gating logic as createBillFromProposal:
 // reconciliation is data entry, not a firm-money surface, so not MP-gated.
-export async function reconcileInvoiceFromProposal(id: string) {
+export async function reconcileInvoiceFromProposal(
+  id: string,
+  // Phase 3 (green card): partner-reviewed AR values (invoice #, amount, paid date)
+  // used to re-match the outstanding invoice. Omitted falls back to the row's `ar`.
+  opts?: { ar?: { invoiceNumber?: string; amount?: number; paidDate?: string } },
+) {
   const session = await auth();
   if (!session?.user?.partnerId) throw new Error("Not authenticated");
   const label = session.user.name ?? session.user.email ?? "Unknown";
@@ -830,7 +858,7 @@ export async function reconcileInvoiceFromProposal(id: string) {
   if (!proposal) throw new Error("Proposal not found");
   if (proposal.status !== "pending") throw new Error("This item was already handled");
 
-  const ar = (proposal.proposal as { ar?: unknown } | null)?.ar as ExtractedAR | null | undefined;
+  const ar = (opts?.ar ?? (proposal.proposal as { ar?: unknown } | null)?.ar) as ExtractedAR | null | undefined;
   if (!ar) throw new Error("No payment details detected on this item");
 
   // Re-match at click time — the stored arMatch can go stale (an invoice may have

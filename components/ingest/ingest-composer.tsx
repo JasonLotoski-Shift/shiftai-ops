@@ -23,6 +23,7 @@ import { INGEST_TYPES, type IngestType, type IngestTargetKind } from "@/lib/inge
 import {
   detectTargets,
   extractUnified,
+  extractFinanceFromComposer,
   checkContactDuplicate,
   addContactInline,
 } from "@/app/(app)/ingest/composer-actions";
@@ -87,6 +88,9 @@ export function IngestComposer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [ingestType, setIngestType] = useState<IngestType>("meeting");
+  // Destination lane (3-lane redesign): gold = client records (the default, unified
+  // extraction); green = financials (a dropped/pasted invoice/receipt → green card).
+  const [lane, setLane] = useState<"client_records" | "financial">("client_records");
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [content, setContent] = useState("");
@@ -198,16 +202,33 @@ export function IngestComposer({
     const focus = targets.find((t) => t.focus && t.id);
     startTransition(async () => {
       try {
-        await extractUnified({
-          ingestType,
-          title: title.trim(),
-          date,
-          content,
-          emailBlock: emailBlock.trim() || undefined,
-          focus: focus ? { kind: focus.kind, id: focus.id } : null,
-          targets: targets.filter((t) => t.id).map((t) => ({ kind: t.kind, id: t.id })),
-          files: files.length ? files : undefined,
-        });
+        if (lane === "financial") {
+          // GREEN lane: a dropped/pasted invoice / receipt / remittance. Ties to a
+          // client/project or stays firm-level; never a deal. The green review card
+          // confirms the amounts and files it (propose-never-auto-write).
+          const clientT = targets.find((t) => t.focus && t.kind === "client" && t.id) ?? targets.find((t) => t.kind === "client" && t.id);
+          const projectT = targets.find((t) => t.focus && t.kind === "project" && t.id) ?? targets.find((t) => t.kind === "project" && t.id);
+          await extractFinanceFromComposer({
+            title: title.trim(),
+            date,
+            content,
+            emailBlock: emailBlock.trim() || undefined,
+            clientId: clientT?.id ?? null,
+            projectId: projectT?.id ?? null,
+            files: files.length ? files : undefined,
+          });
+        } else {
+          await extractUnified({
+            ingestType,
+            title: title.trim(),
+            date,
+            content,
+            emailBlock: emailBlock.trim() || undefined,
+            focus: focus ? { kind: focus.kind, id: focus.id } : null,
+            targets: targets.filter((t) => t.id).map((t) => ({ kind: t.kind, id: t.id })),
+            files: files.length ? files : undefined,
+          });
+        }
         setSubmitted(true);
         router.refresh();
         setTimeout(onClose, 1100);
@@ -245,7 +266,46 @@ export function IngestComposer({
           </div>
         ) : (
           <form onSubmit={submit} className="px-5 py-5 flex flex-col gap-5">
-            {/* Ingest type — segmented */}
+            {/* Destination lane (3-lane redesign) — gold = client records, green = financials */}
+            <div className="flex flex-col gap-2">
+              <Label>Where it goes</Label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLane("client_records")}
+                  disabled={isPending}
+                  className={cn(
+                    "px-3 h-8 text-[12px] rounded-[var(--radius)] border transition-colors",
+                    lane === "client_records"
+                      ? "bg-track-gold-dim/20 text-track-gold border-track-gold/40"
+                      : "bg-bitumen text-bone-dim border-graphite hover:text-bone hover:border-bone-mute",
+                  )}
+                >
+                  Client records
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLane("financial")}
+                  disabled={isPending}
+                  className={cn(
+                    "px-3 h-8 text-[12px] rounded-[var(--radius)] border transition-colors",
+                    lane === "financial"
+                      ? "bg-[var(--color-lane-green)]/15 text-[var(--color-lane-green)] border-[var(--color-lane-green)]/40"
+                      : "bg-bitumen text-bone-dim border-graphite hover:text-bone hover:border-bone-mute",
+                  )}
+                >
+                  Financials
+                </button>
+              </div>
+              <span className="text-[11px] text-bone-mute">
+                {lane === "financial"
+                  ? "Drop or paste an invoice, receipt, or remittance. Pick the client / project below, or leave it firm-level — you'll confirm the amounts before filing."
+                  : "Logs against the records you target below — contacts, clients, deals, projects."}
+              </span>
+            </div>
+
+            {/* Ingest type — segmented (client-records lane only) */}
+            {lane === "client_records" && (
             <div className="flex flex-col gap-2">
               <Label>Type</Label>
               <div className="flex flex-wrap gap-2">
@@ -268,6 +328,7 @@ export function IngestComposer({
               </div>
               <span className="text-[11px] text-bone-mute">{TYPE_HINTS[ingestType]}</span>
             </div>
+            )}
 
             {/* Title + date */}
             <div className="grid grid-cols-[1fr_160px] gap-4">

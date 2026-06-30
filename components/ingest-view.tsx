@@ -43,6 +43,7 @@ import { crossReferenceProposal } from "@/app/(app)/ingest/composer-actions";
 import { runManualScan, type ScanSource } from "@/app/(app)/ingest/scan-actions";
 import { IngestComposer } from "@/components/ingest/ingest-composer";
 import UnifiedProposalCard from "@/components/ingest/unified-proposal-card";
+import FinancialProposalCard from "@/components/ingest/financial-proposal-card";
 import type { IngestTargetKind, UnifiedProposal, CrossReferenceResult } from "@/lib/ingest/types";
 
 export type ProposalProp = {
@@ -173,10 +174,13 @@ export function IngestView({
             // row ever renders blank (legacy rows + the defensive default of §6).
             const lane = p.lane ?? "client_records";
 
-            // The legacy finance card (ProposalCard self-detects finance via the
-            // proposal JSON). Defined once — used by the financial lane now and as
-            // the gold-family fallback below. Phase 3 swaps the financial branch to
-            // the green card; this stays the fallback.
+            // The legacy v1 card (ProposalCard). Now ONLY the gold-family fallback
+            // for legacy v1 rows (pasted / Fireflies meetings that aren't
+            // schemaVersion 2 and aren't a project drop). Its in-component finance
+            // branch is DEAD as of Phase 3 — every financial-lane row routes to
+            // FinancialProposalCard below, and client_records / firm_knowledge rows
+            // always carry financeType "none". Left in place to keep this prod
+            // finance push low-risk; safe to delete in a no-behavior cleanup.
             const proposalCard = (
               <ProposalCard
                 key={p.id}
@@ -194,8 +198,24 @@ export function IngestView({
               />
             );
 
-            // financial -> keep the existing ProposalCard until the green card lands.
-            if (lane === "financial") return proposalCard;
+            // financial (green) -> the dedicated finance card (Phase 3). It owns the
+            // finance shape end to end: Gmail finance-label rows and composer drops.
+            if (lane === "financial") {
+              return (
+                <FinancialProposalCard
+                  key={p.id}
+                  p={p}
+                  open={expanded === p.id}
+                  onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
+                  partners={partners}
+                  consultants={consultants}
+                  projects={projects}
+                  currentPartnerId={currentPartnerId}
+                  canLinkPayouts={canLinkPayouts}
+                  payoutOptions={p.matchedProjectId ? payoutsByProject[p.matchedProjectId] ?? [] : []}
+                />
+              );
+            }
 
             // client_records (gold) + firm_knowledge (gold until Phase 4): preserve
             // today's schema/source sub-dispatch.

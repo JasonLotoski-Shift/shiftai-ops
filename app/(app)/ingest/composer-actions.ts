@@ -42,6 +42,9 @@ import { createContactTx } from "@/lib/contacts";
 import { resolveContact } from "@/lib/resolve-entity";
 import { persistIngestUploads } from "@/lib/ingest-uploads";
 import { linkContact } from "@/lib/contact-links";
+import { parseFinanceProposal } from "@/lib/ingest/finance-parse";
+import { matchOutstandingInvoice } from "@/lib/finance-match";
+import { fileBillDoc } from "@/lib/firm-finance-drive";
 import type {
   IngestType,
   IngestTargetKind,
@@ -969,4 +972,144 @@ export async function rejectUnified(proposalId: string): Promise<{ ok: true }> {
 
   revalidatePath("/ingest");
   return { ok: true };
+}
+
+// ── 7. extractFinanceFromComposer — the GREEN lane (financials) entry from the
+// composer. A dropped/pasted invoice, receipt, or remittance (decision 2: finance
+// from all sources) runs the finance extraction (ingest-email skill), files the
+// invoice document to Drive AP-Unpaid at ingest via fileBillDoc, and persists a v1
+// finance IngestProposal (lane="financial") — the SAME shape a Gmail finance row
+// has, so the green card and the finance actions read it identically. Writes no
+// Bill/Expense: the partner files it from the green card (propose-never-auto-write).
+export async function extractFinanceFromComposer(input: {
+  title: string;
+  date: string; // YYYY-MM-DD
+  content: string;
+  emailBlock?: string;
+  clientId?: string | null;
+  projectId?: string | null;
+  // Uploaded files (base64) — parsed server-side; the first PDF/image is filed.
+  files?: { base64: string; mimeType: string; fileName: string }[];
+}): Promise<{ id: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerId = session.user.partnerId;
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+
+  let content = input.content.trim();
+
+  // Parse uploads: images → Claude vision; PDFs/docs → text. The FIRST PDF/image is
+  // the document we file to Drive AP-Unpaid (the invoice/receipt scan).
+  const fileNotes: string[] = [];
+  const images: { base64: string; mediaType: string }[] = [];
+  let invoiceFile: { base64: string; mimeType: string; fileName: string } | null = null;
+  for (const f of input.files ?? []) {
+    const imgType = imageMediaType(f.fileName);
+    const isPdf = /\.pdf$/i.test(f.fileName) || f.mimeType === "application/pdf";
+    if ((imgType || isPdf) && !invoiceFile) invoiceFile = f;
+    if (imgType) {
+      if (images.length >= 5) fileNotes.push(`Skipped extra image (max 5): ${f.fileName}`);
+      else if (f.base64.length > 7_000_000) fileNotes.push(`Image too large (max ~5MB): ${f.fileName}`);
+      else {
+        images.push({ base64: f.base64, mediaType: imgType });
+        content += `\n\n## Attached image: ${f.fileName}`;
+      }
+      continue;
+    }
+    if (!isExtractable(f.fileName)) {
+      fileNotes.push(`Unsupported file — skipped: ${f.fileName}`);
+      continue;
+    }
+    try {
+      const bytes = Buffer.from(f.base64, "base64");
+      const ex = await extractFile({ bytes, fileName: f.fileName, mimeType: f.mimeType });
+      if (ex.text) content += `\n\n## Attachment: ${f.fileName}\n${ex.text}${ex.truncated ? "\n…(truncated)" : ""}`;
+      if (ex.note) fileNotes.push(ex.note);
+    } catch {
+      fileNotes.push(`Couldn't read file: ${f.fileName}`);
+    }
+  }
+  if (fileNotes.length) content += `\n\n## Attachment notes\n${fileNotes.join("\n")}`;
+
+  const intake = input.emailBlock?.trim() ? `${content}\n\n## Email\n${input.emailBlock.trim()}` : content;
+  if (intake.trim().length < 20 && images.length === 0) {
+    throw new Error("Nothing to read — drop the invoice/receipt file or paste its text.");
+  }
+
+  const title = input.title.trim() || "Finance document";
+  const date = input.date?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(input.date.trim()) ? input.date.trim() : new Date().toISOString().slice(0, 10);
+  const docDate = new Date(date);
+
+  let clientName: string | null = null;
+  if (input.clientId) {
+    const cl = await prisma.client.findUnique({ where: { id: input.clientId }, select: { company: true } });
+    clientName = cl?.company ?? null;
+  }
+
+  // The "## Finance label" note is what unlocks the finance fields in the
+  // ingest-email skill (it leaves them at defaults otherwise).
+  const context = [
+    `## Finance label`,
+    `This is a finance document (invoice / receipt / remittance) dropped or pasted into the composer. Classify it into one financeType and fill the finance fields.`,
+    ``,
+    `## Source`,
+    `Title: ${title}`,
+    `Date: ${date}`,
+    clientName ? `Client: ${clientName}` : `Client: (none — may be firm overhead)`,
+  ].join("\n");
+
+  const raw = await generate({
+    skill: "ingest-email",
+    context,
+    intake: `## Document\n${intake}`,
+    maxTokens: 2000,
+    images: images.length ? images : undefined,
+  });
+  let proposal = parseFinanceProposal(raw);
+
+  // Resolve the outstanding invoice an AR remittance pays (mirrors the poll's
+  // finalizeFinance) so the green card can show the suggested match.
+  if (proposal.financeType === "ar_payment" && proposal.ar) {
+    const m = await matchOutstandingInvoice({ clientId: input.clientId ?? null, invoiceNumber: proposal.ar.invoiceNumber, amount: proposal.ar.amount });
+    proposal = { ...proposal, arMatch: m ? { invoiceId: m.id, number: m.number, amount: m.amount } : null };
+  }
+
+  // File the document to Drive AP-Unpaid at ingest (same destination the poll
+  // uses). Bypasses the client/deal-folder helper, so firm-overhead finance (no
+  // client) still files. Best-effort: a Drive hiccup leaves attachment null and the
+  // bill flags "needs document" once filed.
+  let attachment: { driveUrl: string; driveFileId: string; fileName: string } | null = null;
+  if (invoiceFile) {
+    try {
+      const bytes = Buffer.from(invoiceFile.base64, "base64");
+      const res = await fileBillDoc({ bytes, fileName: invoiceFile.fileName, year: docDate.getFullYear(), mimeType: invoiceFile.mimeType });
+      attachment = { driveUrl: res.webViewLink, driveFileId: res.fileId, fileName: invoiceFile.fileName };
+    } catch {
+      /* non-fatal — partner can upload the document later */
+    }
+  }
+
+  const stored = { ...proposal, ...(attachment ? { attachment } : {}) };
+
+  const created = await prisma.ingestProposal.create({
+    data: {
+      source: input.files?.length ? "drop" : "paste",
+      title,
+      meetingDate: docDate,
+      transcript: intake.slice(0, 20000),
+      proposal: stored as object,
+      lane: "financial",
+      status: "pending",
+      // Finance ties to a client/project or firm-level, never a deal (decision 3).
+      matchedClientId: input.clientId ?? null,
+      matchedProjectId: input.projectId ?? null,
+      createdBy: partnerLabel,
+    },
+    select: { id: true },
+  });
+
+  await notifyPartner(prisma, partnerId, "approval_needed", `Finance document "${title}" is ready to file`, { link: "/ingest" });
+  revalidatePath("/ingest");
+  revalidatePath("/messages");
+  return { id: created.id };
 }
