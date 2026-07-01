@@ -25,6 +25,7 @@ import {
   CalendarClock,
   ArrowRight,
   Link2,
+  ClipboardCheck,
 } from "lucide-react";
 import { Card, Label, Badge, Button, Textarea, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -203,12 +204,23 @@ export default function UnifiedProposalCard({
   const data = proposal.data;
   const proposedContacts = data.proposedContacts ?? [];
   const contactLinks = data.contactLinks ?? [];
+  const cr = data.callReview ?? null;
 
   const [open, setOpen] = useState(true);
   const [summary, setSummary] = useState(proposal.summary || data.summary || "");
   const [dealId, setDealId] = useState(proposal.matchedDealId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // ── Call review — the cross-call retro block (rides every meeting lane).
+  // Kept by default when the skill emitted real signal; the partner edits or clears it. ──
+  const [keepReview, setKeepReview] = useState(
+    !!cr && (cr.whatWorked.length > 0 || cr.whatDidnt.length > 0 || cr.lessons.length > 0 || !!cr.coachingNotes),
+  );
+  const [crWorked, setCrWorked] = useState((cr?.whatWorked ?? []).join("\n"));
+  const [crDidnt, setCrDidnt] = useState((cr?.whatDidnt ?? []).join("\n"));
+  const [crLessons, setCrLessons] = useState((cr?.lessons ?? []).join("\n"));
+  const [crCoaching, setCrCoaching] = useState(cr?.coachingNotes ?? "");
 
   // Resolve an ownerHint name → a partner id (first/full-name match). No match →
   // "" = UNASSIGNED (the partner picks an owner); never silently the reviewer.
@@ -463,12 +475,26 @@ export default function UnifiedProposalCard({
         isPrimary: st.isPrimary,
       }));
 
+    // Call review — only when the skill emitted one AND the partner kept it.
+    // One point per line; the server drops empty rows (no empty retro).
+    const splitLines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+    const callReview =
+      cr && keepReview
+        ? {
+            whatWorked: splitLines(crWorked),
+            whatDidnt: splitLines(crDidnt),
+            lessons: splitLines(crLessons),
+            coachingNotes: crCoaching.trim() || null,
+          }
+        : null;
+
     return {
       records: approvedRecords,
       tasks: approvedTasks,
       ...(approvedContacts.length ? { proposedContacts: approvedContacts } : {}),
       ...(approvedLinks.length ? { contactLinks: approvedLinks } : {}),
       dealId: dealId || null,
+      ...(callReview ? { callReview } : {}),
     };
   }
 
@@ -970,6 +996,52 @@ export default function UnifiedProposalCard({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Call review — the cross-call retro block (rides every meeting lane). */}
+          {cr && (
+            <div className="flex flex-col gap-3 px-4 py-3 border border-track-gold/40 bg-track-gold-dim/10 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)]">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={keepReview}
+                  onChange={(e) => setKeepReview(e.target.checked)}
+                  disabled={isPending}
+                  className="mt-1 accent-track-gold"
+                />
+                <span className="flex flex-col gap-0.5 min-w-0">
+                  <span className="flex items-center gap-2">
+                    <ClipboardCheck size={13} strokeWidth={1.5} className="text-track-gold" />
+                    <span className="text-[13px] text-bone font-medium">Save a call review</span>
+                  </span>
+                  <span className="text-[11px] text-bone-mute leading-relaxed">
+                    What worked, what didn&apos;t, and the durable lessons, one per line. Shows on the Call
+                    reviews surface for the team to learn from.
+                  </span>
+                </span>
+              </label>
+
+              {keepReview && (
+                <div className="flex flex-col gap-3 pl-7">
+                  <div className="flex flex-col gap-1.5">
+                    <Label>What worked</Label>
+                    <Textarea value={crWorked} onChange={(e) => setCrWorked(e.target.value)} rows={2} placeholder="One per line…" disabled={isPending} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label>What didn&apos;t</Label>
+                    <Textarea value={crDidnt} onChange={(e) => setCrDidnt(e.target.value)} rows={2} placeholder="One per line…" disabled={isPending} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Lessons (durable, reusable)</Label>
+                    <Textarea value={crLessons} onChange={(e) => setCrLessons(e.target.value)} rows={2} placeholder="One per line…" disabled={isPending} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Coaching notes</Label>
+                    <Textarea value={crCoaching} onChange={(e) => setCrCoaching(e.target.value)} rows={2} placeholder="Freeform, optional" disabled={isPending} />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

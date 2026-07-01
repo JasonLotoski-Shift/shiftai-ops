@@ -127,6 +127,10 @@ export type UnifiedProposal = {
   // Optional (so pending proposals from before the D40 upgrade still parse).
   proposedContacts?: ProposedContact[];
   contactLinks?: ContactLinkProposal[];
+  // The call-retro block — rides every meeting lane, so a client (gold) call
+  // carries one too. Empty/absent when the transcript held no coaching signal.
+  // See docs/ingest-lane4-intro-and-call-review.md §6 (defined below).
+  callReview?: CallReviewCandidate | null;
 };
 
 /** Narrow an unknown IngestProposal.proposal JSON to the unified (v2) shape. */
@@ -194,6 +198,9 @@ export type ApproveUnifiedSelections = {
   // contact). Optional — null/absent means no deal link. Interactions are
   // contact-scoped, so the deal's primary contact carries the logged summary.
   dealId?: string | null;
+  // The kept + partner-edited call review, or null/absent to skip it. Writes one
+  // CallReview row on the client_records (gold) lane, tied to the logged interaction.
+  callReview?: CallReviewCandidate | null;
 };
 
 // ── Lane 4 (intro / channel-partner, PURPLE) + Call Review (every meeting lane) ──

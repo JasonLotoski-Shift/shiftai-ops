@@ -420,6 +420,9 @@ export async function extractUnified(input: {
     tasks,
     ...(proposedContacts.length ? { proposedContacts } : {}),
     ...(contactLinks.length ? { contactLinks } : {}),
+    // Call review rides every meeting lane — carried onto the gold proposal so
+    // the review card can offer it. Null unless the transcript held real signal.
+    ...(parsed.callReview ? { callReview: parsed.callReview } : {}),
   };
 
   // Focus record drives the matched* FKs (the review surface scopes off these).
@@ -574,6 +577,11 @@ export async function approveUnified(
   // client/deal timeline can show the original words; the rest carry only summary.
   const dealLinkId = selections.dealId ?? proposal.matchedDealId ?? null;
   let commsBodyWritten = false;
+  // The first interaction logged this run anchors the CallReview (its sourceInteractionId),
+  // the same way approveIntro ties its review to the intro Interaction. Null when this
+  // ingest logged no interaction (a doc/field-only proposal) — the review still records.
+  let anchorInteractionId: string | null = null;
+  let callReviewId: string | null = null;
 
   await prisma.$transaction(async (tx) => {
     // ── Records ──
@@ -599,7 +607,7 @@ export async function approveUnified(
             for (const it of interactions) {
               const d = it.date ? new Date(it.date) : proposal.meetingDate;
               const when = Number.isNaN(d.getTime()) ? proposal.meetingDate : d;
-              await tx.interaction.create({
+              const createdIx = await tx.interaction.create({
                 data: {
                   contactId: r.recordId,
                   type: it.type as InteractionType,
@@ -612,7 +620,9 @@ export async function approveUnified(
                   dealId: dealLinkId,
                   loggedBy: "AGENT · CLAUDE",
                 },
+                select: { id: true },
               });
+              if (!anchorInteractionId) anchorInteractionId = createdIx.id;
               commsBodyWritten = true;
               interactionsCreated++;
               if (when > maxDate) maxDate = when;
@@ -814,7 +824,7 @@ export async function approveUnified(
                 : proposal.ingestType === "interaction"
                   ? "call"
                   : "other";
-          await tx.interaction.create({
+          const createdIx = await tx.interaction.create({
             data: {
               contactId: deal.contactId,
               type: dealInteractionType,
@@ -827,7 +837,9 @@ export async function approveUnified(
               dealId: dealLinkId,
               loggedBy: "AGENT · CLAUDE",
             },
+            select: { id: true },
           });
+          if (!anchorInteractionId) anchorInteractionId = createdIx.id;
           commsBodyWritten = true;
           interactionsCreated++;
           interactedContacts.add(deal.contactId);
@@ -886,6 +898,25 @@ export async function approveUnified(
       tasksCreated++;
     }
 
+    // ── Call review (rides every meeting lane) ──
+    // One CallReview row on the client_records (gold) lane, tied to the logged
+    // interaction + client/deal scope. Mirrors approveIntro step 4; skipped when
+    // the partner cleared the block (empty candidate → applyCallReview returns null).
+    if (selections.callReview) {
+      const cr = await applyCallReview(tx, {
+        title: proposal.title,
+        callDate: proposal.meetingDate,
+        candidate: selections.callReview,
+        sourceInteractionId: anchorInteractionId,
+        lane: "client_records",
+        clientId: focusClientId,
+        dealId: dealLinkId,
+        contactId: proposal.matchedContactId,
+        createdBy: "AGENT · CLAUDE",
+      });
+      callReviewId = cr?.id ?? null;
+    }
+
     // ── File the content as an Artifact (the filed source). ──
     if (driveUrl) {
       await tx.artifact.create({
@@ -937,6 +968,7 @@ export async function approveUnified(
         linksCreated,
         linksUpdated,
         linksSkipped,
+        callReview: callReviewId,
         artifact: !!driveUrl,
         driveFileId,
       },
@@ -946,12 +978,13 @@ export async function approveUnified(
       actor,
       type: "ai",
       target: proposal.title,
-      detail: `Ingest approved — ${totalAdds} add(s), ${totalReplaces} overwrite(s), ${tasksCreated + tasksReassigned} task(s)${contactsCreated ? `, ${contactsCreated} new contact(s)` : ""}${linksCreated + linksUpdated ? `, ${linksCreated + linksUpdated} people link(s)` : ""}${tasksSkipped.length || milestonesSkipped.length ? `, ${tasksSkipped.length + milestonesSkipped.length} skipped as already-open duplicate(s)` : ""}${summary.length > 60 ? "" : ` · ${summary}`}`,
+      detail: `Ingest approved — ${totalAdds} add(s), ${totalReplaces} overwrite(s), ${tasksCreated + tasksReassigned} task(s)${contactsCreated ? `, ${contactsCreated} new contact(s)` : ""}${linksCreated + linksUpdated ? `, ${linksCreated + linksUpdated} people link(s)` : ""}${callReviewId ? ", 1 call review" : ""}${tasksSkipped.length || milestonesSkipped.length ? `, ${tasksSkipped.length + milestonesSkipped.length} skipped as already-open duplicate(s)` : ""}${summary.length > 60 ? "" : ` · ${summary}`}`,
       link: "/ingest",
     });
   });
 
   revalidatePath("/ingest");
+  if (callReviewId) revalidatePath("/call-reviews");
   for (const id of affected.contacts) revalidatePath(`/contacts/${id}`);
   for (const id of affected.clients) revalidatePath(`/clients/${id}`);
   for (const id of affected.projects) revalidatePath(`/projects/${id}`);

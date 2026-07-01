@@ -176,8 +176,10 @@ export async function createIntro(input: {
 
 // ──────────────────────────────────────────────────────────────────────
 // updateIntro — edit an intro's core fields (target, owner, target contact,
-// notes) from the board's detail modal. Status moves go through
-// updateIntroStatus; convert goes through convertIntro.
+// notes) from the board's detail modal. An optional status move folds into the
+// SAME transaction so an edit + a status change commit together or not at all
+// (the board's bare drag-to-move still uses updateIntroStatus). Convert stays a
+// handoff via convertIntro — never settable here.
 // ──────────────────────────────────────────────────────────────────────
 export async function updateIntro(
   introId: string,
@@ -186,6 +188,7 @@ export async function updateIntro(
     ownerId?: string | null;
     targetContactId?: string | null;
     notes?: string | null;
+    status?: string;
   },
 ): Promise<{ ok: true }> {
   const session = await auth();
@@ -208,6 +211,7 @@ export async function updateIntro(
     ownerId?: string | null;
     targetContactId?: string | null;
     notes?: string | null;
+    status?: IntroStatus;
   } = {};
   const changes: Record<string, { before: unknown; after: unknown }> = {};
 
@@ -250,17 +254,42 @@ export async function updateIntro(
     }
   }
 
-  if (Object.keys(changes).length === 0) return { ok: true };
+  // Optional status move — same validation as updateIntroStatus, folded in here.
+  // Kept as its own audit row (the status grain) but in the one transaction, so a
+  // partial write (fields saved, status lost) can't happen.
+  let statusChange: { before: IntroStatus; after: IntroStatus } | null = null;
+  if (input.status !== undefined) {
+    const status = input.status as IntroStatus;
+    if (!VALID_INTRO_STATUSES.includes(status)) throw new Error(`Invalid status: ${input.status}`);
+    if (status === "converted") throw new Error("Use Convert → Deal to convert an intro — it scaffolds the deal.");
+    if (status !== intro.status) {
+      data.status = status;
+      statusChange = { before: intro.status, after: status };
+    }
+  }
+
+  if (Object.keys(changes).length === 0 && !statusChange) return { ok: true };
 
   await prisma.$transaction(async (tx) => {
     await tx.intro.update({ where: { id: introId }, data });
-    await writeAudit(tx, {
-      actor,
-      action: "update.intro",
-      targetType: "Intro",
-      targetId: introId,
-      changes,
-    });
+    if (Object.keys(changes).length > 0) {
+      await writeAudit(tx, {
+        actor,
+        action: "update.intro",
+        targetType: "Intro",
+        targetId: introId,
+        changes,
+      });
+    }
+    if (statusChange) {
+      await writeAudit(tx, {
+        actor,
+        action: "update.intro.status",
+        targetType: "Intro",
+        targetId: introId,
+        changes: { status: statusChange },
+      });
+    }
   });
 
   revalidatePath("/intros");

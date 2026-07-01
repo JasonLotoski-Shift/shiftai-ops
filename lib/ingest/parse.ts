@@ -17,6 +17,7 @@ import type {
   ProposedDeliverable,
   ProposedContact,
   ContactLinkProposal,
+  CallReviewCandidate,
 } from "@/lib/ingest/types";
 import { INGEST_TYPES, RELATIONSHIP_TYPES, STAKEHOLDER_ROLES } from "@/lib/ingest/types";
 import type { RelationshipType, StakeholderRole } from "@/lib/types";
@@ -60,6 +61,7 @@ export type ParsedUnified = {
   tasks: ParsedTask[];
   proposedContacts: ProposedContact[];
   contactLinks: ContactLinkProposal[];
+  callReview: CallReviewCandidate | null;
 };
 
 // ── Firm-internal exclusion ──
@@ -259,6 +261,19 @@ function parseContactLinks(v: unknown): ContactLinkProposal[] {
     );
 }
 
+/** The cross-call retro block. Conservative: null unless a point carries real
+ *  signal (mirrors parseIntroProposal's callReview parse in composer-actions.ts). */
+function parseCallReview(v: unknown): CallReviewCandidate | null {
+  if (!v || typeof v !== "object") return null;
+  const cr = v as Record<string, unknown>;
+  const whatWorked = strArr(cr.whatWorked);
+  const whatDidnt = strArr(cr.whatDidnt);
+  const lessons = strArr(cr.lessons);
+  const coachingNotes = str(cr.coachingNotes) || null;
+  if (!whatWorked.length && !whatDidnt.length && !lessons.length && !coachingNotes) return null;
+  return { whatWorked, whatDidnt, lessons, coachingNotes };
+}
+
 function parseTasks(v: unknown): ParsedTask[] {
   return objArr(v)
     .filter((t) => typeof t.title === "string" && (t.title as string).trim())
@@ -291,5 +306,6 @@ export function parseUnified(raw: string): ParsedUnified {
     tasks: parseTasks(o.tasks),
     proposedContacts: parseProposedContacts(o.proposedContacts),
     contactLinks: parseContactLinks(o.contactLinks),
+    callReview: parseCallReview(o.callReview),
   };
 }

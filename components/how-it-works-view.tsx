@@ -37,6 +37,7 @@ import {
   Map as MapIcon,
   MessageSquarePlus,
   BrainCircuit,
+  Handshake,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -963,6 +964,30 @@ const flows: Flow[] = [
       { tone: "claude", kind: "Claude", label: "When the transcript is ready (and a 6-hourly sweep, or “Check Fireflies” on Ingest, catches any you renamed later): matches the client/contact, drafts a summary + action items" },
       { tone: "review", kind: "You review", label: "Approve on Ingest like any meeting; internal-only or untitled calls are skipped" },
       { tone: "write", kind: "Saved", label: "Logs a meeting Interaction + files the transcript to Drive + Tasks/enrichment + AuditLog" },
+    ],
+  },
+  {
+    icon: <Handshake size={16} strokeWidth={1.5} />,
+    title: "Log an intro or channel-partner call",
+    blurb: "A call with someone who introduces the firm to future deals — a connector, an intro partner, an advisor who sends referrals. There's no client and no deal yet, so it rides its own purple lane and lands on the Intros board.",
+    steps: [
+      { tone: "trigger", kind: "You do", label: "+ Ingest → pick the “Intro / channel partner” lane → paste the call notes/transcript (no client or deal to attach). A Fireflies call with an outside attendee and no client match auto-routes to this same purple lane" },
+      { tone: "claude", kind: "Claude", label: "Reads it as an intro: the channel partner (name, company, how they work, any terms like a declined fee), the BD follow-ups to work the relationship, an optional call review, and — only by exception — a firm-targeting insight for the brain. Invents no client and no deal" },
+      { tone: "review", kind: "You review", label: "On the purple card, confirm or match the channel partner (marks them a channel partner and files the notes), tick the BD tasks worth keeping (default off), keep or edit the call review, and keep the targeting insight only if it's real" },
+      { tone: "write", kind: "Saved", label: "The contact (channel-partner flag + notes) + a logged Interaction + the kept BD tasks on the firm board + a CallReview + a draft decision/learning for Firm Knowledge if kept + AuditLog" },
+      { tone: "trigger", kind: "You do", label: "Intros (sidebar) is the board: a Kanban from Proposed → Requested → Made → Meeting Set → Converted. Log an intro straight here too, drag a card along its lanes, or open it to edit (fields + status save in one write). Set a dead one aside as Declined or Dead" },
+      { tone: "write", kind: "Convert", label: "Convert → Deal hands off to the pipeline: it creates the deal, records the introducer as the person who introduced us, and freezes the intro linked to its deal. Set the deal-source commission on the deal if there's a fee" },
+    ],
+  },
+  {
+    icon: <ClipboardCheck size={16} strokeWidth={1.5} />,
+    title: "Review a call (Call reviews)",
+    blurb: "Every meeting lane — a client call, an intro call — can distil a short retro at ingest: what worked, what didn't, the durable lessons to reuse. Call reviews (sidebar) is where the team reads them and the patterns across them.",
+    steps: [
+      { tone: "claude", kind: "Claude", label: "At ingest, Claude drafts the retro only when the transcript carries real coaching signal — never fabricated to fill it. Most routine calls produce none" },
+      { tone: "review", kind: "You review", label: "On the ingest card (gold client call or purple intro), keep or edit the review before you approve — what worked, what didn't, and the lessons, one per line. Clear it to skip" },
+      { tone: "review", kind: "You review", label: "Call reviews lists every saved review, filterable by lane (Client / Intro), partner, and period, with the recurring what-worked / what-didn't and the lessons shortlist across the set. Managing-partner reviews stay MP-only" },
+      { tone: "write", kind: "Saved", label: "A CallReview row tied to the logged interaction + AuditLog. Promote one durable lesson into the firm brain — it becomes a draft in the BD / Sales Playbook, live to skills only once a partner approves it" },
     ],
   },
   {

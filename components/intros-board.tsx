@@ -798,17 +798,15 @@ function EditIntroModal({
     setSaving(true);
     setError(null);
     try {
-      // Fields first, then a status move (a separate action so the audit trail
-      // records a status change as its own row). Convert is never done here.
+      // Fields + the status move in ONE action, so a partial write (fields saved,
+      // status lost) can't happen. Convert is never done here — it's the handoff.
       await updateIntro(intro.id, {
         targetCompany,
         ownerId: ownerId || null,
         targetContactId: targetContactId || null,
         notes: notes.trim() || null,
+        status,
       });
-      if (status !== intro.status && status !== "converted") {
-        await updateIntroStatus(intro.id, status);
-      }
       onClose();
     } catch (err) {
       console.error("updateIntro failed:", err);

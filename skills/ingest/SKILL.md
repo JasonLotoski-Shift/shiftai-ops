@@ -34,7 +34,8 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
   ],
   "tasks": [ { "title": "Short noun phrase — the thing, no verb/date", "context": "1–2 sentences", "priority": "high | medium | low", "due": "YYYY-MM-DD or null", "ownerHint": "a roster name or null", "clientId": "id or null", "projectId": "id or null", "milestoneId": "a listed milestone id or null", "reassignTaskId": "an OPEN-TASK id or null" } ],
   "proposedContacts": [ { "name": "Full name", "email": "address exactly as written in the source", "title": "VP Operations or null", "company": "Brightline or null", "suggestedRelationship": "works_there | introduced_us | advisor | other", "suggestedRole": "decision_maker | champion | influencer | budget_holder | technical | gatekeeper | blocker | other — or null" } ],
-  "contactLinks": [ { "contactEmail": "an existing contact's email, or a proposedContacts email", "targetKind": "deal | client", "targetId": "a deal/client id from the context block", "relationship": "works_there | introduced_us | advisor | other", "role": "same set as suggestedRole, or null", "isPrimary": false } ]
+  "contactLinks": [ { "contactEmail": "an existing contact's email, or a proposedContacts email", "targetKind": "deal | client", "targetId": "a deal/client id from the context block", "relationship": "works_there | introduced_us | advisor | other", "role": "same set as suggestedRole, or null", "isPrimary": false } ],
+  "callReview": null
 }
 ```
 
@@ -76,3 +77,20 @@ Example: "we run everything in spreadsheets and dispatch is a nightmare" → `{ 
 - **Tasks — don't duplicate existing work.** The context lists the OPEN TASKS already on each project/client target. Before adding a task, check that list by MEANING, not exact words — `Pilot SOW` is the same work as `Pilot scope of work`, `DMS access` the same as `Get DMS integration access`. If the same work is already open there: set `reassignTaskId` to that task's id when the content hands it to a different named owner, otherwise omit the task entirely (the partner already has it). Only genuinely new work becomes a new task.
 - **Mark gaps, never guess.** Where a needed detail is genuinely unknown, write `[NEEDS INPUT]` inline rather than inventing a value.
 - If the content is too thin to extract anything, return the object with empty arrays and a one-line `summary`.
+
+## Call review (meeting content only)
+
+`callReview` is the cross-call learning block — what worked in the room, what fell flat, and the durable lessons worth reusing. It rides every meeting lane, so a client meeting carries one too. Populate it only when the content is a **meeting or call** transcript that actually holds coaching signal.
+
+```json
+"callReview": {
+  "whatWorked": ["A concrete thing that worked in the call"],
+  "whatDidnt": ["A concrete thing that fell flat or a miss"],
+  "lessons": ["A durable, reusable takeaway worth carrying to the next call"],
+  "coachingNotes": "One or two sentences of freeform coaching, or null"
+}
+```
+
+- **Conservative by default.** Populate a point only when the transcript actually carries the signal. Leave `"callReview": null` (or every array empty) for an email thread, a document, a routine note, or a call with nothing real to say. **Never fabricate critique** to fill it.
+- `whatWorked` / `whatDidnt` are call-specific observations; `lessons` are the durable few (a partner may later promote one into the firm brain). Keep each a short, scannable phrase.
+- Everything traces to what was actually said or observable in the content. No invented praise, no invented misses.

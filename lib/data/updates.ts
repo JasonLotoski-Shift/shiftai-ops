@@ -25,6 +25,13 @@ export const updates: Update[] = [
   {
     date: "2026-06-30",
     tag: "new",
+    title: "Client calls can carry a call review too",
+    detail:
+      "Call reviews now ride client (gold) calls, not just intro calls. When you ingest a client meeting, Claude drafts a short review only if the call held real coaching signal — keep or edit it before you approve, and it shows on the Call Reviews page under the Client filter. The How it works manual now covers the intro lane, the Intros board, and Call Reviews end to end.",
+  },
+  {
+    date: "2026-06-30",
+    tag: "new",
     title: "Intros: track who introduces you and turn it into deals",
     detail:
       "When someone offers to introduce you to prospects, the tool now files them as a channel partner. An intro or BD call dropped into Ingest saves the person as a contact with your follow-up tasks and any targeting note worth keeping. A new Intros board tracks each introduction from proposed through to a booked meeting and a converted deal, and converting one creates the deal with the introduction credited to whoever sent it. Channel partners get their own filter on the Contacts list, and each one shows the intros they have made and how many became deals.",
