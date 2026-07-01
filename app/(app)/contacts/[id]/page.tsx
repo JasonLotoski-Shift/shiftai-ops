@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Card, CardBody, Label, Badge, Avatar, EmptyState } from "@/components/ui";
 import { ContactActions } from "@/components/contact-actions";
+import { ContactChannelPanel } from "@/components/contact-channel-panel";
 import { prisma } from "@/lib/prisma";
 import { savedAtBySkill } from "@/lib/action-status";
 import { formatCAD, formatDate, daysSince, dealLabel } from "@/lib/format";
@@ -22,6 +23,7 @@ import {
   Linkedin,
   MapPin,
   Smartphone,
+  Handshake,
 } from "lucide-react";
 
 // Keys use Prisma enum identifiers (underscored), matching @map'd DB values.
@@ -56,6 +58,18 @@ const strengthBadge: Record<string, { label: string; tone: "steel" | "bone" | "g
   cold: { label: "Cold", tone: "steel" },
   warm: { label: "Warm", tone: "bone" },
   strong: { label: "Strong", tone: "gold" },
+};
+
+// Intro status → label + badge tone (Lane 4). Keys are the underscored Prisma
+// enum identifiers; converted reads gold (it produced a deal).
+const introStatusBadge: Record<string, { label: string; tone: "steel" | "bone" | "gold" | "red" | "neutral" }> = {
+  proposed: { label: "Proposed", tone: "neutral" },
+  requested: { label: "Requested", tone: "steel" },
+  made: { label: "Made", tone: "bone" },
+  meeting_set: { label: "Meeting set", tone: "bone" },
+  converted: { label: "Converted", tone: "gold" },
+  declined: { label: "Declined", tone: "red" },
+  dead: { label: "Dead", tone: "red" },
 };
 
 // How the person connects to the company — one line per ContactLink.
@@ -94,6 +108,15 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
           },
           orderBy: { createdAt: "asc" },
         },
+        // Intros this person made as a channel partner (Lane 4) — status +
+        // the deal each converted intro produced.
+        introsMade: {
+          include: {
+            owner: { select: { name: true, initials: true } },
+            deal: { select: { id: true, company: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
       },
     }),
     // Saved step-1 email drafts (orange) — contact-scoped (ActionDraft.contactId).
@@ -106,6 +129,14 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   const log = contact.interactions;
   const stale = daysSince(contact.lastTouchAt) > 30;
   const enriched = Boolean(contact.persona || contact.keyFacts.length || contact.background);
+
+  // Intros this person made (Lane 4) + their conversion rate over terminal ones.
+  const intros = contact.introsMade;
+  const introsConverted = intros.filter((i) => i.status === "converted").length;
+  const introsTerminal = intros.filter(
+    (i) => i.status === "converted" || i.status === "declined" || i.status === "dead",
+  ).length;
+  const introConversionRate = introsTerminal > 0 ? Math.round((introsConverted / introsTerminal) * 100) : null;
 
   // Actions panel run-status (green) + saved step-1 drafts (orange). The only
   // two-step contact action is Draft email. The email Artifact is scoped to the
@@ -355,6 +386,67 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
               )}
             </CardBody>
           </Card>
+
+          {/* Intros made (Lane 4) — shown for a channel partner or anyone with
+              intros on record. Each row links to the deal a converted intro
+              produced. */}
+          {(contact.isChannelPartner || intros.length > 0) && (
+            <Card>
+              <CardBody className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="title-md text-bone">Intros made ({intros.length})</h2>
+                  {introConversionRate !== null && (
+                    <span className="label">{introConversionRate}% converted</span>
+                  )}
+                </div>
+                {intros.length === 0 ? (
+                  <EmptyState
+                    icon={<Handshake size={22} strokeWidth={1.5} />}
+                    title="No intros logged yet"
+                    hint="Log an intro from the Intros board to track it here."
+                    compact
+                  />
+                ) : (
+                  <div className="flex flex-col">
+                    {intros.map((intro) => {
+                      const badge = introStatusBadge[intro.status] ?? { label: intro.status, tone: "neutral" as const };
+                      const body = (
+                        <>
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <span className="text-[14px] text-bone truncate">{intro.targetCompany}</span>
+                            <span className="text-[11px] text-bone-mute truncate">
+                              {intro.owner ? `Owner ${intro.owner.name.split(" ")[0]} · ` : ""}
+                              Logged {formatDate(intro.createdAt)}
+                            </span>
+                          </div>
+                          <Badge tone={badge.tone}>{badge.label}</Badge>
+                          <span className="text-[11px] text-bone-mute self-center text-right truncate">
+                            {intro.deal ? `→ ${intro.deal.company}` : ""}
+                          </span>
+                        </>
+                      );
+                      return intro.deal ? (
+                        <Link
+                          key={intro.id}
+                          href={`/pipeline/${intro.deal.id}`}
+                          className="grid grid-cols-[1fr_120px_140px] gap-4 px-2 py-3 -mx-2 rounded-[var(--radius-sm)] hover:bg-[var(--color-row-hover)] transition-colors"
+                        >
+                          {body}
+                        </Link>
+                      ) : (
+                        <div
+                          key={intro.id}
+                          className="grid grid-cols-[1fr_120px_140px] gap-4 px-2 py-3 -mx-2"
+                        >
+                          {body}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          )}
         </div>
 
         <div className="flex flex-col gap-6">
@@ -434,6 +526,17 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                   <div className="text-[11px] text-bone-mute">{partner.role}</div>
                 </div>
               </div>
+            </CardBody>
+          </Card>
+
+          {/* Channel-partner marker (Lane 4) — flag + relationship notes. */}
+          <Card className={contact.isChannelPartner ? "border border-track-gold/40 bg-track-gold-dim/5" : undefined}>
+            <CardBody>
+              <ContactChannelPanel
+                contactId={contact.id}
+                isChannelPartner={contact.isChannelPartner}
+                channelNotes={contact.channelNotes ?? null}
+              />
             </CardBody>
           </Card>
 
