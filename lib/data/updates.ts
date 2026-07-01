@@ -25,6 +25,20 @@ export const updates: Update[] = [
   {
     date: "2026-06-30",
     tag: "new",
+    title: "Intros: track who introduces you and turn it into deals",
+    detail:
+      "When someone offers to introduce you to prospects, the tool now treats them as a channel partner instead of trying to make them a client. An intro or BD call dropped into Ingest files the person as a contact with your follow-up tasks, no fake client record, and picks up any targeting note worth keeping. A new Intros board tracks each introduction from proposed through to a booked meeting and a converted deal, and converting one creates the deal with the introduction credited to whoever sent it. Channel partners get their own filter on the Contacts list, and each one shows the intros they have made and how many became deals.",
+  },
+  {
+    date: "2026-06-30",
+    tag: "new",
+    title: "Call Reviews: capture what worked and what did not on a call",
+    detail:
+      "A new Call Reviews page collects the coaching from a call, what landed, what to do differently, and the lessons worth reusing, so the team gets sharper over time. Intro calls filed through Ingest can carry a short review, and a lesson worth keeping promotes into Firm Knowledge for everyone. Reviews on client calls are next.",
+  },
+  {
+    date: "2026-06-30",
+    tag: "new",
     title: "File a bill, receipt, or invoice straight from Ingest",
     detail:
       "Drop or paste an invoice or receipt into Ingest and it files itself, the same way a bill labeled in Gmail does. Finance now has its own review card: the PDF or photo shows right there so you can read it while you check the numbers, and the vendor, amount, currency, invoice number, and due date are all editable before you file. Tie it to a project, or leave it firm level for overhead like Anthropic, Vercel, or Workspace. Reimburse anyone on the team, partner or contractor, from one list.",

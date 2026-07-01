@@ -26,6 +26,8 @@ import {
   ChevronDown,
   ChevronRight,
   Repeat,
+  Handshake,
+  MessagesSquare,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -46,6 +48,7 @@ const operate: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/tasks", label: "Task Board", icon: CheckSquare },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
+  { href: "/intros", label: "Intros", icon: Handshake },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/service-contracts", label: "Service Contracts", icon: Repeat },
 ];
@@ -60,6 +63,7 @@ const importGroup: NavItem[] = [
 // Firm-wide records and money.
 const firm: NavItem[] = [
   { href: "/firm-knowledge", label: "Firm Knowledge", icon: BookMarked },
+  { href: "/call-reviews", label: "Call Reviews", icon: MessagesSquare },
   { href: "/financials", label: "Financials", icon: Receipt },
   { href: "/contacts", label: "Contacts List", icon: Users },
   { href: "/clients", label: "Clients List", icon: Briefcase },
