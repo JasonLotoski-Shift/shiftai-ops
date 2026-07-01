@@ -21,6 +21,8 @@ export default async function ContactsPage() {
         industry: true,
         subIndustry: true,
         lastTouchAt: true,
+        // Channel-partner marker (Lane 4) — powers the "Channel Partners" filter.
+        isChannelPartner: true,
         partnerLead: { select: { initials: true, name: true } },
       },
       orderBy: { lastTouchAt: "desc" },
@@ -31,6 +33,7 @@ export default async function ContactsPage() {
 
   const industryCount = new Set(contacts.map((c) => c.industry)).size;
   const coldCount = contacts.filter((c) => daysSince(c.lastTouchAt) > 30).length;
+  const channelCount = contacts.filter((c) => c.isChannelPartner).length;
 
   const rows: ContactRow[] = contacts.map((c) => ({
     id: c.id,
@@ -40,6 +43,7 @@ export default async function ContactsPage() {
     industry: c.industry as Industry,
     subIndustry: c.subIndustry ?? null,
     lastTouchAt: c.lastTouchAt.toISOString(),
+    isChannelPartner: c.isChannelPartner,
     partnerLeadInitials: c.partnerLead.initials,
     partnerLeadFirstName: c.partnerLead.name.split(" ")[0],
   }));
@@ -57,12 +61,15 @@ export default async function ContactsPage() {
       />
 
       <div className="px-8 py-8 flex flex-col gap-8">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-4 gap-4">
           <Card className="p-5">
             <Stat label="Total contacts" value={contacts.length} />
           </Card>
           <Card className="p-5">
             <Stat label="Across industries" value={industryCount} />
+          </Card>
+          <Card className="p-5">
+            <Stat label="Channel partners" value={channelCount} gold />
           </Card>
           <Card className="p-5">
             <Stat label="Cold 30d+" value={coldCount} />

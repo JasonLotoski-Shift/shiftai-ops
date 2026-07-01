@@ -6,6 +6,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { Handshake } from "lucide-react";
 import { Badge, Avatar } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { daysSince } from "@/lib/format";
@@ -20,6 +21,8 @@ export type ContactRow = {
   industry: Industry;
   subIndustry: string | null;
   lastTouchAt: string; // ISO
+  // Channel-partner marker (Lane 4) — drives the "Channel Partners" filter + badge.
+  isChannelPartner: boolean;
   partnerLeadInitials: string;
   partnerLeadFirstName: string;
 };
@@ -27,6 +30,10 @@ export type ContactRow = {
 export function ContactsList({ contacts }: { contacts: ContactRow[] }) {
   const [vertical, setVertical] = useState<Industry | "all">("all");
   const [sub, setSub] = useState<string | "all">("all");
+  // Channel-partner toggle — narrows the list to people who send intros.
+  const [channelOnly, setChannelOnly] = useState(false);
+
+  const channelCount = useMemo(() => contacts.filter((c) => c.isChannelPartner).length, [contacts]);
 
   // Verticals actually present, in the firm's beachhead order.
   const verticalsPresent = useMemo(() => {
@@ -47,11 +54,12 @@ export function ContactsList({ contacts }: { contacts: ContactRow[] }) {
 
   const shown = useMemo(() => {
     return contacts.filter((c) => {
+      if (channelOnly && !c.isChannelPartner) return false;
       if (vertical !== "all" && c.industry !== vertical) return false;
       if (sub !== "all" && c.subIndustry !== sub) return false;
       return true;
     });
-  }, [contacts, vertical, sub]);
+  }, [contacts, vertical, sub, channelOnly]);
 
   function pickVertical(v: Industry | "all") {
     setVertical(v);
@@ -60,7 +68,7 @@ export function ContactsList({ contacts }: { contacts: ContactRow[] }) {
 
   return (
     <div className="flex flex-col">
-      {/* Vertical filter chips */}
+      {/* Vertical filter chips + the channel-partner toggle (Lane 4). */}
       <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4 pb-1">
         <FilterChip label="All" active={vertical === "all"} onClick={() => pickVertical("all")} />
         {verticalsPresent.map((v) => (
@@ -71,6 +79,22 @@ export function ContactsList({ contacts }: { contacts: ContactRow[] }) {
             onClick={() => pickVertical(v)}
           />
         ))}
+        {channelCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setChannelOnly((v) => !v)}
+            className={cn(
+              "ml-auto inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border px-2.5 py-1 text-[11px] transition-colors",
+              channelOnly
+                ? "border-track-gold/40 text-track-gold bg-track-gold-dim/10"
+                : "border-graphite-2 text-bone-mute hover:text-bone-dim",
+            )}
+          >
+            <Handshake size={12} strokeWidth={1.5} />
+            Channel partners
+            <span className="tabular-nums text-bone-mute">{channelCount}</span>
+          </button>
+        )}
       </div>
 
       {/* Sub-industry refinement chips — only when a vertical is chosen and it
@@ -107,7 +131,17 @@ export function ContactsList({ contacts }: { contacts: ContactRow[] }) {
               className="grid grid-cols-[2fr_2fr_1.4fr_1fr_120px] gap-4 px-5 py-4 hover:bg-[var(--color-row-hover)] transition-colors"
             >
               <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-[14px] text-bone truncate">{c.name}</span>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[14px] text-bone truncate">{c.name}</span>
+                  {c.isChannelPartner && (
+                    <Handshake
+                      size={12}
+                      strokeWidth={1.5}
+                      className="shrink-0 text-track-gold"
+                      aria-label="Channel partner"
+                    />
+                  )}
+                </span>
                 <span className="text-[11px] text-bone-mute truncate">{c.title}</span>
               </div>
               <span className="text-[13px] text-bone-dim truncate self-center">{c.company}</span>
