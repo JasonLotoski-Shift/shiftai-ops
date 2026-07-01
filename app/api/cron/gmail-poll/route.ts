@@ -144,11 +144,16 @@ function parseProposal(raw: string): ExtractedProposal {
         ? Math.round(Number(bd.amount.replace(/[^0-9.-]/g, "")))
         : 0
     : 0;
+  // Keep the bill line when EITHER a vendor OR a positive amount is present, so a
+  // link-only finance email (no amount) still pre-fills the vendor / invoice # /
+  // due on the green card. amount stays 0 when unknown (renders blank; the card's
+  // file-time check blocks a $0 filing). Both empty → no bill line.
+  const hasBillAmount = Number.isFinite(billAmount) && billAmount > 0;
   const bill: ExtractedBill | null =
-    bd && billVendor && Number.isFinite(billAmount) && billAmount > 0
+    bd && (billVendor || hasBillAmount)
       ? {
           vendor: billVendor,
-          amount: billAmount,
+          amount: hasBillAmount ? billAmount : 0,
           currency: typeof bd.currency === "string" && bd.currency.trim() ? bd.currency.trim().toUpperCase() : "CAD",
           invoiceNumber: typeof bd.invoiceNumber === "string" && bd.invoiceNumber.trim() ? bd.invoiceNumber.trim() : undefined,
           dueDate: typeof bd.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(bd.dueDate) ? bd.dueDate : undefined,

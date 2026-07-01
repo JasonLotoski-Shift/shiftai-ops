@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { EXPENSE_CATEGORY_OPTIONS, EXPENSE_KIND_LABELS } from "@/lib/finance";
 import type { ExpenseCategory, ExpenseKind, MileageUnit } from "@/lib/types";
 import { createBill, createExpense, scanReceipt, type FinanceFile, type ScanResult } from "@/app/(app)/financials/finance-actions";
+import { VendorPicker, type VendorPick } from "@/components/billing/vendor-picker";
 
 type Mode = "expense" | "invoice";
 // Vercel caps a serverless request body at ~4.5 MB — a HARD platform limit the
@@ -61,6 +62,7 @@ export function UploadFinanceModal({
   // shared
   const [file, setFile] = useState<FinanceFile | null>(null);
   const [vendor, setVendor] = useState("");
+  const [vendorId, setVendorId] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -125,7 +127,7 @@ export function UploadFinanceModal({
     let filled = 0;
     if (r.docType === "invoice") setMode("invoice");
     else if (r.docType === "receipt" && mode === "invoice") setMode("expense");
-    if (r.vendor) { setVendor(r.vendor); filled++; }
+    if (r.vendor) { setVendor(r.vendor); setVendorId(null); filled++; }
     if (r.amount != null) { setAmount(String(r.amount)); filled++; }
     if (r.date) { setIssuedAt(r.date); setSpentAt(r.date); filled++; }
     if (r.category) { setCategory(r.category); filled++; }
@@ -135,6 +137,14 @@ export function UploadFinanceModal({
         ? "Couldn't read the details from that photo — please fill them in."
         : `Prefilled from the photo${r.confidence ? ` · ${r.confidence} confidence` : ""} — check each field before saving.`,
     );
+  }
+
+  // Pick/create a managed vendor, or type a plain name. Picking one carries its
+  // default category onto an expense (bills have no category field here).
+  function onVendor(v: VendorPick) {
+    setVendor(v.name);
+    setVendorId(v.id);
+    if (!isBill && v.id && v.defaultCategory) setCategory(v.defaultCategory);
   }
 
   function canSave(): boolean {
@@ -150,6 +160,7 @@ export function UploadFinanceModal({
         if (isBill) {
           await createBill({
             vendor: vendor.trim(),
+            vendorId,
             number: number.trim() || null,
             amount: Math.round(Number(amount)),
             category: null,
@@ -165,6 +176,7 @@ export function UploadFinanceModal({
             kind,
             category,
             vendor: vendor.trim() || null,
+            vendorId,
             description: description.trim() || null,
             amount: isMileageKm ? 0 : Math.round(Number(amount)),
             spentAt,
@@ -270,7 +282,7 @@ export function UploadFinanceModal({
 
             {isBill ? (
               <BillFields
-                vendor={vendor} setVendor={setVendor}
+                vendor={vendor} vendorId={vendorId} onVendor={onVendor}
                 number={number} setNumber={setNumber}
                 amount={amount} setAmount={setAmount}
                 issuedAt={issuedAt} setIssuedAt={setIssuedAt}
@@ -282,7 +294,7 @@ export function UploadFinanceModal({
               <ExpenseFields
                 kind={kind} setKind={setKind}
                 category={category} setCategory={setCategory}
-                vendor={vendor} setVendor={setVendor}
+                vendor={vendor} vendorId={vendorId} onVendor={onVendor}
                 description={description} setDescription={setDescription}
                 amount={amount} setAmount={setAmount}
                 spentAt={spentAt} setSpentAt={setSpentAt}
@@ -335,7 +347,7 @@ export function UploadFinanceModal({
 }
 
 function BillFields(p: {
-  vendor: string; setVendor: (v: string) => void;
+  vendor: string; vendorId: string | null; onVendor: (v: VendorPick) => void;
   number: string; setNumber: (v: string) => void;
   amount: string; setAmount: (v: string) => void;
   issuedAt: string; setIssuedAt: (v: string) => void;
@@ -348,7 +360,7 @@ function BillFields(p: {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           <Label>Vendor <span className="text-flag-red">*</span></Label>
-          <Input placeholder="e.g. Stripe" value={p.vendor} onChange={(e) => p.setVendor(e.target.value)} disabled={p.disabled} />
+          <VendorPicker value={{ id: p.vendorId, name: p.vendor }} onChange={p.onVendor} disabled={p.disabled} placeholder="e.g. Stripe" />
         </div>
         <div className="flex flex-col gap-2">
           <Label>Invoice number</Label>
@@ -380,7 +392,7 @@ function BillFields(p: {
 function ExpenseFields(p: {
   kind: ExpenseKind; setKind: (v: ExpenseKind) => void;
   category: ExpenseCategory; setCategory: (v: ExpenseCategory) => void;
-  vendor: string; setVendor: (v: string) => void;
+  vendor: string; vendorId: string | null; onVendor: (v: VendorPick) => void;
   description: string; setDescription: (v: string) => void;
   amount: string; setAmount: (v: string) => void;
   spentAt: string; setSpentAt: (v: string) => void;
@@ -415,7 +427,7 @@ function ExpenseFields(p: {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           <Label>Vendor / merchant</Label>
-          <Input placeholder="e.g. Air Canada" value={p.vendor} onChange={(e) => p.setVendor(e.target.value)} disabled={p.disabled} />
+          <VendorPicker value={{ id: p.vendorId, name: p.vendor }} onChange={p.onVendor} disabled={p.disabled} placeholder="e.g. Air Canada" />
         </div>
         <div className="flex flex-col gap-2">
           <Label>Date <span className="text-flag-red">*</span></Label>

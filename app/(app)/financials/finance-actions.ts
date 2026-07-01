@@ -27,6 +27,7 @@ import {
 import { formatCAD } from "@/lib/format";
 import { loadLedgerEntries } from "@/app/(app)/financials/ledger-data";
 import { LEDGER_TYPE_LABELS } from "@/lib/finance-ledger";
+import { validVendorId } from "@/lib/vendors";
 import type { ExpenseCategory, ExpenseKind, MileageUnit } from "@/lib/types";
 
 export type FinanceFile = { base64: string; mimeType: string; fileName: string };
@@ -70,6 +71,7 @@ function extFor(mimeType: string, fileName?: string): string {
 
 export type CreateBillInput = {
   vendor: string;
+  vendorId?: string | null; // optional link to the managed Vendor list
   number?: string | null;
   description?: string | null;
   amount: number; // subtotal in `currency` (converted to CAD on save)
@@ -91,6 +93,7 @@ export async function createBill(input: CreateBillInput) {
   const vendor = input.vendor.trim();
   if (!vendor) throw new Error("Vendor is required");
   if (!Number.isFinite(input.amount) || input.amount <= 0) throw new Error("Enter a valid amount");
+  const vendorId = await validVendorId(input.vendorId);
 
   // Convert to CAD (books' currency); keep the source figure + rate on the row.
   const fx = convertToCad(input.amount, input.currency);
@@ -123,6 +126,7 @@ export async function createBill(input: CreateBillInput) {
     const created = await tx.bill.create({
       data: {
         vendor,
+        vendorId,
         number: input.number?.trim() || null,
         description: input.description?.trim() || null,
         amount,
@@ -353,6 +357,7 @@ export type CreateExpenseInput = {
   kind: ExpenseKind;
   category: ExpenseCategory;
   vendor?: string | null;
+  vendorId?: string | null; // optional link to the managed Vendor list
   description?: string | null;
   amount: number; // in `currency` — ignored for mileage_km (computed from km)
   currency?: string | null; // e.g. "USD"; default CAD (converted on save)
@@ -375,6 +380,7 @@ export async function createExpense(input: CreateExpenseInput) {
 
   const spentAt = new Date(input.spentAt);
   if (Number.isNaN(spentAt.getTime())) throw new Error("Enter a valid date");
+  const vendorId = await validVendorId(input.vendorId);
 
   // Mileage (km) computes its own amount from the CRA rate; everything else
   // uses the entered amount. Round km to 1 decimal (Decimal(7,1) parity) so the
@@ -453,6 +459,7 @@ export async function createExpense(input: CreateExpenseInput) {
         kind: input.kind,
         category: input.category,
         vendor: input.vendor?.trim() || null,
+        vendorId,
         description: input.description?.trim() || null,
         amount,
         currency: "CAD",

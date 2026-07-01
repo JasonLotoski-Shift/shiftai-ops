@@ -323,6 +323,7 @@ export default async function FinancialsPage() {
 
       <FinancialsTabs
         canSeeApAr={apAr !== null}
+        canManageVendors={managingPartner}
         apAr={apAr}
         ledger={ledger}
         cashflow={cashData?.cashflow ?? null}

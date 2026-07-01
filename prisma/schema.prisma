@@ -3007,6 +3007,12 @@ model Bill {
   project   Project? @relation(fields: [projectId], references: [id])
   projectId String?
 
+  // Optional link to the curated Vendor list. The `vendor` string above stays the
+  // denormalized display name (set from Vendor.name on file), so existing rows and
+  // free-typed names always render even when unlinked.
+  vendorRef Vendor? @relation(fields: [vendorId], references: [id])
+  vendorId  String?
+
   // The stored PDF/image in Drive (00-Firm-Financials/<yr>/AP-Bills/...).
   driveFileId String?
   driveUrl    String?
@@ -3025,6 +3031,7 @@ model Bill {
 
   @@index([status, dueAt])
   @@index([clientId])
+  @@index([vendorId])
 }
 
 model Expense {
@@ -3069,6 +3076,11 @@ model Expense {
   project   Project? @relation(fields: [projectId], references: [id])
   projectId String?
 
+  // Optional link to the curated Vendor list (see Bill.vendorRef). The `vendor`
+  // string above stays the denormalized display name.
+  vendorRef Vendor? @relation(fields: [vendorId], references: [id])
+  vendorId  String?
+
   // Receipt doc in Drive; needsPhoto when saved without one ("needs photo").
   needsPhoto  Boolean @default(false)
   driveFileId String?
@@ -3083,4 +3095,26 @@ model Expense {
   @@index([category])
   @@index([paidById])
   @@index([paidByConsultantId])
+  @@index([vendorId])
+}
+
+// A curated payee the firm bills/expenses recur against (Cloudflare, Anthropic,
+// Vercel, …). A managed list so filing a bill/receipt picks a known vendor
+// instead of retyping a name, with optional defaults that pre-fill the finance
+// form. Bill.vendor / Expense.vendor keep the denormalized display name; vendorId
+// is the optional link. Managed on Financials → Vendors (managing partners).
+model Vendor {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  defaultCategory ExpenseCategory? // pre-fills the expense/bill category on pick
+  defaultCurrency String?          @default("CAD") // pre-fills the amount's currency on pick
+  notes           String?
+  archivedAt      DateTime? // soft-hide from the pickers without losing history
+  bills           Bill[]
+  expenses        Expense[]
+  createdBy       String // partner name
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([archivedAt])
 }

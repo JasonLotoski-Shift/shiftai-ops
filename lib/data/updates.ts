@@ -23,6 +23,13 @@ export type Update = {
 
 export const updates: Update[] = [
   {
+    date: "2026-07-01",
+    tag: "new",
+    title: "A managed vendor list for bills and expenses",
+    detail:
+      "Financials now has a Vendors tab (managing partners) — keep your payees in one place (Cloudflare, Anthropic, Vercel…), each with an optional default category and currency. When you file a bill or expense (from Ingest or the AP/AR Add form), the vendor field is now a pick-or-type box: choose a known vendor, add the one you typed to the list in a click, or just leave a plain name. Picking a vendor pre-fills its defaults. Two small finance fixes ride along: the amount box on the Ingest finance card is no longer cramped, and a bill email that only links out to its invoice now still pre-fills the vendor name so you only fill in the amount.",
+  },
+  {
     date: "2026-06-30",
     tag: "new",
     title: "Client calls can carry a call review too",

@@ -21,6 +21,7 @@ import type { BillStatus, ExpenseCategory, ExpenseKind, ExpenseStatus } from "@/
 import { markBillPaid, markExpenseReimbursed, markExpensePaid, exportLedgerCsv } from "@/app/(app)/financials/finance-actions";
 import { markInvoicePaid } from "@/app/(app)/invoices/[id]/actions";
 import { UploadFinanceModal } from "@/components/billing/upload-finance-modal";
+import { VendorsView } from "@/components/billing/vendors-view";
 import { LedgerTable } from "@/components/billing/ledger-table";
 import { CashflowView } from "@/components/financials/cashflow-view";
 import type { LedgerEntry } from "@/lib/finance-ledger";
@@ -78,10 +79,11 @@ export type ApArProps = {
 
 const cad = (n: number) => formatCAD(n).replace("CA$", "$");
 
-type FinTab = "overview" | "cashflow" | "ledger" | "apar";
+type FinTab = "overview" | "cashflow" | "ledger" | "apar" | "vendors";
 
 export function FinancialsTabs({
   canSeeApAr,
+  canManageVendors,
   apAr,
   ledger,
   cashflow,
@@ -90,6 +92,7 @@ export function FinancialsTabs({
   children,
 }: {
   canSeeApAr: boolean;
+  canManageVendors: boolean;
   apAr: ApArProps | null;
   ledger: LedgerEntry[] | null;
   cashflow: CashflowResult | null;
@@ -102,6 +105,7 @@ export function FinancialsTabs({
   if (cashflow) tabs.push({ key: "cashflow", label: "Cashflow" });
   if (ledger) tabs.push({ key: "ledger", label: "Ledger" });
   if (canSeeApAr) tabs.push({ key: "apar", label: "AP / AR" });
+  if (canManageVendors) tabs.push({ key: "vendors", label: "Vendors" });
 
   return (
     <>
@@ -116,6 +120,7 @@ export function FinancialsTabs({
       )}
       {ledger && tab === "ledger" && <LedgerTable entries={ledger} />}
       {canSeeApAr && apAr && tab === "apar" && <ApArView {...apAr} />}
+      {canManageVendors && tab === "vendors" && <VendorsView />}
     </>
   );
 }

@@ -24,6 +24,7 @@ import { findDuplicateOpenTask } from "@/lib/ingest/dedup";
 import { fetchClientOpenTaskCandidates, formatOpenTaskCandidates } from "@/lib/ingest/context";
 import { matchOutstandingInvoice } from "@/lib/finance-match";
 import { convertToCad } from "@/lib/finance";
+import { validVendorId } from "@/lib/vendors";
 import type { ExpenseCategory } from "@/lib/types";
 import type { InteractionType } from "@/lib/generated/prisma/enums";
 
@@ -814,6 +815,8 @@ export async function createBillFromProposal(
     // back-compatible: omitted falls back to the proposal row.
     projectId?: string | null;
     bill?: { vendor: string; amount: number; currency?: string; invoiceNumber?: string; dueDate?: string };
+    // Optional link to the managed Vendor list (chosen on the green card picker).
+    vendorId?: string | null;
   },
 ) {
   const session = await auth();
@@ -853,6 +856,7 @@ export async function createBillFromProposal(
     });
     if (dup) throw new Error(`Already in AP: ${bill.vendor.trim()} · ${num}. Not added again.`);
   }
+  const vendorId = await validVendorId(opts?.vendorId);
 
   // The invoice attachment filed to Drive at poll time (if any) travels onto the
   // Bill so the document is on file. No attachment → a note, and the bill flags in
@@ -863,6 +867,7 @@ export async function createBillFromProposal(
     const created = await tx.bill.create({
       data: {
         vendor: bill.vendor.trim(),
+        vendorId,
         amount,
         total: amount,
         currency: "CAD",
@@ -918,7 +923,7 @@ export async function createBillFromProposal(
       action: "create.billFromProposal",
       targetType: "Bill",
       targetId: created.id,
-      changes: { vendor: bill.vendor, amount, source: "gmail_ingest", ingestProposalId: id, linkedPayouts },
+      changes: { vendor: bill.vendor, vendorId, amount, source: "gmail_ingest", ingestProposalId: id, linkedPayouts },
     });
     await writeActivity(tx, {
       actor,
@@ -954,6 +959,8 @@ export async function createExpenseFromProposal(
     // vendor+amount+number+due. Omitted falls back to the proposal row.
     projectId?: string | null;
     bill?: { vendor: string; amount: number; currency?: string; invoiceNumber?: string; dueDate?: string };
+    // Optional link to the managed Vendor list (chosen on the green card picker).
+    vendorId?: string | null;
   },
 ) {
   const session = await auth();
@@ -995,6 +1002,7 @@ export async function createExpenseFromProposal(
   const fx = convertToCad(bill.amount, bill.currency);
   const amount = fx.cad;
   const category: ExpenseCategory = opts.category ?? "subscription_software";
+  const vendorId = await validVendorId(opts.vendorId);
 
   // The receipt/invoice attachment filed to Drive at poll time (if any) — copied
   // onto the Expense; absent → flagged "needs photo".
@@ -1006,6 +1014,7 @@ export async function createExpenseFromProposal(
         kind: opts.kind,
         category,
         vendor: bill.vendor.trim(),
+        vendorId,
         description: proposal.title,
         amount,
         total: amount,
@@ -1050,7 +1059,7 @@ export async function createExpenseFromProposal(
       action: "create.expenseFromProposal",
       targetType: "Expense",
       targetId: created.id,
-      changes: { vendor: bill.vendor, amount, kind: opts.kind, paidById, paidByConsultantId, source: "gmail_ingest", ingestProposalId: id },
+      changes: { vendor: bill.vendor, vendorId, amount, kind: opts.kind, paidById, paidByConsultantId, source: "gmail_ingest", ingestProposalId: id },
     });
     await writeActivity(tx, {
       actor,

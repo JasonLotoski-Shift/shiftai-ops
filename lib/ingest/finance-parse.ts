@@ -40,12 +40,18 @@ export function parseFinanceProposal(raw: string): ExtractedProposal {
   const ftRaw = typeof o.financeType === "string" ? (o.financeType as string) : "none";
   const financeType = (FINANCE_TYPES.has(ftRaw as FinanceType) ? ftRaw : "none") as FinanceType;
 
+  // Keep the bill line whenever EITHER the vendor OR a positive amount is present,
+  // so a link-only email (no amount) still pre-fills the vendor / invoice # / due
+  // on the green card. amount defaults to 0 (renders blank; the card's file-time
+  // check still blocks a $0 filing). Both empty → no bill line.
   const billObj = o.bill && typeof o.bill === "object" ? (o.bill as Record<string, unknown>) : null;
+  const billVendor = billObj && typeof billObj.vendor === "string" ? (billObj.vendor as string).trim() : "";
+  const billAmount = billObj && typeof billObj.amount === "number" && billObj.amount > 0 ? (billObj.amount as number) : 0;
   const bill: ExtractedBill | null =
-    billObj && typeof billObj.vendor === "string" && billObj.vendor.trim() && typeof billObj.amount === "number" && billObj.amount > 0
+    billObj && (billVendor || billAmount > 0)
       ? {
-          vendor: (billObj.vendor as string).trim(),
-          amount: billObj.amount as number,
+          vendor: billVendor,
+          amount: billAmount,
           currency: typeof billObj.currency === "string" && billObj.currency.trim() ? (billObj.currency as string).trim().toUpperCase() : undefined,
           invoiceNumber: typeof billObj.invoiceNumber === "string" && billObj.invoiceNumber.trim() ? (billObj.invoiceNumber as string).trim() : undefined,
           dueDate: typeof billObj.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(billObj.dueDate) ? (billObj.dueDate as string) : undefined,

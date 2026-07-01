@@ -33,6 +33,7 @@ import { Card, Badge, Button, Input, Label, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatCAD } from "@/lib/format";
 import { convertToCad } from "@/lib/finance";
+import { VendorPicker } from "@/components/billing/vendor-picker";
 import {
   createBillFromProposal,
   createExpenseFromProposal,
@@ -87,6 +88,9 @@ export default function FinancialProposalCard({
   // partner corrects them before filing (handles imperfect extraction); for a
   // link-only email the amount starts blank for them to complete.
   const [vendor, setVendor] = useState(prop.bill?.vendor ?? "");
+  // Optional link to the managed Vendor list (chosen on the picker). The parsed
+  // bill carries only a name; the partner links or creates a vendor from it.
+  const [vendorId, setVendorId] = useState<string | null>(null);
   const [amount, setAmount] = useState(prop.bill?.amount ? String(prop.bill.amount) : "");
   const [currency, setCurrency] = useState(prop.bill?.currency ?? "CAD");
   const [invoiceNumber, setInvoiceNumber] = useState(prop.bill?.invoiceNumber ?? "");
@@ -160,6 +164,7 @@ export default function FinancialProposalCard({
       createBillFromProposal(p.id, {
         projectId: projectArg,
         bill,
+        vendorId,
         settledPayoutIds: linkPayoutIds.length ? linkPayoutIds : undefined,
       }),
     );
@@ -185,6 +190,7 @@ export default function FinancialProposalCard({
         paidByConsultantId: kindTag === "c" ? payeeId : null,
         projectId: projectArg,
         bill,
+        vendorId,
       }),
     );
   }
@@ -197,7 +203,7 @@ export default function FinancialProposalCard({
       setError(e instanceof Error ? e.message : "Check the bill details");
       return;
     }
-    run(() => createExpenseFromProposal(p.id, { kind: "firm_paid", projectId: projectArg, bill }));
+    run(() => createExpenseFromProposal(p.id, { kind: "firm_paid", projectId: projectArg, bill, vendorId }));
   }
 
   function markPaid() {
@@ -308,16 +314,21 @@ export default function FinancialProposalCard({
             <>
               <div className="flex flex-col gap-3">
                 <Label gold>Bill details (confirm before filing)</Label>
-                <div className="grid grid-cols-[1fr_140px] gap-3">
+                <div className="grid grid-cols-[1fr_240px] gap-3">
                   <div className="flex flex-col gap-1.5">
                     <Label>Vendor / from</Label>
-                    <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Anthropic" disabled={isPending} />
+                    <VendorPicker
+                      value={{ id: vendorId, name: vendor }}
+                      onChange={(v) => { setVendor(v.name); setVendorId(v.id); }}
+                      disabled={isPending}
+                      accent="green"
+                    />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label>Amount{cadPreview ? <span className="text-bone-mute font-normal">{cadPreview}</span> : null}</Label>
                     <div className="flex gap-1.5">
-                      <Input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="flex-1" disabled={isPending} />
-                      <Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} className="w-[60px] text-center" maxLength={3} disabled={isPending} />
+                      <Input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="flex-1 min-w-0" disabled={isPending} />
+                      <Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} className="w-[64px] shrink-0 text-center" maxLength={3} disabled={isPending} />
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
