@@ -209,19 +209,27 @@ async function ingestOne(opts: {
   //  - otherwise (matched to a client, or no emails to judge by) → client_records
   //    (GOLD). Title-matched internal meetings are no longer skipped.
   const allInternal = emails.length > 0 && emails.every(isInternalEmail);
-  const hasExternal = emails.some((e) => !isInternalEmail(e));
+  const externalEmails = emails.filter((e) => !isInternalEmail(e));
+  const hasExternal = externalEmails.length > 0;
 
-  // Firm-knowledge meetings are firm-level: never tie to a client / contact / deal
-  // (a partner on the call may also be a Contact row). Client + intro meetings run
-  // the matcher; intro is the case where it comes back all-null with an outsider.
+  // Match on the EXTERNAL attendees only. A firm partner on the call may also be a
+  // Contact row, which would make matchContact see 2+ rows and return all-null —
+  // wrongly read as "no client on file". Firm-knowledge meetings tie to nothing.
   const match = allInternal
     ? { contactId: null, clientId: null, dealId: null }
-    : await matchContact(emails);
+    : await matchContact(externalEmails);
   const noMatch = !match.contactId && !match.clientId && !match.dealId;
+  // Intro requires that NO external attendee is on file at all. An ambiguous match
+  // (2+ known people on the call, so matchContact returns all-null) is a client
+  // meeting, not an intro — it must stay gold, not divert to purple.
+  const externalOnFile =
+    !allInternal && hasExternal
+      ? await prisma.contact.count({ where: { email: { in: externalEmails, mode: "insensitive" } } })
+      : 0;
 
   const lane = allInternal
     ? "firm_knowledge"
-    : hasExternal && noMatch
+    : hasExternal && noMatch && externalOnFile === 0
       ? "intro"
       : "client_records";
 

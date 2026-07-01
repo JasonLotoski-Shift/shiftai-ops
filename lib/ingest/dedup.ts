@@ -66,7 +66,7 @@ export type DuplicateHit = { id: string; title: string };
  */
 export async function findDuplicateOpenTask(
   tx: Tx,
-  input: { title: string; clientId?: string | null; projectId?: string | null },
+  input: { title: string; clientId?: string | null; projectId?: string | null; contactId?: string | null },
 ): Promise<DuplicateHit | null> {
   const target = normalizeTitle(input.title);
   if (!target) return null;
@@ -80,6 +80,9 @@ export async function findDuplicateOpenTask(
         : input.clientId
           ? { clientId: input.clientId }
           : { clientId: null, projectId: null }),
+      // When given a contact (firm-level BD tasks scoped to a channel partner),
+      // dedup within that contact only — two partners can share a task title.
+      ...(input.contactId !== undefined ? { contactId: input.contactId } : {}),
     },
     select: { id: true, title: true },
   });

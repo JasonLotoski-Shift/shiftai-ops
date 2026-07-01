@@ -52,6 +52,7 @@ import { createContactTx } from "@/lib/contacts";
 import { resolveContact } from "@/lib/resolve-entity";
 import { persistIngestUploads } from "@/lib/ingest-uploads";
 import { linkContact } from "@/lib/contact-links";
+import { isInternalEmail } from "@/lib/fireflies";
 import { parseFinanceProposal } from "@/lib/ingest/finance-parse";
 import { matchOutstandingInvoice } from "@/lib/finance-match";
 import { fileBillDoc } from "@/lib/firm-finance-drive";
@@ -1257,8 +1258,13 @@ function parseIntroProposal(raw: string, emailBlockFallback: string): IntroPropo
     Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()) : [];
 
   const c = (o.contact ?? {}) as Record<string, unknown>;
-  // Seed the email from the model, else the pasted email block (a single address).
-  const emailFromBlock = emailBlockFallback.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0] ?? null;
+  // Seed the email from the model, else the first EXTERNAL address in the pasted
+  // block. The introducer is an outsider, so skip any Shift address (e.g. a
+  // "From: <partner>" header line) that would otherwise key the contact.
+  const emailFromBlock =
+    (emailBlockFallback.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) ?? []).find(
+      (e) => !isInternalEmail(e),
+    ) ?? null;
   const contact: IntroProposal["contact"] = {
     recordId: null, // resolved on approve (matched or created)
     name: str(c.name),

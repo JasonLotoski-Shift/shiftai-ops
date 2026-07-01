@@ -194,9 +194,14 @@ export async function updateIntro(
 
   const intro = await prisma.intro.findUnique({
     where: { id: introId },
-    select: { id: true, targetCompany: true, ownerId: true, targetContactId: true, notes: true, introducerId: true },
+    select: { id: true, targetCompany: true, ownerId: true, targetContactId: true, notes: true, introducerId: true, status: true, dealId: true },
   });
   if (!intro) throw new Error("Intro not found");
+  // A converted intro is frozen — its Deal owns the relationship now, and an edit
+  // here would silently diverge the intro from the deal it produced.
+  if (intro.dealId || intro.status === "converted") {
+    throw new Error("This intro converted into a deal — edit it on the pipeline, not here.");
+  }
 
   const data: {
     targetCompany?: string;
@@ -439,10 +444,15 @@ export async function convertIntro(
       addedBy: partnerLabel,
     });
 
-    await tx.intro.update({
-      where: { id: introId },
+    // Atomic convert guard: stamp only while still unconverted. A concurrent
+    // convert (double-click, retry, two partners) that already set dealId makes
+    // this match zero rows; throwing rolls back the Deal + link created above, so
+    // we never leave a duplicate orphaned deal behind.
+    const stamped = await tx.intro.updateMany({
+      where: { id: introId, dealId: null },
       data: { status: "converted", dealId: deal.id },
     });
+    if (stamped.count !== 1) throw new Error("This intro was just converted by another action.");
 
     await writeAudit(tx, {
       actor,

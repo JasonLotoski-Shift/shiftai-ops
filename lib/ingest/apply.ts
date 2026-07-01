@@ -398,7 +398,9 @@ export async function applyChannelPartnerMarker(
   });
   if (!c) return { flipped: false };
   const data: Record<string, unknown> = {};
-  if (input.isChannelPartner && !c.isChannelPartner) data.isChannelPartner = true;
+  // Honor the toggle in both directions: the card defaults it ON for this lane, so
+  // an explicit uncheck must be able to clear an existing flag, not just set it.
+  if (input.isChannelPartner !== c.isChannelPartner) data.isChannelPartner = input.isChannelPartner;
   const notes = input.channelNotes?.trim();
   if (notes) data.channelNotes = notes;
   if (input.isChannelPartner && !c.sourceCategory) data.sourceCategory = "intro";
@@ -424,7 +426,7 @@ export async function applyIntroBdTasks(
   for (const t of input.tasks) {
     const title = t.title?.trim();
     if (!title) continue;
-    const dup = await findDuplicateOpenTask(tx, { title, clientId: null, projectId: null });
+    const dup = await findDuplicateOpenTask(tx, { title, clientId: null, projectId: null, contactId: input.contactId });
     if (dup) {
       skipped.push({ title, existingId: dup.id });
       continue;

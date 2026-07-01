@@ -114,7 +114,7 @@ export default function IntroProposalCard({
 
   function approve() {
     setError(null);
-    if (!name.trim()) {
+    if (isNewContact && !name.trim()) {
       setError("The channel partner needs a name.");
       return;
     }
