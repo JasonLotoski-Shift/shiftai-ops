@@ -314,30 +314,33 @@ export default function FinancialProposalCard({
             <>
               <div className="flex flex-col gap-3">
                 <Label gold>Bill details (confirm before filing)</Label>
-                <div className="grid grid-cols-[1fr_240px] gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Vendor / from</Label>
-                    <VendorPicker
-                      value={{ id: vendorId, name: vendor }}
-                      onChange={(v) => { setVendor(v.name); setVendorId(v.id); }}
-                      disabled={isPending}
-                      accent="green"
-                    />
-                  </div>
+                {/* Vendor gets its own full-width row (room for the picker + its
+                    dropdown); Amount then sits on a clean half-width column so the
+                    number field is large, with the currency as a small box beside it. */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Vendor / from</Label>
+                  <VendorPicker
+                    value={{ id: vendorId, name: vendor }}
+                    onChange={(v) => { setVendor(v.name); setVendorId(v.id); }}
+                    disabled={isPending}
+                    accent="green"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <Label>Amount{cadPreview ? <span className="text-bone-mute font-normal">{cadPreview}</span> : null}</Label>
-                    <div className="flex gap-1.5">
-                      <Input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="flex-1 min-w-0" disabled={isPending} />
-                      <Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} className="w-[64px] shrink-0 text-center" maxLength={3} disabled={isPending} />
+                    <div className="flex gap-2">
+                      <Input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="flex-1 min-w-0 text-[15px]" disabled={isPending} />
+                      <Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} className="w-[68px] shrink-0 text-center" maxLength={3} disabled={isPending} />
                     </div>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Invoice # (optional)</Label>
-                    <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="none" disabled={isPending} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label>Due date (optional)</Label>
                     <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="text-[12px]" disabled={isPending} />
+                  </div>
+                  <div className="flex flex-col gap-1.5 col-span-2">
+                    <Label>Invoice # (optional)</Label>
+                    <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="none" disabled={isPending} />
                   </div>
                 </div>
               </div>
