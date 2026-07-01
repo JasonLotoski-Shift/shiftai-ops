@@ -329,9 +329,12 @@ export default function FinancialProposalCard({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <Label>Amount{cadPreview ? <span className="text-bone-mute font-normal">{cadPreview}</span> : null}</Label>
-                    <div className="flex gap-2">
-                      <Input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="flex-1 min-w-0 text-[15px]" disabled={isPending} />
-                      <Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} className="w-[68px] shrink-0 text-center" maxLength={3} disabled={isPending} />
+                    {/* Grid (not flex) so each Input's baked-in w-full is scoped to its
+                        own sized column — a flex row let the currency w-full swallow the
+                        cell and collapse the amount field. */}
+                    <div className="grid grid-cols-[1fr_76px] gap-2">
+                      <Input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="text-[15px]" disabled={isPending} />
+                      <Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} className="text-center px-2" maxLength={3} disabled={isPending} />
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5">
