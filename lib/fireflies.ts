@@ -27,7 +27,7 @@ export function titleMatches(title: string): boolean {
 // Firm domains — attendees on these are "us". @shiftcg.ai is the sunsetting
 // alias (still live); keep until it's retired (see CLAUDE.md gotcha #6).
 const FIRM_EMAIL_DOMAINS = ["shiftai.partners", "shiftcg.ai"];
-function isInternalEmail(email: string): boolean {
+export function isInternalEmail(email: string): boolean {
   const at = email.lastIndexOf("@");
   return at !== -1 && FIRM_EMAIL_DOMAINS.includes(email.slice(at + 1));
 }
@@ -201,30 +201,44 @@ async function ingestOne(opts: {
   // ── Title gate (skipped when force) ──
   if (!force && !titleMatches(title)) return { status: "skipped", reason: "title-no-match" };
 
-  // Destination lane (3-lane Phase 4). An all-internal meeting — every known
-  // attendee on a firm domain — is a team/firm sync, so it routes to
-  // firm_knowledge (BLUE): logged at arm's length, feeding the firm brain only by
-  // exception behind two gates. A meeting with an outside attendee (or no
-  // attendee emails to judge by) stays a client record (GOLD). Title-matched
-  // internal meetings are no longer skipped — that filter killed exactly the
-  // meetings Lane 3 wants (docs/ingest-3-lane-plan.md §4a).
+  // Destination lane (3-lane §4a + Lane 4). Three deterministic outcomes:
+  //  - every known attendee on a firm domain → firm_knowledge (BLUE): a team/firm
+  //    sync, logged at arm's length, feeding the brain only by exception.
+  //  - an EXTERNAL attendee AND no client/deal match → intro (PURPLE): an intro/BD
+  //    call with a channel-partner contact and no client to force it into (Lane 4).
+  //  - otherwise (matched to a client, or no emails to judge by) → client_records
+  //    (GOLD). Title-matched internal meetings are no longer skipped.
   const allInternal = emails.length > 0 && emails.every(isInternalEmail);
-  const lane = allInternal ? "firm_knowledge" : "client_records";
+  const hasExternal = emails.some((e) => !isInternalEmail(e));
 
-  // Firm-knowledge meetings are firm-level: never tie to a client / contact /
-  // deal (a partner on the call may also be a Contact row, which would mis-scope
-  // it). Client meetings match an entity as before.
+  // Firm-knowledge meetings are firm-level: never tie to a client / contact / deal
+  // (a partner on the call may also be a Contact row). Client + intro meetings run
+  // the matcher; intro is the case where it comes back all-null with an outsider.
   const match = allInternal
     ? { contactId: null, clientId: null, dealId: null }
     : await matchContact(emails);
+  const noMatch = !match.contactId && !match.clientId && !match.dealId;
+
+  const lane = allInternal
+    ? "firm_knowledge"
+    : hasExternal && noMatch
+      ? "intro"
+      : "client_records";
 
   // Meaning-level dedup (3-lane Phase 2/4): print the open tasks the model must
-  // not re-propose. GOLD shows the matched client's board; BLUE shows the firm
-  // board. Advisory — the exact findDuplicateOpenTask backstop at approve stays
-  // the floor.
+  // not re-propose. GOLD shows the matched client's board; BLUE + PURPLE show the
+  // firm board (an intro's BD tasks are firm-level). Advisory — the exact
+  // findDuplicateOpenTask backstop at approve stays the floor.
   let context = `## Meeting\nTitle: ${title}\nDate: ${meetingDate.toISOString().slice(0, 10)}\nSource: Fireflies`;
   if (allInternal) {
     context += `\nType: internal team meeting (every attendee is on the firm) — propose firm-level records only; do not invent a client.`;
+    context += "\n" + formatOpenTaskCandidates(await fetchFirmOpenTaskCandidates(), "firm");
+  } else if (lane === "intro") {
+    // The introducer's name/email/company come off the external attendee(s), so
+    // the skill has something to seed the channel-partner contact with.
+    const externals = emails.filter((e) => !isInternalEmail(e));
+    context += `\nType: intro / channel-partner call (an external person, no client or deal on file) — emit the Lane-4 intro shape: a channel-partner contact, contact-scoped BD tasks, and (only by exception) a targeting candidate. Do NOT invent a client or a deal.`;
+    context += `\nExternal attendee email(s): ${externals.join(", ") || "(none parsed)"}`;
     context += "\n" + formatOpenTaskCandidates(await fetchFirmOpenTaskCandidates(), "firm");
   } else if (match.clientId) {
     context += "\n" + formatOpenTaskCandidates(await fetchClientOpenTaskCandidates(match.clientId));
@@ -246,8 +260,9 @@ async function ingestOne(opts: {
       meetingDate,
       transcript,
       proposal: proposal as object,
-      // All-internal title-matched meeting -> firm_knowledge (BLUE); otherwise a
-      // client meeting -> client_records (GOLD). See docs/ingest-3-lane-plan.md §4.
+      // Lane routed above: all-internal -> firm_knowledge (BLUE); external + no
+      // match -> intro (PURPLE); else a client meeting -> client_records (GOLD).
+      // See docs/ingest-3-lane-plan.md §4 + docs/ingest-lane4-intro-and-call-review.md §2a.
       lane,
       status: "pending",
       matchedContactId: match.contactId,

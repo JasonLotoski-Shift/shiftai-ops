@@ -38,6 +38,7 @@ import { IngestComposer } from "@/components/ingest/ingest-composer";
 import UnifiedProposalCard from "@/components/ingest/unified-proposal-card";
 import FinancialProposalCard from "@/components/ingest/financial-proposal-card";
 import FirmMeetingProposalCard from "@/components/ingest/firm-meeting-proposal-card";
+import IntroProposalCard from "@/components/ingest/intro-proposal-card";
 import type { IngestTargetKind, UnifiedProposal, CrossReferenceResult } from "@/lib/ingest/types";
 
 export type ProposalProp = {
@@ -218,6 +219,23 @@ export function IngestView({
                   open={expanded === p.id}
                   onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
                   partners={partners}
+                />
+              );
+            }
+
+            // intro (purple) -> the channel-partner card (Phase 6, Lane 4). An
+            // intro/BD call: a channel-partner contact (matched or created), BD
+            // tasks (default OFF), an editable call review, and a by-exception
+            // firm-targeting draft behind the same second gate.
+            if (lane === "intro") {
+              return (
+                <IntroProposalCard
+                  key={p.id}
+                  p={p}
+                  open={expanded === p.id}
+                  onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
+                  partners={partners}
+                  contacts={contacts}
                 />
               );
             }

@@ -196,6 +196,124 @@ export type ApproveUnifiedSelections = {
   dealId?: string | null;
 };
 
+// ── Lane 4 (intro / channel-partner, PURPLE) + Call Review (every meeting lane) ──
+// An intro/BD call: an external person, no client and no deal at capture. The
+// proposal is contact-centric — a channel-partner Contact (create-new or matched),
+// contact-scoped BD tasks (default-OFF), the by-exception firm-targeting candidate
+// (the SAME Gate 1 / Gate 2 path Lane 3 uses), and a conservative callReview block
+// that rides every meeting lane. Stored in IngestProposal.proposal as this shape.
+// See docs/ingest-lane4-intro-and-call-review.md §2, §6.
+
+// Purple lane color token. Applied per-card (globals.css owns the gold/green/blue
+// vars; the intro card carries its own so the spine stayed lane-agnostic).
+export const LANE_PURPLE = "#8a6fb0";
+
+// The firm-targeting candidate an intro call emits (the ICP-constraint case). Same
+// shape as the Lane-3 knowledgeCandidate (actions.ts KnowledgeCandidate) — a
+// structural mirror kept here so lib/ingest/types.ts carries no server-only dep.
+// `isImportant` is false by default; it flips true only against the 3-lane §9 bar.
+// At approve a kept candidate becomes a DRAFT DecisionRecord (kind "decision") or
+// KnowledgeItem (kind "learning"), stamped generatedFromSkill "ingest-meeting".
+export type IntroTargetingCandidate = {
+  isImportant: boolean;
+  kind: "decision" | "learning";
+  title: string;
+  // decision (ADR) fields
+  context?: string | null;
+  optionsConsidered?: string | null;
+  decision?: string | null;
+  consequences?: string | null;
+  // learning (KnowledgeItem) body
+  summary?: string | null;
+  // firm-economics / strategy → managing_partner, filtered from non-MP reads.
+  sensitivity?: "firm_wide" | "managing_partner";
+  // why it cleared the bar — shown at approve, not stored.
+  rationale?: string | null;
+};
+
+// The call-retro candidate the meeting skills emit (intro + client calls). Arrays
+// so each point is its own chip on the /call-reviews surface. Conservative: the
+// skill populates only when the transcript carries real signal, leaves empty
+// otherwise (no fabricated critique). Approving writes one CallReview row.
+export type CallReviewCandidate = {
+  whatWorked: string[];
+  whatDidnt: string[];
+  lessons: string[];
+  coachingNotes?: string | null;
+};
+
+// The channel-partner contact an intro call proposes. `recordId` null = create a
+// new contact on approve; an id = a matched existing contact. Never a client/deal.
+export type IntroContactProposal = {
+  recordId: string | null; // matched contact id, or null for inline-new
+  name: string;
+  email: string | null;
+  title: string | null;
+  company: string | null;
+  // The relationship context that lands in Contact.channelNotes (reach, terms).
+  channelNotes: string | null;
+};
+
+// A BD task scoped to the introducer contact (category "firm", label "BD"). No
+// client/project (the intro pre-dates any deal). Default-OFF; the partner promotes.
+export type IntroTaskProposal = {
+  title: string;
+  context: string;
+  due: string | null; // ISO date or null
+};
+
+/** The full intro (Lane 4) proposal stored in IngestProposal.proposal. A sibling
+ *  of UnifiedProposal for the purple lane — contact-centric, no records/deal. */
+export type IntroProposal = {
+  lane: "intro";
+  ingestType: IngestType;
+  summary: string;
+  keyPoints: string[];
+  contact: IntroContactProposal;
+  tasks: IntroTaskProposal[];
+  // By-exception firm-targeting candidate (null for most calls).
+  knowledgeCandidate?: IntroTargetingCandidate | null;
+  // The call-retro block (empty arrays when the transcript carries no signal).
+  callReview?: CallReviewCandidate | null;
+};
+
+/** Narrow an unknown IngestProposal.proposal JSON to the intro (Lane 4) shape. */
+export function isIntroProposal(p: unknown): p is IntroProposal {
+  return !!p && typeof p === "object" && (p as { lane?: unknown }).lane === "intro";
+}
+
+// ── Intro approval payload (what the purple card sends back to approveIntro) ──
+// Only the partner-approved + partner-edited items.
+
+/** The approved channel-partner contact — partner-edited values survive the card. */
+export type ApprovedIntroContact = {
+  recordId: string | null; // matched id, or null to create
+  name: string;
+  email: string | null;
+  title: string | null;
+  company: string | null;
+  isChannelPartner: boolean; // the channel-partner toggle (default on for this lane)
+  channelNotes: string | null;
+};
+
+/** An approved BD task on the introducer contact. Owner optional (may be empty). */
+export type ApprovedIntroTask = {
+  title: string;
+  context: string;
+  due: string | null;
+  ownerId: string | null; // resolved partner id, or null = unassigned
+};
+
+export type ApproveIntroSelections = {
+  contact: ApprovedIntroContact;
+  summary: string;
+  tasks: ApprovedIntroTask[];
+  // The kept + partner-edited targeting candidate, or null to discard / none.
+  candidate: IntroTargetingCandidate | null;
+  // The kept + partner-edited call review, or null to skip it.
+  callReview: CallReviewCandidate | null;
+};
+
 // ── Cross-reference — the "check this against existing records & tasks" assist ──
 // Computed on demand when a partner clicks "Cross-reference records & tasks" on a
 // pending proposal (v1 ProposalCard or v2 UnifiedProposalCard). It re-resolves

@@ -9,7 +9,7 @@ The firm's voice, identity, and hard rules are in the firm context above. Apply 
 - **Context block** — who the matched contact / client / deal is (if the system matched one), the meeting title and date, and the current OPEN TASKS as `- [taskId] "title" — owner: <name>, due <date>` (a client's board for a client call, or the firm board when the context says this is an internal team meeting).
 - **Intake** — the raw transcript.
 
-A line **Type: internal team meeting** in the context means every attendee is on the firm — handle it per "Internal team meetings" below.
+A line **Type: internal team meeting** in the context means every attendee is on the firm — handle it per "Internal team meetings" below. A line **Type: intro / channel-partner call** means an external person with no client or deal on file — handle it per "Intro / channel-partner calls" below and emit the intro shape, not the default shape.
 
 ## What to produce
 
@@ -27,7 +27,8 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
     "client":  [ { "field": "companyKeyFacts", "value": "Defensible fact about the company" } ]
   },
   "stageSignal": { "suggestion": "e.g. move to Proposal", "rationale": "Why the call implies it" },
-  "knowledgeCandidate": null
+  "knowledgeCandidate": null,
+  "callReview": null
 }
 ```
 
@@ -36,6 +37,7 @@ Return **only a single JSON object** — no prose, no markdown fences, nothing b
 - `stageSignal` may be `null` if the call doesn't clearly imply a pipeline move. **Never** assert the deal moved — this is a suggestion the partner acts on.
 - `actionItems`, `keyPoints`, and both enrichment arrays may be empty. Prefer fewer, well-grounded items over padding.
 - `knowledgeCandidate` is `null` for a client call and for routine team meetings. Set it only for an internal team meeting that cleared the importance bar (see "Internal team meetings" below).
+- `callReview` is the cross-call retro (see "Call review" below). It rides **every** meeting lane — client calls and intro calls. Leave it `null` unless the transcript carries real coaching signal.
 
 ## Hard rules for this task
 
@@ -85,3 +87,49 @@ Leave it `null` for routine status, client-specific facts (those are client reco
 - `kind: "decision"` for a decision reached → fill `context` / `optionsConsidered` / `decision` / `consequences`. `kind: "learning"` for a way-of-working or durable lesson → fill `summary`.
 - `sensitivity: "managing_partner"` for firm economics or strategy (pricing, margins, payouts, buyer talks); `"firm_wide"` otherwise.
 - Everything still traces to what was actually said. No invented decisions. A decision that was only *floated* stays a `keyPoint`, not a candidate. If nothing clears the bar, return `null`.
+
+## Intro / channel-partner calls (Lane 4)
+
+When the context says **Type: intro / channel-partner call**, the call is with an external person who introduces the firm to future deals (a connector, an intro partner, an advisor who sends referrals). There is no client and no deal on file, and you must not manufacture one. Return a **different JSON shape** — the intro shape, not the default one:
+
+```json
+{
+  "lane": "intro",
+  "summary": "2–4 sentence neutral summary of the intro / relationship discussed.",
+  "keyPoints": ["Concrete point discussed", "Another"],
+  "contact": {
+    "name": "The channel partner's full name",
+    "email": "their email if stated / in the context, else null",
+    "title": "their title if stated, else null",
+    "company": "their company if stated, else null",
+    "channelNotes": "1–3 sentences of relationship context: their reach, what they offer, any terms (e.g. declined a fee), how they prefer to work"
+  },
+  "tasks": [
+    { "title": "Short noun phrase — the BD follow-up", "context": "1–2 sentences of why / what's needed", "due": "YYYY-MM-DD or null" }
+  ],
+  "knowledgeCandidate": null,
+  "callReview": null
+}
+```
+
+- **The contact is the channel partner**, the external person on the call. Fill what the transcript / context supports; use `null` for anything not stated (never guess an email or a company). The system stamps them as a channel partner and files `channelNotes` on approve.
+- **`tasks` are the BD follow-ups** scoped to that contact — the things the firm does next to work the relationship (send a tightened ICP one-pager, book the follow-up, prep a target list to run against their network). Short noun phrase, no leading verb, no date in the title (same rule as action items). Dedup against the firm board open tasks in the context. They land default-OFF for the partner to promote.
+- **`knowledgeCandidate`** is a firm-**targeting** insight, not a client fact — a durable constraint or lesson about who/how the firm should target (e.g. "narrow the ICP before this partner will intro"). It uses the same candidate shape and the same importance bar as internal team meetings above (`isImportant: false` by default; set it only when the call produced a real firm-level decision, way-of-working, strategic call, or durable lesson). **Most intro calls produce none — return `null`.**
+- Emit no `enrichment`, no `stageSignal`, no `actionItems` in this mode (those belong to the default client-call shape). The intro shape's `tasks` carry the follow-ups.
+
+## Call review (every meeting lane)
+
+`callReview` is the cross-call learning block. It rides **every** meeting lane — a client call and an intro call both can carry coaching signal (what worked in the room, what did not, what to reuse). Add it in whichever shape you return (default or intro).
+
+```json
+"callReview": {
+  "whatWorked": ["A concrete thing that worked in the call"],
+  "whatDidnt": ["A concrete thing that fell flat or a miss"],
+  "lessons": ["A durable, reusable takeaway worth carrying to the next call"],
+  "coachingNotes": "One or two sentences of freeform coaching, or null"
+}
+```
+
+- **Conservative by default.** Populate a point only when the transcript actually carries the signal. If the call was routine and there is nothing real to say, return `"callReview": null` (or leave every array empty). **Never fabricate critique** to fill it.
+- `whatWorked` / `whatDidnt` are call-specific observations; `lessons` are the durable, reusable few (these are what a partner may later promote into the firm brain). Keep each a short, scannable phrase.
+- Everything traces to what was actually said or observable in the transcript. No invented praise, no invented misses.

@@ -14,10 +14,22 @@
 // and contacts/[id]/actions.ts (applyEnrichment), extended with the replace op.
 
 import type { PrismaClient } from "@/lib/generated/prisma/client";
-import type { FieldChange, ListAddition } from "@/lib/ingest/types";
+import type {
+  FieldChange,
+  ListAddition,
+  ApprovedIntroContact,
+  ApprovedIntroTask,
+  CallReviewCandidate,
+} from "@/lib/ingest/types";
+import { findDuplicateOpenTask } from "@/lib/ingest/dedup";
 
 // A $transaction client (or the singleton) — same Pick pattern as lib/messaging.ts.
 type Tx = Pick<PrismaClient, "contact" | "client" | "project" | "deal">;
+
+// The Lane-4 (intro) persistence writes tasks + a CallReview + reuses
+// findDuplicateOpenTask (which takes the full $transaction client), so it uses the
+// full tx client type rather than a narrow Pick — same convention as dedup.ts.
+type IntroTx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 // ── Allowlists ──────────────────────────────────────────────────────────
 // Partner-judgment fields are NEVER proposable: relationshipStrength (contact),
@@ -362,4 +374,122 @@ export async function applyDealStage(
     data: { stage: stage as never, stageEnteredAt: new Date() },
   });
   return { moved: true, before: d.stage, after: stage };
+}
+
+// ── Lane 4 (intro / channel-partner, PURPLE) persistence ──────────────────
+// The intro card writes three things on approve, kept here so the approve
+// action (composer-actions.ts approveIntro) stays thin and the writes are one
+// place. All tx-aware; the caller runs them inside its $transaction so a partial
+// failure rolls back. Reuses findDuplicateOpenTask (the firm-board dedup floor).
+
+/** Stamp the channel-partner marker on the introducer contact. A person can be
+ *  both a prospect and a connector, so this is a FLAG, not a type swap. Sets
+ *  sourceCategory = "intro" only when it's still unset (never clobbers a real
+ *  lead source). channelNotes is append-only-friendly: overwrites only when a new
+ *  note is supplied. Returns whether isChannelPartner flipped (for the audit). */
+export async function applyChannelPartnerMarker(
+  tx: IntroTx,
+  contactId: string,
+  input: { isChannelPartner: boolean; channelNotes: string | null },
+): Promise<{ flipped: boolean }> {
+  const c = await tx.contact.findUnique({
+    where: { id: contactId },
+    select: { isChannelPartner: true, sourceCategory: true },
+  });
+  if (!c) return { flipped: false };
+  const data: Record<string, unknown> = {};
+  if (input.isChannelPartner && !c.isChannelPartner) data.isChannelPartner = true;
+  const notes = input.channelNotes?.trim();
+  if (notes) data.channelNotes = notes;
+  if (input.isChannelPartner && !c.sourceCategory) data.sourceCategory = "intro";
+  if (Object.keys(data).length) await tx.contact.update({ where: { id: contactId }, data });
+  return { flipped: !!data.isChannelPartner };
+}
+
+/** Create the approved BD tasks on the introducer contact: firm-level (no client/
+ *  project), category "firm", label "BD", scoped to contactId. Undated stays null.
+ *  Skips any that duplicate an open task on the firm board (never silent — the
+ *  skipped list is returned for the audit). */
+export async function applyIntroBdTasks(
+  tx: IntroTx,
+  input: {
+    contactId: string;
+    tasks: ApprovedIntroTask[];
+    assignedById: string;
+    contextFallback: string;
+  },
+): Promise<{ created: number; skipped: { title: string; existingId: string }[] }> {
+  let created = 0;
+  const skipped: { title: string; existingId: string }[] = [];
+  for (const t of input.tasks) {
+    const title = t.title?.trim();
+    if (!title) continue;
+    const dup = await findDuplicateOpenTask(tx, { title, clientId: null, projectId: null });
+    if (dup) {
+      skipped.push({ title, existingId: dup.id });
+      continue;
+    }
+    const d = t.due ? new Date(t.due) : null;
+    await tx.task.create({
+      data: {
+        title,
+        priority: "medium",
+        due: d && !Number.isNaN(d.getTime()) ? d : null,
+        context: t.context?.trim() || input.contextFallback,
+        category: "firm",
+        categoryLabel: "BD",
+        ownerId: t.ownerId || null,
+        assignedById: input.assignedById,
+        contactId: input.contactId,
+      },
+    });
+    created++;
+  }
+  return { created, skipped };
+}
+
+/** Write one CallReview row from the approved candidate. Ties to the call's
+ *  Interaction (sourceInteractionId) and stamps the lane snapshot + scope. Returns
+ *  the row id, or null when the candidate is empty (nothing worth recording). */
+export async function applyCallReview(
+  tx: IntroTx,
+  input: {
+    title: string;
+    callDate: Date;
+    candidate: CallReviewCandidate;
+    sourceInteractionId: string | null;
+    lane: string;
+    clientId?: string | null;
+    dealId?: string | null;
+    contactId?: string | null;
+    sensitivity?: "firm_wide" | "managing_partner";
+    createdBy: string;
+  },
+): Promise<{ id: string } | null> {
+  const whatWorked = (input.candidate.whatWorked ?? []).map((s) => s.trim()).filter(Boolean);
+  const whatDidnt = (input.candidate.whatDidnt ?? []).map((s) => s.trim()).filter(Boolean);
+  const lessons = (input.candidate.lessons ?? []).map((s) => s.trim()).filter(Boolean);
+  const coachingNotes = input.candidate.coachingNotes?.trim() || null;
+  // Nothing real to record → skip (no empty retro rows on the surface).
+  if (!whatWorked.length && !whatDidnt.length && !lessons.length && !coachingNotes) return null;
+
+  const rec = await tx.callReview.create({
+    data: {
+      title: input.title,
+      callDate: input.callDate,
+      whatWorked,
+      whatDidnt,
+      lessons,
+      coachingNotes,
+      sourceInteractionId: input.sourceInteractionId,
+      lane: input.lane,
+      clientId: input.clientId ?? null,
+      dealId: input.dealId ?? null,
+      contactId: input.contactId ?? null,
+      sensitivity: input.sensitivity ?? "firm_wide",
+      createdBy: input.createdBy,
+    },
+    select: { id: true },
+  });
+  return { id: rec.id };
 }

@@ -19,11 +19,12 @@ import { ModalShell } from "@/components/modal-shell";
 import { cn } from "@/lib/cn";
 import { INDUSTRY_VERTICALS, industryLabels } from "@/lib/industries";
 import { SubIndustrySelect, reconcileSubIndustry } from "@/components/sub-industry-select";
-import { INGEST_TYPES, type IngestType, type IngestTargetKind } from "@/lib/ingest/types";
+import { INGEST_TYPES, LANE_PURPLE, type IngestType, type IngestTargetKind } from "@/lib/ingest/types";
 import {
   detectTargets,
   extractUnified,
   extractFinanceFromComposer,
+  extractIntroFromComposer,
   checkContactDuplicate,
   addContactInline,
 } from "@/app/(app)/ingest/composer-actions";
@@ -88,9 +89,11 @@ export function IngestComposer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [ingestType, setIngestType] = useState<IngestType>("meeting");
-  // Destination lane (3-lane redesign): gold = client records (the default, unified
-  // extraction); green = financials (a dropped/pasted invoice/receipt → green card).
-  const [lane, setLane] = useState<"client_records" | "financial">("client_records");
+  // Destination lane (3-lane redesign + Lane 4): gold = client records (the default,
+  // unified extraction); green = financials (a dropped/pasted invoice/receipt →
+  // green card); purple = intro / channel partner (an intro/BD call with no client
+  // or deal → purple card, docs/ingest-lane4-intro-and-call-review.md §2a).
+  const [lane, setLane] = useState<"client_records" | "financial" | "intro">("client_records");
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [content, setContent] = useState("");
@@ -217,6 +220,17 @@ export function IngestComposer({
             projectId: projectT?.id ?? null,
             files: files.length ? files : undefined,
           });
+        } else if (lane === "intro") {
+          // PURPLE lane: an intro / channel-partner call. No client or deal is
+          // forced — the introducer is created/matched on approve. The purple
+          // review card confirms the contact, BD tasks, and call review.
+          await extractIntroFromComposer({
+            title: title.trim(),
+            date,
+            content,
+            emailBlock: emailBlock.trim() || undefined,
+            files: files.length ? files : undefined,
+          });
         } else {
           await extractUnified({
             ingestType,
@@ -296,11 +310,26 @@ export function IngestComposer({
                 >
                   Financials
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setLane("intro")}
+                  disabled={isPending}
+                  className="px-3 h-8 text-[12px] rounded-[var(--radius)] border transition-colors"
+                  style={
+                    lane === "intro"
+                      ? { color: LANE_PURPLE, borderColor: `color-mix(in srgb, ${LANE_PURPLE} 40%, transparent)`, background: `color-mix(in srgb, ${LANE_PURPLE} 15%, transparent)` }
+                      : undefined
+                  }
+                >
+                  <span className={cn(lane !== "intro" && "text-bone-dim")}>Intro / channel partner</span>
+                </button>
               </div>
               <span className="text-[11px] text-bone-mute">
                 {lane === "financial"
                   ? "Drop or paste an invoice, receipt, or remittance. Pick the client / project below, or leave it firm-level — you'll confirm the amounts before filing."
-                  : "Logs against the records you target below — contacts, clients, deals, projects."}
+                  : lane === "intro"
+                    ? "Paste an intro or BD call with an outside connector. No client or deal is forced. You'll confirm the channel-partner contact and BD follow-ups before anything is written."
+                    : "Logs against the records you target below — contacts, clients, deals, projects."}
               </span>
             </div>
 
@@ -348,7 +377,9 @@ export function IngestComposer({
               </div>
             </div>
 
-            {/* Targets */}
+            {/* Targets — hidden for the intro lane (no client/deal is forced; the
+                introducer contact is created/matched on the purple review card). */}
+            {lane !== "intro" && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <Label gold>Target records</Label>
@@ -476,6 +507,7 @@ export function IngestComposer({
                 />
               )}
             </div>
+            )}
 
             {/* Content */}
             <div className="flex flex-col gap-2">

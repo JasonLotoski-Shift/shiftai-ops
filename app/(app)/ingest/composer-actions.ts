@@ -31,8 +31,18 @@ import {
   applyProjectChanges,
   applyDealChanges,
   applyDealStage,
+  applyChannelPartnerMarker,
+  applyIntroBdTasks,
+  applyCallReview,
 } from "@/lib/ingest/apply";
-import { fetchTargetData, buildIngestContext, formatPartnerRoster, type TargetRef } from "@/lib/ingest/context";
+import {
+  fetchTargetData,
+  buildIngestContext,
+  formatPartnerRoster,
+  fetchFirmOpenTaskCandidates,
+  formatOpenTaskCandidates,
+  type TargetRef,
+} from "@/lib/ingest/context";
 import { parseUnified } from "@/lib/ingest/parse";
 import { findDuplicateOpenTask, findDuplicateOpenMilestone } from "@/lib/ingest/dedup";
 import { resolveTargetsFromText, computeCrossReference, type DetectedTarget } from "@/lib/ingest/cross-reference";
@@ -55,6 +65,8 @@ import type {
   UnifiedProposal,
   ApproveUnifiedSelections,
   CrossReferenceResult,
+  IntroProposal,
+  ApproveIntroSelections,
 } from "@/lib/ingest/types";
 import { INGEST_TYPES } from "@/lib/ingest/types";
 import type {
@@ -1112,4 +1124,420 @@ export async function extractFinanceFromComposer(input: {
   revalidatePath("/ingest");
   revalidatePath("/messages");
   return { id: created.id };
+}
+
+// ── 8. extractIntroFromComposer — the PURPLE lane (intro / channel partner) entry
+// from the composer. A pasted/dropped intro or BD call with an external person and
+// no client/deal (docs/ingest-lane4-intro-and-call-review.md §2). Runs the
+// ingest-meeting skill in its Lane-4 mode, persists a v1 intro IngestProposal
+// (lane="intro"). Ties to no client/contact/deal at capture — the introducer is
+// created or matched on approve. Writes nothing to a real record (propose-never-
+// auto-write). The purple review card confirms the contact, BD tasks, targeting
+// candidate, and call review before anything is written.
+export async function extractIntroFromComposer(input: {
+  title: string;
+  date: string; // YYYY-MM-DD
+  content: string;
+  emailBlock?: string;
+  files?: { base64: string; mimeType: string; fileName: string }[];
+}): Promise<{ id: string }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerId = session.user.partnerId;
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+
+  let content = input.content.trim();
+
+  // Parse uploads: images → Claude vision; PDFs/docs → text. (An intro call is
+  // usually a pasted transcript; files are handled for parity with the composer.)
+  const fileNotes: string[] = [];
+  const images: { base64: string; mediaType: string }[] = [];
+  for (const f of input.files ?? []) {
+    const imgType = imageMediaType(f.fileName);
+    if (imgType) {
+      if (images.length >= 5) fileNotes.push(`Skipped extra image (max 5): ${f.fileName}`);
+      else if (f.base64.length > 7_000_000) fileNotes.push(`Image too large (max ~5MB): ${f.fileName}`);
+      else {
+        images.push({ base64: f.base64, mediaType: imgType });
+        content += `\n\n## Attached image: ${f.fileName}`;
+      }
+      continue;
+    }
+    if (!isExtractable(f.fileName)) {
+      fileNotes.push(`Unsupported file — skipped: ${f.fileName}`);
+      continue;
+    }
+    try {
+      const bytes = Buffer.from(f.base64, "base64");
+      const ex = await extractFile({ bytes, fileName: f.fileName, mimeType: f.mimeType });
+      if (ex.text) content += `\n\n## Attachment: ${f.fileName}\n${ex.text}${ex.truncated ? "\n…(truncated)" : ""}`;
+      if (ex.note) fileNotes.push(ex.note);
+    } catch {
+      fileNotes.push(`Couldn't read file: ${f.fileName}`);
+    }
+  }
+  if (fileNotes.length) content += `\n\n## Attachment notes\n${fileNotes.join("\n")}`;
+
+  const intake = input.emailBlock?.trim() ? `${content}\n\n## Email block\n${input.emailBlock.trim()}` : content;
+  if (intake.trim().length < 40 && images.length === 0) {
+    throw new Error("Content is too short to extract an intro from — paste the call notes/transcript.");
+  }
+
+  const title = input.title.trim() || "Intro call";
+  const date = input.date?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(input.date.trim()) ? input.date.trim() : new Date().toISOString().slice(0, 10);
+  const meetingDate = new Date(date);
+
+  // The "Type: intro / channel-partner call" line is what switches the skill into
+  // its Lane-4 output shape (it returns the default client shape otherwise). The
+  // firm board is the dedup candidate set (an intro's BD tasks are firm-level).
+  const context = [
+    `## Meeting`,
+    `Title: ${title}`,
+    `Date: ${date}`,
+    `Source: composer`,
+    `Type: intro / channel-partner call (an external person, no client or deal on file) — emit the Lane-4 intro shape: a channel-partner contact, contact-scoped BD tasks, and (only by exception) a targeting candidate. Do NOT invent a client or a deal.`,
+    formatOpenTaskCandidates(await fetchFirmOpenTaskCandidates(), "firm"),
+  ].join("\n");
+
+  const raw = await generate({
+    skill: "ingest-meeting",
+    context,
+    intake: `## Transcript\n${intake}`,
+    maxTokens: 3000,
+    images: images.length ? images : undefined,
+  });
+  const proposal = parseIntroProposal(raw, input.emailBlock ?? "");
+
+  const created = await prisma.ingestProposal.create({
+    data: {
+      source: input.files?.length ? "drop" : "paste",
+      ingestType: "meeting",
+      title,
+      meetingDate,
+      transcript: intake.slice(0, 20000),
+      proposal: proposal as object,
+      lane: "intro",
+      status: "pending",
+      // Intro ties to nothing at capture — the introducer is created/matched on
+      // approve; never a client/deal (docs/ingest-lane4-intro-and-call-review.md §3).
+      createdBy: partnerLabel,
+    },
+    select: { id: true },
+  });
+
+  await notifyPartner(prisma, partnerId, "approval_needed", `Intro call "${title}" is ready for your review`, { link: "/ingest" });
+  revalidatePath("/ingest");
+  revalidatePath("/messages");
+  return { id: created.id };
+}
+
+// Parse the ingest-meeting Lane-4 JSON into the IntroProposal shape. Robust to
+// code fences / stray prose (mirrors parseProposalJSON in actions.ts). The skill
+// supplies raw values; everything is validated/defaulted here so a thin or
+// malformed response never crashes the ingest list.
+function parseIntroProposal(raw: string, emailBlockFallback: string): IntroProposal {
+  let text = raw.trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  if (!text.startsWith("{")) {
+    const s = text.indexOf("{");
+    const e = text.lastIndexOf("}");
+    if (s !== -1 && e !== -1) text = text.slice(s, e + 1);
+  }
+  let o: Record<string, unknown> = {};
+  try {
+    o = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    o = {};
+  }
+
+  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const strOrNull = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const strArr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()) : [];
+
+  const c = (o.contact ?? {}) as Record<string, unknown>;
+  // Seed the email from the model, else the pasted email block (a single address).
+  const emailFromBlock = emailBlockFallback.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0] ?? null;
+  const contact: IntroProposal["contact"] = {
+    recordId: null, // resolved on approve (matched or created)
+    name: str(c.name),
+    email: strOrNull(c.email) ?? emailFromBlock,
+    title: strOrNull(c.title),
+    company: strOrNull(c.company),
+    channelNotes: strOrNull(c.channelNotes),
+  };
+
+  const tasks: IntroProposal["tasks"] = Array.isArray(o.tasks)
+    ? (o.tasks as unknown[])
+        .filter((t): t is Record<string, unknown> => !!t && typeof t === "object")
+        .filter((t) => typeof t.title === "string" && (t.title as string).trim())
+        .map((t) => ({
+          title: (t.title as string).trim(),
+          context: str(t.context),
+          due: typeof t.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t.due) ? t.due : null,
+        }))
+    : [];
+
+  // Targeting candidate — mirror the Lane-3 knowledgeCandidate parse.
+  let knowledgeCandidate: IntroProposal["knowledgeCandidate"] = null;
+  const kc = o.knowledgeCandidate as Record<string, unknown> | null | undefined;
+  if (kc && typeof kc === "object" && typeof kc.title === "string" && kc.title.trim()) {
+    const kind = kc.kind === "decision" ? "decision" : "learning";
+    knowledgeCandidate = {
+      isImportant: kc.isImportant === true,
+      kind,
+      title: kc.title.trim(),
+      context: strOrNull(kc.context),
+      optionsConsidered: strOrNull(kc.optionsConsidered),
+      decision: strOrNull(kc.decision),
+      consequences: strOrNull(kc.consequences),
+      summary: strOrNull(kc.summary),
+      sensitivity: kc.sensitivity === "managing_partner" ? "managing_partner" : "firm_wide",
+      rationale: strOrNull(kc.rationale),
+    };
+  }
+
+  // Call review — conservative; null unless it carries real signal.
+  let callReview: IntroProposal["callReview"] = null;
+  const cr = o.callReview as Record<string, unknown> | null | undefined;
+  if (cr && typeof cr === "object") {
+    const whatWorked = strArr(cr.whatWorked);
+    const whatDidnt = strArr(cr.whatDidnt);
+    const lessons = strArr(cr.lessons);
+    const coachingNotes = strOrNull(cr.coachingNotes);
+    if (whatWorked.length || whatDidnt.length || lessons.length || coachingNotes) {
+      callReview = { whatWorked, whatDidnt, lessons, coachingNotes };
+    }
+  }
+
+  return {
+    lane: "intro",
+    ingestType: "meeting",
+    summary: str(o.summary),
+    keyPoints: strArr(o.keyPoints),
+    contact,
+    tasks,
+    knowledgeCandidate,
+    callReview,
+  };
+}
+
+// ── 9. approveIntro — the PURPLE (Lane 4) approval gate. Mirrors approveFirmMeeting
+// (a firm-level sibling of approveProposal). On approve of an intro card it:
+//  1. resolves the channel-partner Contact (matched id, or create/dedup a new one)
+//     and stamps Contact.isChannelPartner + channelNotes (the §3 marker),
+//  2. logs the call as an Interaction on that contact (the arm's-length comms body),
+//  3. creates the kept BD tasks on that contactId (category "firm", label "BD"),
+//  4. writes one CallReview row tied to the logged Interaction (lane "intro"),
+//  5. and, if the partner keeps the targeting candidate, writes a DRAFT
+//     DecisionRecord/KnowledgeItem through the SAME Gate 1 path Lane 3 uses
+//     (invisible to skills until approved in /firm-knowledge, Gate 2).
+// All-or-nothing in one transaction. No client, no deal is created (the intro
+// pre-dates any deal; a Deal + ContactLink come later at handoff).
+export async function approveIntro(
+  proposalId: string,
+  selections: ApproveIntroSelections,
+): Promise<{ ok: true; contactId: string; draft: { kind: "decision" | "learning"; id: string } | null }> {
+  const session = await auth();
+  if (!session?.user?.partnerId) throw new Error("Not authenticated");
+  const partnerId = session.user.partnerId;
+  const partnerLabel = session.user.name ?? session.user.email ?? "Unknown";
+  const actor = agentActor("ingest-meeting");
+
+  const proposal = await prisma.ingestProposal.findUnique({ where: { id: proposalId } });
+  if (!proposal) throw new Error("Proposal not found");
+  if (proposal.status !== "pending") throw new Error("Proposal already reviewed");
+
+  const c = selections.contact;
+  const name = c.name?.trim();
+  if (!name) throw new Error("The channel partner needs a name");
+  const email = c.email?.trim() || null;
+  // A brand-new contact needs an email (Contact.email is required + the match key).
+  // A matched contact (recordId set) already has one — no email required to update.
+  if (!c.recordId && !email) throw new Error("Add the channel partner's email to create them (it's the match key)");
+
+  const summary = selections.summary.trim() || (proposal.proposal as IntroProposal).summary || proposal.title;
+
+  let tasksCreated = 0;
+  let tasksSkipped: { title: string; existingId: string }[] = [];
+  let draft: { kind: "decision" | "learning"; id: string } | null = null;
+  let callReviewId: string | null = null;
+  let contactCreated = false;
+
+  const contactId = await prisma.$transaction(async (tx) => {
+    // 1. Resolve the introducer contact: a matched id, an existing contact on the
+    //    email (dedup — link, don't twin), else create a new one.
+    let resolvedId = c.recordId ?? null;
+    if (!resolvedId && email) {
+      const { match } = await resolveContact({ email, name, company: c.company }, tx);
+      if (match) resolvedId = match.id;
+    }
+    if (!resolvedId) {
+      const created = await createContactTx(
+        tx,
+        {
+          name,
+          email: email!, // guaranteed non-null above for the create path
+          title: c.title ?? undefined,
+          company: c.company ?? undefined,
+          source: `Intro · ${proposal.title}`,
+          sourceCategory: "intro",
+          partnerLeadId: partnerId,
+        },
+        "AGENT · CLAUDE",
+      );
+      resolvedId = created.id;
+      contactCreated = true;
+    }
+
+    // 1b. Stamp the channel-partner marker (isChannelPartner + channelNotes).
+    await applyChannelPartnerMarker(tx, resolvedId, {
+      isChannelPartner: c.isChannelPartner,
+      channelNotes: c.channelNotes,
+    });
+
+    // 2. Log the call as an Interaction on the introducer (advances lastTouchAt).
+    //    Its id anchors the CallReview + a meeting-derived DecisionRecord below.
+    //    Read the resolved contact's real name/company so a MATCHED contact labels
+    //    the CallReview + activity with its own name, not the parsed one.
+    const contact = await tx.contact.findUnique({
+      where: { id: resolvedId },
+      select: { lastTouchAt: true, name: true, company: true },
+    });
+    const displayName = contact?.name?.trim() || name;
+    const displayCompany = contact?.company?.trim() || c.company?.trim() || "";
+    const interaction = await tx.interaction.create({
+      data: {
+        contactId: resolvedId,
+        type: "meeting",
+        date: proposal.meetingDate,
+        summary,
+        body: proposal.transcript,
+        subject: proposal.title,
+        loggedBy: "AGENT · CLAUDE",
+      },
+      select: { id: true },
+    });
+    if (contact && proposal.meetingDate > contact.lastTouchAt) {
+      await tx.contact.update({ where: { id: resolvedId }, data: { lastTouchAt: proposal.meetingDate } });
+    }
+
+    // 3. BD tasks on the introducer contact (firm-level, category "firm", "BD").
+    const bd = await applyIntroBdTasks(tx, {
+      contactId: resolvedId,
+      tasks: selections.tasks,
+      assignedById: partnerId,
+      contextFallback: `From intro call: ${proposal.title}`,
+    });
+    tasksCreated = bd.created;
+    tasksSkipped = bd.skipped;
+
+    // 4. One CallReview row tied to the logged Interaction (lane "intro"). Skipped
+    //    when the partner cleared the block (empty → no row).
+    if (selections.callReview) {
+      const cr = await applyCallReview(tx, {
+        title: `Intro call · ${displayName}${displayCompany ? ` (${displayCompany})` : ""}`,
+        callDate: proposal.meetingDate,
+        candidate: selections.callReview,
+        sourceInteractionId: interaction.id,
+        lane: "intro",
+        contactId: resolvedId,
+        createdBy: "AGENT · CLAUDE",
+      });
+      callReviewId = cr?.id ?? null;
+    }
+
+    // 5. Targeting candidate → a DRAFT record (Gate 1), the SAME path Lane 3 uses.
+    //    reviewStatus "draft" keeps it out of every skill until a partner approves
+    //    it in /firm-knowledge (Gate 2). Stamped generatedFromSkill "ingest-meeting".
+    const cand = selections.candidate;
+    if (cand && cand.title?.trim()) {
+      const sensitivity = cand.sensitivity === "managing_partner" ? "managing_partner" : "firm_wide";
+      if (cand.kind === "decision") {
+        const rec = await tx.decisionRecord.create({
+          data: {
+            title: cand.title.trim(),
+            context: cand.context?.trim() || null,
+            optionsConsidered: cand.optionsConsidered?.trim() || null,
+            decision: cand.decision?.trim() || summary,
+            consequences: cand.consequences?.trim() || null,
+            decidedAt: proposal.meetingDate,
+            decidedByLabel: "AGENT · CLAUDE",
+            sourceInteractionId: interaction.id,
+            reviewStatus: "draft",
+            sensitivity,
+            generatedFromSkill: "ingest-meeting",
+            createdBy: "AGENT · CLAUDE",
+          },
+          select: { id: true },
+        });
+        draft = { kind: "decision", id: rec.id };
+      } else {
+        const body = cand.summary?.trim() || summary;
+        const rec = await tx.knowledgeItem.create({
+          data: {
+            title: cand.title.trim(),
+            source: "transcript",
+            summary: body,
+            extractedText: body,
+            parseStatus: "parsed",
+            parsedAt: new Date(),
+            observedAt: proposal.meetingDate,
+            reviewStatus: "draft",
+            sensitivity,
+            generatedFromSkill: "ingest-meeting",
+            createdBy: "AGENT · CLAUDE",
+          },
+          select: { id: true },
+        });
+        draft = { kind: "learning", id: rec.id };
+      }
+    }
+
+    // 6. Mark approved + audit + activity. Nothing happens silently.
+    await tx.ingestProposal.update({
+      where: { id: proposalId },
+      data: { status: "approved", reviewedBy: partnerLabel, reviewedAt: new Date(), matchedContactId: resolvedId },
+    });
+
+    await writeAudit(tx, {
+      actor,
+      action: "approve.ingestProposal.intro",
+      targetType: "IngestProposal",
+      targetId: proposalId,
+      changes: {
+        approvedBy: partnerLabel,
+        lane: "intro",
+        contactId: resolvedId,
+        contactCreated,
+        isChannelPartner: c.isChannelPartner,
+        bdTasks: tasksCreated,
+        bdTasksSkippedAsDuplicate: tasksSkipped.length,
+        bdTasksSkipped: tasksSkipped,
+        callReview: callReviewId,
+        draftRecord: draft,
+      },
+    });
+
+    await writeActivity(tx, {
+      actor,
+      type: "ai",
+      target: displayName,
+      detail: `Intro call filed — channel partner ${contactCreated ? "added" : "updated"}, ${tasksCreated} BD task(s)${tasksSkipped.length ? `, ${tasksSkipped.length} skipped as already-open duplicate(s)` : ""}${callReviewId ? ", 1 call review" : ""}${draft ? `, 1 draft ${draft.kind === "decision" ? "decision" : "knowledge item"} for review` : ""}`,
+      link: `/contacts/${resolvedId}`,
+    });
+
+    return resolvedId;
+  });
+
+  revalidatePath("/ingest");
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${contactId}`);
+  revalidatePath("/call-reviews");
+  if (draft) {
+    revalidatePath("/firm-knowledge");
+    revalidatePath("/firm-knowledge/decisions");
+  }
+  return { ok: true, contactId, draft };
 }
